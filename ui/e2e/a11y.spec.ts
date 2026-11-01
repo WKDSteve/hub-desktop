@@ -1,0 +1,45 @@
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test } from './fixture';
+
+// Accessibility of the page (axe), light and dark, and with the pieces that open: the menu of the second action and
+// the dialog of the setup. The scan is of the page as it is; a rule that does not apply is not a pass for another.
+const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'];
+
+for (const scheme of ['light', 'dark'] as const) {
+  test.describe(`axe, ${scheme}`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
+    });
+
+    test('the page with both areas has no violation', async ({ page, hub }) => {
+      await hub.open(page);
+      const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
+    });
+
+    test('with the menu of the second action open', async ({ page, hub }) => {
+      await hub.open(page);
+      await page.locator('[data-tile="tasks"]').focus();
+      await page.keyboard.press('Shift+Enter');
+      await expect(page.getByRole('menu')).toBeVisible();
+      const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
+    });
+
+    test('with the dialog of the setup open', async ({ page, hub }) => {
+      await hub.open(page);
+      await page.locator('[data-tile="rules"]').click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
+    });
+
+    test('with a message shown and a tile that is starting', async ({ page, hub }) => {
+      await hub.open(page);
+      await page.locator('[data-tile="tasks"]').click();
+      await expect(page.getByRole('status')).toContainText('Starting');
+      const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
+    });
+  });
+}

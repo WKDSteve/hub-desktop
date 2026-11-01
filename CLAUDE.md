@@ -17,6 +17,7 @@ touch crates/hub-desktop/src/ui.rs        # sonst bettet das Binary die alte Obe
 cargo build --locked
 cargo fmt --all --check && cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
+cargo build --workspace --locked && (cd ui && pnpm e2e)   # echtes Binary + fake-app, Chrome, axe hell/dunkel
 python tools/check-control-chars.py
 python tools/check-color-literals.py      # keine Farbe außerhalb der Tokens von appkit-ui
 python tools/check-appkit-pin.py

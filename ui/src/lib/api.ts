@@ -32,6 +32,12 @@ export interface Apps {
   apps: HubApp[];
 }
 
+/** What a start came to: a program was started, a start is on its way, a page was opened, or the app needs setup. */
+export type LaunchResult = 'started' | 'starting' | 'opened' | 'setup_required';
+
+/** What a click asks for; `setup` is the first-start questions of an app. */
+export type LaunchAsk = Mode | 'setup';
+
 export class Hub extends HubClient {
   constructor(fetchFn: typeof fetch, base = '') {
     super(fetchFn, '/api/hub', base);
@@ -39,5 +45,24 @@ export class Hub extends HubClient {
 
   apps(): Promise<Apps> {
     return this.json<Apps>(this.route('apps'));
+  }
+
+  /** Start an app. The answer comes at once; the app is not waited for. */
+  async launch(id: string, ask?: LaunchAsk): Promise<LaunchResult> {
+    const body = ask ? { mode: ask } : {};
+    const doc = await this.postJson<{ result?: unknown }>(this.route(`apps/${encodeURIComponent(id)}/launch`), body);
+    const result = doc.result;
+    if (result === 'started' || result === 'starting' || result === 'opened' || result === 'setup_required') return result;
+    throw new ApiError(502, 'bad_reply', 'unexpected answer');
+  }
+
+  /** The mode a click opens for an app, kept by the hub; `null` goes back to the default of the app. */
+  setMode(id: string, mode: Mode | null): Promise<void> {
+    return this.post(this.route(`apps/${encodeURIComponent(id)}/mode`), { mode });
+  }
+
+  /** Forget what the hub found: the next `apps()` looks at the machine again. */
+  rescan(): Promise<void> {
+    return this.post(this.route('rescan'), {});
   }
 }
