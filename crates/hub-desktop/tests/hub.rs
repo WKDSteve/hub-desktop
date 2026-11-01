@@ -10,12 +10,13 @@ use appkit_testkit::wire::{request, send};
 use hub_desktop::config::Env;
 use hub_desktop::detect::Detector;
 use hub_desktop::launch::{Browser, LaunchConfig, Launcher};
+use hub_desktop::monitor::Monitor;
 use hub_desktop::prefs::Prefs;
 use hub_desktop::server::{self, ServerConfig, DATA_ROUTES};
 use hub_desktop::ui::UiFiles;
 
 /// The control secret of the hub that `start_with_secret` makes, as the bearer credential of a program.
-async fn start_with_secret() -> (appkit_hub::RunningServer, String) {
+async fn start_with_monitor(monitor: Monitor) -> (appkit_hub::RunningServer, String) {
     let control = Secret::generate(TOKEN_BYTES).unwrap();
     let detector = Arc::new(Detector::new(
         Env::from_pairs([("APPDATA", "C:/none")]),
@@ -35,10 +36,15 @@ async fn start_with_secret() -> (appkit_hub::RunningServer, String) {
             LaunchConfig::new(None, Browser::System),
         )),
         prefs: Arc::new(Prefs::new(None, Arc::clone(&detector))),
+        monitor: Arc::new(monitor),
     })
     .await
     .expect("the hub starts");
     (server, control.to_hex())
+}
+
+async fn start_with_secret() -> (appkit_hub::RunningServer, String) {
+    start_with_monitor(Monitor::new(None)).await
 }
 
 async fn start() -> appkit_hub::RunningServer {
@@ -77,17 +83,11 @@ async fn every_route_of_the_hub_needs_a_session() {
     server.shutdown().await;
 }
 
-/// A route that is renamed or taken out of the server and left in `DATA_ROUTES` is a route the matrix
-/// tries in vain (it is refused without a session whether it exists or not): with a session, every
-/// name of the list must be a route that answers.
-#[tokio::test]
-async fn every_route_the_matrix_tries_exists_and_answers_with_a_session() {
-    let (server, control) = start_with_secret().await;
+/// A program asks for a code with the control secret, the page trades it for a session.
+async fn session_for(server: &appkit_hub::RunningServer, control: &str) -> String {
     let host = format!("127.0.0.1:{}", server.addr().port());
     let origin = format!("http://{host}");
     let json = ("Content-Type", "application/json");
-
-    // A program asks for a code with the control secret, the page trades it for a session.
     let auth = format!("Bearer {control}");
     let pair = send(
         server.addr(),
@@ -124,10 +124,21 @@ async fn every_route_the_matrix_tries_exists_and_answers_with_a_session() {
     )
     .await;
     assert_eq!(exchange.status, 200, "{exchange:?}");
-    let session = format!(
+    format!(
         "Bearer {}",
         exchange.json()["token"].as_str().expect("a token")
-    );
+    )
+}
+
+/// A route that is renamed or taken out of the server and left in `DATA_ROUTES` is a route the matrix
+/// tries in vain (it is refused without a session whether it exists or not): with a session, every
+/// name of the list must be a route that answers.
+#[tokio::test]
+async fn every_route_the_matrix_tries_exists_and_answers_with_a_session() {
+    let (server, control) = start_with_secret().await;
+    let host = format!("127.0.0.1:{}", server.addr().port());
+
+    let session = session_for(&server, &control).await;
 
     for name in DATA_ROUTES {
         let path = hub_desktop::IDENTITY.route(name);
@@ -156,4 +167,53 @@ async fn every_route_the_matrix_tries_exists_and_answers_with_a_session() {
     .await;
     assert_eq!(nope.status, 404, "{nope:?}");
     server.shutdown().await;
+}
+
+/// The route reads the folder the hub was given, and a folder that cannot be read answers with a sentence,
+/// not with a path.
+#[tokio::test]
+async fn the_monitor_route_reads_the_export_folder_of_the_hub() {
+    let machine = appkit_scratch::Scratch::new("hub-monitor-route");
+    let fleet = r#"{"schema":"testing-export/1","kind":"fleet","form":"export","classes":{"checked":true},
+        "repos":[{"key":"a-1","name":"alpha.nvim","local":{"verdict":"red"},"counts":{"fail":2}}]}"#;
+    std::fs::write(machine.path().join("fleet.json"), fleet).unwrap();
+    let manifest = format!(
+        r#"{{"schema":"testing-export/1","kind":"manifest","files":[{{"path":"fleet.json","bytes":{}}}]}}"#,
+        fleet.len()
+    );
+    std::fs::write(machine.path().join("testing-export.json"), manifest).unwrap();
+
+    for (dir, state) in [
+        (machine.path().join(""), "ready"),
+        (machine.path().join("absent"), "problem"),
+    ] {
+        let (server, control) = start_with_monitor(Monitor::new(Some(dir))).await;
+        let session = session_for(&server, &control).await;
+        let host = format!("127.0.0.1:{}", server.addr().port());
+        let reply = send(
+            server.addr(),
+            request(
+                "GET",
+                "/api/hub/monitor",
+                &[("Host", host.as_str()), ("Authorization", session.as_str())],
+                b"",
+            ),
+        )
+        .await;
+        assert_eq!(reply.status, 200, "{reply:?}");
+        let doc = reply.json();
+        assert_eq!(doc["state"], state, "{doc}");
+        if state == "ready" {
+            assert_eq!(doc["repos"][0]["name"], "alpha.nvim");
+            assert_eq!(doc["repos"][0]["light"], "red");
+            assert_eq!(doc["repos"][0]["fail"], 2);
+        } else {
+            let text = doc.to_string();
+            assert!(
+                !text.contains("absent") && !text.contains("hub-monitor-route"),
+                "{text}"
+            );
+        }
+        server.shutdown().await;
+    }
 }

@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from './fixture';
+import { expect, FULL, test } from './fixture';
 
 // Accessibility of the page (axe), light and dark, and with the pieces that open: the menu of the second action and
 // the dialog of the setup. The scan is of the page as it is; a rule that does not apply is not a pass for another.
@@ -13,6 +13,14 @@ for (const scheme of ['light', 'dark'] as const) {
 
     test('the page with both areas has no violation', async ({ page, hub }) => {
       await hub.open(page);
+      const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
+    });
+
+    test('with the monitor shown', async ({ page, hubOn }) => {
+      const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
+      await hub.open(page);
+      await expect(page.getByRole('region', { name: 'Testing' })).toBeVisible();
       const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
       expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
     });

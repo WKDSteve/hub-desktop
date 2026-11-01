@@ -24,6 +24,7 @@ use serde_json::{json, Value};
 
 use crate::detect::Detector;
 use crate::launch::{LaunchError, Launcher, Outcome, Request};
+use crate::monitor::Monitor;
 use crate::prefs::{Prefs, PrefsError};
 use crate::IDENTITY;
 
@@ -34,12 +35,18 @@ pub struct HubRuntime {
     detector: Arc<Detector>,
     launcher: Arc<Launcher>,
     prefs: Arc<Prefs>,
+    monitor: Arc<Monitor>,
 }
 
 impl HubRuntime {
     /// The runtime of a hub that has no engine: `hello` says it is not ready for one, and that is right.
     #[must_use]
-    pub fn new(detector: Arc<Detector>, launcher: Arc<Launcher>, prefs: Arc<Prefs>) -> Self {
+    pub fn new(
+        detector: Arc<Detector>,
+        launcher: Arc<Launcher>,
+        prefs: Arc<Prefs>,
+        monitor: Arc<Monitor>,
+    ) -> Self {
         Self {
             status: HubStatus {
                 engine_ready: false,
@@ -49,6 +56,7 @@ impl HubRuntime {
             detector,
             launcher,
             prefs,
+            monitor,
         }
     }
 
@@ -60,6 +68,11 @@ impl HubRuntime {
     #[must_use]
     pub fn launcher(&self) -> &Arc<Launcher> {
         &self.launcher
+    }
+
+    #[must_use]
+    pub fn monitor(&self) -> &Arc<Monitor> {
+        &self.monitor
     }
 
     #[must_use]
@@ -92,12 +105,14 @@ pub struct ServerConfig {
     pub detector: Arc<Detector>,
     pub launcher: Arc<Launcher>,
     pub prefs: Arc<Prefs>,
+    /// The export folder of testing.nvim the monitor reads (none: the page shows no monitor).
+    pub monitor: Arc<Monitor>,
 }
 
 /// The names (below `/api/hub/`) of the routes that need a session. The security matrix reads them
 /// from here: a route added to [`routes`] and left out of this list would be a route the matrix
 /// never tries (`tests/hub.rs` asks every name with a session).
-pub const DATA_ROUTES: [&str; 1] = ["apps"];
+pub const DATA_ROUTES: [&str; 2] = ["apps", "monitor"];
 
 /// `GET /api/hub/apps`: the apps of the catalog and what the machine says about each. No path of the
 /// machine is in it.
@@ -105,6 +120,19 @@ async fn apps(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
     let found = core.rt().detector().apps().await;
     let views: Vec<_> = found.iter().map(|a| a.view()).collect();
     Json(json!({ "apps": views }))
+}
+
+/// `GET /api/hub/monitor`: the light of each repository of the export folder of testing.nvim. It reads
+/// the folder on every call (a few small files); it holds no history and starts nothing.
+async fn monitor(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
+    let monitor = Arc::clone(core.rt().monitor());
+    // The files are read on a thread of their own: a slow disk does not hold up the server.
+    let reading = tokio::task::spawn_blocking(move || monitor.read())
+        .await
+        .unwrap_or(crate::monitor::Reading::Problem {
+            problem: "the export cannot be read",
+        });
+    Json(serde_json::to_value(reading).unwrap_or(Value::Null))
 }
 
 /// The routes that change something (a `POST`, a session and a JSON body): `{id}` stands for an app. The
@@ -293,6 +321,7 @@ fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
     let small = core.limits.small_body_bytes;
     Router::new()
         .route(&IDENTITY.route("apps"), get(apps))
+        .route(&IDENTITY.route("monitor"), get(monitor))
         .route(
             &IDENTITY.route(MUTATION_ROUTES[0]),
             post(launch).layer(DefaultBodyLimit::max(small)),
@@ -320,10 +349,12 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
     let detector = cfg.detector;
     let launcher = cfg.launcher;
     let prefs = cfg.prefs;
+    let monitor = cfg.monitor;
     let for_build = (
         Arc::clone(&detector),
         Arc::clone(&launcher),
         Arc::clone(&prefs),
+        Arc::clone(&monitor),
     );
     serve(
         ServeParts {
@@ -338,13 +369,14 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
             // `hello` needs no session; no route of the hub is coarse (rate limited on its own) yet.
             guard_rules: GuardRules::new(IDENTITY.route("hello"), Vec::<String>::new()),
             ui: cfg.ui,
-            runtime: HubRuntime::new(detector, launcher, prefs),
+            runtime: HubRuntime::new(detector, launcher, prefs, monitor),
             // There is no vault to choose, so no runtime is ever made again.
             build: Arc::new(move |()| {
                 HubRuntime::new(
                     Arc::clone(&for_build.0),
                     Arc::clone(&for_build.1),
                     Arc::clone(&for_build.2),
+                    Arc::clone(&for_build.3),
                 )
             }),
             vaults: None,

@@ -78,3 +78,12 @@ not listed, not started and its page is not served.
 
 An app built on the kit (Tasks, Rules) that runs has a **Stop** entry in the menu of its tile: the hub runs
 `<program> stop` of that app, nothing else.
+
+## Testing monitor
+
+Name the export folder of [testing.nvim](https://github.com/WKDSteve/testing.nvim) in `config.json`
+(`{ "testing_export": "C:/results/export" }`, an absolute folder) and the page shows a **Testing** section with a
+light for each repository: red, check (partly run, outdated, CI running or unknown), green, or no result. The worst
+of the local result, the local pipeline and the CI wins. The hub reads the folder (`testing export --out`) and starts
+nothing; the history and the start of a run stay with testing.nvim. A folder that cannot be read is said in one
+sentence, without its path.

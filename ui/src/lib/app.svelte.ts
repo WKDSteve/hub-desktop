@@ -3,6 +3,7 @@
 
 import type { ToastMessage } from 'appkit-ui/toast';
 import { ApiError, type Apps, type Hello, type HubApp, type HubApi, type LaunchAsk, type Mode } from './api';
+import { type MonitorReading, NOT_CONFIGURED } from './monitor';
 
 /** `starting`: the code is traded. `unpaired`: no session and no code (open the link of `hub-desktop open`). */
 export type Phase = 'starting' | 'ready' | 'unpaired' | 'error';
@@ -85,6 +86,8 @@ export class App {
   toast = $state<ToastMessage | null>(null);
   /** The app whose setup the page is asking about. */
   setupFor = $state<HubApp | null>(null);
+  /** The testing export the hub reads, as it showed last. */
+  monitor = $state<MonitorReading>(NOT_CONFIGURED);
 
   #asked = new Map<string, number>();
   #cancelToast: (() => void) | null = null;
@@ -124,6 +127,7 @@ export class App {
       const hello: Hello = await this.hub.hello();
       this.version = hello.version;
       this.apps = (await this.hub.apps()).apps;
+      await this.#readMonitor();
       this.phase = 'ready';
     } catch (e) {
       // A refused session already moved the phase to `unpaired`; a refused code is the same thing for the person.
@@ -137,8 +141,11 @@ export class App {
     }
   }
 
-  /** Read the list again (the page got the focus back, a start is on its way). A failure keeps what is shown. */
-  async reload(): Promise<void> {
+  /**
+   * Read the list again (the page got the focus back, a start is on its way). A failure keeps what is shown.
+   * The watch of a start or stop reads the list every second and leaves the monitor (files of a folder) alone.
+   */
+  async reload(withMonitor = true): Promise<void> {
     if (this.phase !== 'ready') return;
     try {
       this.apps = (await this.hub.apps()).apps;
@@ -148,6 +155,16 @@ export class App {
       this.failed = failed;
     } catch {
       // The hub may be busy for a moment: the next look tries again.
+    }
+    if (withMonitor) await this.#readMonitor();
+  }
+
+  /** The monitor is a side show: a hub that does not answer for it leaves what is shown. */
+  async #readMonitor(): Promise<void> {
+    try {
+      this.monitor = await this.hub.monitor();
+    } catch {
+      // A refused session already moved the phase (`onUnauthorized`); anything else keeps the rows.
     }
   }
 
@@ -248,7 +265,7 @@ export class App {
     const began = this.clock.now();
     while (this.clock.now() - began < START_LIMIT_MS) {
       await this.clock.sleep(1000);
-      await this.reload();
+      await this.reload(false);
       if (this.apps.find((a) => a.id === id)?.run !== 'running') break;
     }
   }
@@ -270,7 +287,7 @@ export class App {
     this.starting = { ...this.starting, [id]: began };
     while (this.starting[id] === began) {
       await this.clock.sleep(1000);
-      await this.reload();
+      await this.reload(false);
       const app = this.apps.find((a) => a.id === id);
       const waited = this.clock.now() - began;
       if (app?.run === 'running' || (app?.run == null && waited >= BLIND_START_MS) || waited >= START_LIMIT_MS) break;

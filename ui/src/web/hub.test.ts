@@ -60,6 +60,7 @@ describe('WebHub', () => {
     expect((await hub.hello()).version).toBe('1');
     expect((await hub.apps()).apps.map((a) => a.id)).toEqual(entries.map((e) => e.id));
     await expect(hub.launch('tasks')).rejects.toThrow();
+    expect(await hub.monitor()).toEqual({ state: 'not_configured' });
   });
 
   it('keeps a mark, and takes it back', async () => {

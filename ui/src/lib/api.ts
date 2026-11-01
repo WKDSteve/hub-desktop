@@ -2,6 +2,7 @@
 // kit's; this file is the routes of the hub.
 
 import { ApiError, HubClient, type Hello } from 'appkit-ui/client';
+import type { MonitorReading } from './monitor';
 
 export { ApiError, type Hello };
 
@@ -61,6 +62,8 @@ export interface HubApi {
   setMode(id: string, mode: Mode | null): Promise<void>;
   stop(id: string): Promise<StopResult>;
   rescan(): Promise<void>;
+  /** The light of each repository of the testing export (the web hub has none). */
+  monitor(): Promise<MonitorReading>;
 }
 
 export class Hub extends HubClient implements HubApi {
@@ -92,6 +95,14 @@ export class Hub extends HubClient implements HubApi {
   /** The mode a click opens for an app, kept by the hub; `null` goes back to the default of the app. */
   setMode(id: string, mode: Mode | null): Promise<void> {
     return this.post(this.route(`apps/${encodeURIComponent(id)}/mode`), { mode });
+  }
+
+  /** What the hub reads of the export folder of testing.nvim: nothing configured, a problem, or the rows. */
+  async monitor(): Promise<MonitorReading> {
+    const doc = await this.json<MonitorReading>(this.route('monitor'));
+    if (doc.state === 'not_configured' || doc.state === 'problem') return doc;
+    if (doc.state === 'ready' && Array.isArray(doc.repos)) return doc;
+    throw new ApiError(502, 'bad_reply', 'unexpected answer');
   }
 
   /** Forget what the hub found: the next `apps()` looks at the machine again. */

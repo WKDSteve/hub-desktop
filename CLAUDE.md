@@ -91,6 +91,20 @@ python tools/check-lock-age.py --min-days 7
 - Offen in M2: Autostart-Anzeige (braucht eine Funktion in appkit, die den Run-Key einer fremden App liest) und das
   Update-Badge (braucht `version.json` im Rolling-Build, Task `appkit/release-kit-version-json-...`).
 
+## Monitor (M3, Teil 1)
+
+- `monitor.rs`: liest den Export-Ordner von testing.nvim (`testing-export/1`, `testing export --out`), den
+  `config.json` mit `testing_export` benennt (absoluter Ordner, nicht über die API änderbar). Route `GET /api/hub/monitor`
+  (in `DATA_ROUTES`), Abschnitt "Testing" in der Oberfläche mit einer Ampel je Repo (Wort + Zeichen, Farbe nie
+  allein). Der Hub hält keine Historie und startet keinen Lauf.
+- Leserregeln aus testing.nvim `docs/OUTPUT-FORMATS.md`: zuerst das Manifest, nur `fleet.json` mit der Größe des Manifests,
+  höheres Schema, falsche `kind`/`form`, über 8 MiB und eine Flotte ohne `classes.checked` werden abgelehnt;
+  Unbekanntes wird ignoriert, `null` ist unbekannt. Jedes Wort der fremden Datei wird auf ein Wort des Hubs abgebildet,
+  der Grund einer Ablehnung ist ein fester Satz ohne Pfad. Die Prüfsumme `sha256` des Manifests wird nicht geprüft (keine
+  Hash-Abhängigkeit im Hub; Task).
+- Ampel: schlechteste Quelle gewinnt (lokal, lokale Pipeline, CI), nichts bekannt = "No result", nie grün.
+- Offen: Lauf starten über den Einstieg von testing-desktop (gibt es noch nicht), Fall-Details aus `repos/<key>.json`.
+
 ## Web-Hub (`hub.html`, M1W)
 
 - Dieselbe Oberfläche als eine HTML-Datei (`ui/index.web.html`, `src/main.web.ts`, `vite build --mode web`, gepackt von

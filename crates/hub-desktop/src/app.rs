@@ -14,6 +14,7 @@ use crate::client;
 use crate::config::{self, Env};
 use crate::detect::Detector;
 use crate::launch::{Browser, LaunchConfig, Launcher};
+use crate::monitor::Monitor;
 use crate::overlay::Overlay;
 use crate::prefs::Prefs;
 use crate::server::{self, ServerConfig};
@@ -137,6 +138,7 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
         Arc::clone(&detector),
         LaunchConfig::new(web.as_ref().map(|w| w.addr().port()), browser),
     ));
+    let monitor = Arc::new(Monitor::new(file.app.testing_export.clone()));
     let make_cfg = |port: u16| ServerConfig {
         addr: std::net::SocketAddr::from(([127, 0, 0, 1], port)),
         limits: Limits::default(),
@@ -148,6 +150,7 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
         detector: Arc::clone(&detector),
         launcher: Arc::clone(&launcher),
         prefs: Arc::clone(&prefs),
+        monitor: Arc::clone(&monitor),
     };
     // The port is part of the origin, so the wanted one is tried first. When it is taken the server
     // still starts, on another port, and says so: the page then has another origin.

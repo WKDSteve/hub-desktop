@@ -3,7 +3,7 @@ import { Hub } from './api';
 import { App, type TokenStore } from './app.svelte';
 
 /** A fetch that answers like the hub, and keeps what it was asked. */
-function fakeHub(options: { acceptCode?: string; token?: string } = {}) {
+function fakeHub(options: { acceptCode?: string; token?: string; monitor?: () => Response } = {}) {
   const asked: { path: string; auth: string | null }[] = [];
   const token = options.token ?? 'a'.repeat(64);
   const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -25,6 +25,7 @@ function fakeHub(options: { acceptCode?: string; token?: string } = {}) {
       return json(200, { instance: 'i', version: '1.2.3', engine: { ready: false, problem: null } });
     }
     if (path === '/api/hub/apps') return json(200, { apps: [{ id: 'tasks', name: 'Tasks' }] });
+    if (path === '/api/hub/monitor' && options.monitor) return options.monitor();
     return json(404, { error: { code: 'not_found', message: path } });
   }) as typeof fetch;
   return { hub: new Hub(fetchFn), asked, token };
@@ -112,5 +113,47 @@ describe('App', () => {
     await app.start('c0de');
     expect(app.phase).toBe('error');
     expect(app.problem).toBe('Failed to fetch');
+  });
+  const ready = {
+    state: 'ready',
+    generated_at: '2026-11-01T10:00:00Z',
+    local_read: true,
+    repos: [{ key: 'a-1', name: 'alpha.nvim', light: 'red', local: 'red', fail: 2, stale: 0, ci_local: null, ci_remote: null, ts: null }],
+  };
+  const reply = (body: unknown, status = 200) => () =>
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+  it('shows the monitor the hub reads, and nothing when the hub has none', async () => {
+    const withRows = new App(fakeHub({ acceptCode: 'c', monitor: reply(ready) }).hub, memory());
+    await withRows.start('c');
+    expect(withRows.monitor).toEqual(ready);
+    const without = new App(fakeHub({ acceptCode: 'c', monitor: reply({ state: 'not_configured' }) }).hub, memory());
+    await without.start('c');
+    expect(without.monitor).toEqual({ state: 'not_configured' });
+  });
+
+  it('a hub that does not know the monitor, or answers nonsense, still shows the apps', async () => {
+    for (const monitor of [undefined, reply({ state: 'fly' }), reply({ error: { code: 'x', message: 'x' } }, 500)]) {
+      const app = new App(fakeHub({ acceptCode: 'c', monitor }).hub, memory());
+      await app.start('c');
+      expect(app.phase).toBe('ready');
+      expect(app.monitor).toEqual({ state: 'not_configured' });
+    }
+  });
+
+  it('keeps the rows it has when a later look fails, and takes a new answer', async () => {
+    let answer = reply(ready);
+    const app = new App(fakeHub({ acceptCode: 'c', monitor: () => answer() }).hub, memory());
+    await app.start('c');
+    answer = reply({}, 500);
+    await app.reload();
+    expect(app.monitor).toEqual(ready);
+    let reads = 0;
+    answer = () => (reads++, reply({}, 500)());
+    await app.reload(false);
+    expect(reads, 'a watch does not read the monitor').toBe(0);
+    answer = reply({ state: 'problem', problem: 'the export cannot be read' });
+    await app.reload();
+    expect(app.monitor).toEqual({ state: 'problem', problem: 'the export cannot be read' });
   });
 });

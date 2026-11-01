@@ -6,6 +6,7 @@
   import { ContextRegistry } from 'appkit-ui/contextmenu';
   import type { App } from './lib/app.svelte';
   import { areas, hasMenu, hasMode, missingReason, moveFocus, otherMode, stopReason } from './lib/tiles';
+  import Monitor from './Monitor.svelte';
   import Tile from './Tile.svelte';
 
   let { app, code }: { app: App; code: string | null } = $props();
@@ -227,6 +228,7 @@
         {/if}
       </section>
     </div>
+    <Monitor monitor={app.monitor} />
   {/if}
   <!-- Inside the landmark: the menu is drawn at the pointer, but its content belongs to the page (axe: region). -->
   <ContextMenu {registry} label="Other ways to open the app" />

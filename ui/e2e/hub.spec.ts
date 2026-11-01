@@ -281,3 +281,37 @@ test('an overlay of a newer schema is ignored and the hub still runs', async ({ 
   await hub.open(page);
   await expect(tile(page, 'tasks')).toBeVisible();
 });
+
+test('without an export folder the page shows no monitor', async ({ page, hub }) => {
+  await hub.open(page);
+  await expect(page.getByRole('heading', { name: 'Testing' })).toHaveCount(0);
+});
+
+test('the monitor shows a light for each repository of the export, red first, in words', async ({ page, hubOn }) => {
+  const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
+  await hub.open(page);
+  const monitor = page.getByRole('region', { name: 'Testing' });
+  await expect(monitor).toContainText('Export of 2026-11-01 10:00:00 UTC');
+  const rows = await monitor.locator('[data-repo]').evaluateAll((els) =>
+    els.map((e) => [(e as HTMLElement).dataset['repo'], (e as HTMLElement).dataset['light'], e.textContent?.replace(/\s+/g, ' ').trim()]),
+  );
+  expect(rows.map((r) => r[0])).toEqual(['alpha.nvim', 'gamma.nvim', 'beta.nvim', 'delta.nvim']);
+  expect(rows.map((r) => r[1])).toEqual(['red', 'amber', 'green', 'unknown']);
+  expect(rows[0]?.[2]).toContain('Red');
+  expect(rows[0]?.[2]).toContain('local red (3 failing)');
+  expect(rows[1]?.[2]).toContain('2 outdated');
+  expect(rows[2]?.[2]).toContain('CI success');
+  expect(rows[3]?.[2]).toContain('nothing recorded');
+  // The hub reads, it starts nothing and writes nothing of the export.
+  expect(hub.starts('tasks')).toEqual([]);
+});
+
+test('an export that cannot be read is said in a sentence, without its path', async ({ page, hubOn }) => {
+  const hub = await hubOn({ ...FULL, testingExport: 'broken' });
+  await hub.open(page);
+  const monitor = page.getByRole('region', { name: 'Testing' });
+  await expect(monitor).toContainText('The testing export cannot be shown: the export folder has no testing-export.json');
+  expect(await monitor.innerText()).not.toContain(hub.root);
+  // The apps are there all the same.
+  await expect(tile(page, 'tasks')).toBeVisible();
+});

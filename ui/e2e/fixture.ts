@@ -32,6 +32,8 @@ export interface Machine {
   tasksRunning?: boolean;
   /** The text of `catalog-overlay.json` in the config folder of the hub. */
   overlay?: string;
+  /** The export folder of testing.nvim that `config.json` names: a fleet of four repositories, or one that cannot be read. */
+  testingExport?: 'fleet' | 'broken';
 }
 
 export const FULL: Machine = {
@@ -169,6 +171,30 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
 
   mkdirSync(at('cfg-hub'), { recursive: true });
   if (machine.overlay !== undefined) writeFileSync(at('cfg-hub/catalog-overlay.json'), machine.overlay);
+  if (machine.testingExport !== undefined) {
+    const dir = at('Export');
+    mkdirSync(dir, { recursive: true });
+    if (machine.testingExport === 'fleet') {
+      const row = (name: string, extra: Record<string, unknown>) => ({ key: `${name}-0123456789ab`, name, ...extra });
+      const fleet = JSON.stringify({
+        schema: 'testing-export/1',
+        kind: 'fleet',
+        form: 'export',
+        generated_at: '2026-11-01T10:00:00Z',
+        classes: { checked: true, problem: null },
+        repos: [
+          row('beta.nvim', { local: { verdict: 'green', stale: 0 }, ci_remote: { state: 'success' } }),
+          row('alpha.nvim', { local: { verdict: 'red', stale: 0 }, counts: { fail: 3, flaky: 0 } }),
+          row('gamma.nvim', { local: { verdict: 'green', stale: 2 } }),
+          row('delta.nvim', { local: null }),
+        ],
+      });
+      writeFileSync(join(dir, 'fleet.json'), fleet);
+      const files = [{ path: 'fleet.json', sha256: '0'.repeat(64), bytes: Buffer.byteLength(fleet) }];
+      writeFileSync(join(dir, 'testing-export.json'), JSON.stringify({ schema: 'testing-export/1', kind: 'manifest', form: 'export', files }));
+    }
+    writeFileSync(at('cfg-hub/config.json'), JSON.stringify({ testing_export: dir }));
+  }
   const child: ChildProcess = spawn(HUB, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '';
   child.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()));

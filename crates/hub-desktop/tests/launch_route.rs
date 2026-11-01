@@ -9,6 +9,7 @@ use appkit_hub::{Limits, RunningServer};
 use appkit_testkit::wire::{request, send, Reply};
 use hub_desktop::detect::Detector;
 use hub_desktop::launch::{Browser, LaunchConfig, Launcher};
+use hub_desktop::monitor::Monitor;
 use hub_desktop::prefs::Prefs;
 use hub_desktop::server::{self, ServerConfig, MUTATION_ROUTES};
 use hub_desktop::ui::UiFiles;
@@ -45,6 +46,7 @@ impl Hub {
             detector: Arc::clone(&detector),
             launcher: Arc::new(Launcher::new(Arc::clone(&detector), cfg)),
             prefs: Arc::new(Prefs::new(Some(machine.path("cfg-hub")), detector)),
+            monitor: Arc::new(Monitor::new(None)),
         })
         .await
         .unwrap();

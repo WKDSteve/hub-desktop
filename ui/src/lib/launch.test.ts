@@ -152,6 +152,18 @@ describe('launch', () => {
     expect(app.starting['tasks']).toBeUndefined();
   });
 
+  it('the watch of a start or a stop reads the list every second and the monitor not at all', async () => {
+    const { app, setApps, calls } = await ready({ apps: [{ run: 'running', stoppable: true }] });
+    const asked = (suffix: string) => calls.filter((c) => c.path.endsWith(suffix)).length;
+    const [apps, monitor] = [asked('/apps'), asked('/monitor')];
+    setApps([{ run: 'stopped' }]);
+    await app.watch('tasks');
+    setApps([{ run: 'running', stoppable: true }]);
+    await app.watchStop('tasks');
+    expect(asked('/apps')).toBeGreaterThan(apps + 10);
+    expect(asked('/monitor')).toBe(monitor);
+  });
+
   it('a program that cannot be looked at is not waited for', async () => {
     const { app, setApps, clock } = await ready();
     setApps([{ run: null }]);

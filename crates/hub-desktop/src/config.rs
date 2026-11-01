@@ -21,6 +21,9 @@ pub struct HubSettings {
     /// `<home>\hub-web-apps`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub web_root: Option<PathBuf>,
+    /// The export folder of testing.nvim (`testing export --out`) the monitor reads; none: no monitor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub testing_export: Option<PathBuf>,
     /// What a person chose for a tile, by the id of the app of the catalog.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tiles: BTreeMap<String, TileSettings>,
@@ -64,6 +67,14 @@ impl AppSettings for HubSettings {
             return Err(format!(
                 "web_root: {} is not an absolute folder of this machine",
                 root.display()
+            ));
+        }
+        if let Some(dir) = &self.testing_export
+            && crate::paths::usable_root(dir.clone()).is_none()
+        {
+            return Err(format!(
+                "testing_export: {} is not an absolute folder of this machine",
+                dir.display()
             ));
         }
         for (id, tile) in &self.tiles {
@@ -160,6 +171,21 @@ mod tests {
             assert!(ok(bad).is_err(), "{bad}");
         }
         assert!(HubSettings::default().validate().is_ok());
+    }
+
+    #[test]
+    fn the_export_folder_of_the_monitor_must_be_an_absolute_folder_of_this_machine() {
+        let ok = |dir: &str| {
+            HubSettings {
+                testing_export: Some(PathBuf::from(dir)),
+                ..HubSettings::default()
+            }
+            .validate()
+        };
+        assert!(ok("C:/results/export").is_ok());
+        for bad in ["export", r"\\server\share\e", "C:/a/../b"] {
+            assert!(ok(bad).is_err(), "{bad}");
+        }
     }
 
     fn tiles(json: &str) -> Result<HubSettings, String> {
