@@ -37,6 +37,22 @@ test('every state is a word, and the mode a click opens is a chip', async ({ pag
   await expect(tile(page, 'docmap')).not.toContainText(/Running|Stopped|Setup|busy/);
 });
 
+test('a tile says whether the app starts with the login, and says nothing when that is not known', async ({
+  page,
+  hub,
+}) => {
+  // The real registry decides what the hub reports; the page is shown a fixed answer.
+  await page.route('**/api/hub/apps', async (route) => {
+    const doc = await (await route.fetch()).json();
+    for (const a of doc.apps) a.autostart = { tasks: true, rules: false }[a.id as string] ?? null;
+    await route.fulfill({ json: doc });
+  });
+  await hub.open(page);
+  await expect(tile(page, 'tasks')).toContainText('Starts at login');
+  await expect(tile(page, 'rules')).toContainText('No autostart');
+  await expect(tile(page, 'docmap')).not.toContainText(/login|autostart/i);
+});
+
 test('an app that is not installed is a link to the page where it is had, opened safely', async ({ page, hubOn }) => {
   const hub = await hubOn({ ...FULL, docmap: false, ai: 'none' });
   await hub.open(page);

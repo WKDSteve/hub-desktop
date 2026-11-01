@@ -118,7 +118,8 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
     let detector = Arc::new(
         Detector::new(env.clone(), web_root)
             .with_modes(chosen)
-            .with_overlay(overlay),
+            .with_overlay(overlay)
+            .with_autostart(appkit_hub::background::autostart_of),
     );
     let prefs = Arc::new(Prefs::new(Some(dir.clone()), Arc::clone(&detector)));
     // The pages of the web variants have a listener (and an origin) of their own. When its port is taken

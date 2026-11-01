@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "appkit-core"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.27.1#9de80faae4c3b31c8ad3199641ebb601412400b2"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.28.0#48c99fe406417c8a99b1b4910250009fd95869de"
 dependencies = [
  "getrandom",
  "serde",
@@ -16,7 +16,7 @@ dependencies = [
 [[package]]
 name = "appkit-hub"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.27.1#9de80faae4c3b31c8ad3199641ebb601412400b2"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.28.0#48c99fe406417c8a99b1b4910250009fd95869de"
 dependencies = [
  "appkit-core",
  "axum",
@@ -32,7 +32,7 @@ dependencies = [
 [[package]]
 name = "appkit-scratch"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.27.1#9de80faae4c3b31c8ad3199641ebb601412400b2"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.28.0#48c99fe406417c8a99b1b4910250009fd95869de"
 dependencies = [
  "tempfile",
 ]
@@ -40,7 +40,7 @@ dependencies = [
 [[package]]
 name = "appkit-testkit"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.27.1#9de80faae4c3b31c8ad3199641ebb601412400b2"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.28.0#48c99fe406417c8a99b1b4910250009fd95869de"
 dependencies = [
  "appkit-core",
  "appkit-hub",

@@ -1,7 +1,7 @@
 //! What is on this machine: which apps are installed, which run, which need to be set up (concept 5).
 //!
-//! "Installed" is a look at files (`paths`), nothing else: no process list, no registry, no helper
-//! program. "Running" is a look at a loopback port (`probe`), at all apps at once. The answer is cached
+//! "Installed" is a look at files (`paths`), nothing else: no process list, no helper program. Whether
+//! an app starts with the login is the one look at the registry, made by the kit (`autostart_of`), read only. "Running" is a look at a loopback port (`probe`), at all apps at once. The answer is cached
 //! for a few seconds, so that a page that asks again and again costs one round of looks.
 
 use std::collections::BTreeMap;
@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
+use appkit_core::identity::AppIdentity;
 use appkit_core::registry;
 use serde::Serialize;
 use serde_json::Value;
@@ -27,6 +28,14 @@ pub const CACHE_TTL: Duration = Duration::from_secs(10);
 /// The larger a `config.json` of another app is, the less it is: it is read for one fact, and a file of
 /// this size is no settings file.
 const MAX_FOREIGN_CONFIG: u64 = 64 * 1024;
+
+/// How the login entry of an app is read: `None` is "cannot be told". The program passes the kit's reader;
+/// the default tells nothing, so that a test never looks at the registry of the machine.
+pub type AutostartReader = fn(&'static AppIdentity) -> Option<bool>;
+
+fn no_autostart(_: &'static AppIdentity) -> Option<bool> {
+    None
+}
 
 /// Whether an app is running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -57,6 +66,9 @@ pub struct AppState {
     pub port: Option<u16>,
     /// The mode a person chose for the tile; none: the default of the catalog.
     pub chosen: Option<Mode>,
+    /// Whether the installed native app starts with the login; `None`: not an app of the kit, not
+    /// installed, or it cannot be told.
+    pub autostart: Option<bool>,
 }
 
 impl AppState {
@@ -95,6 +107,8 @@ pub struct AppView {
     pub setup: Option<String>,
     /// The app runs and is one the hub can ask to stop (an app built on `appkit-hub`).
     pub stoppable: bool,
+    /// The app starts with the login (an app of the kit only; `null` when it cannot be told).
+    pub autostart: Option<bool>,
     pub install: InstallView,
     pub repo: RepoView,
 }
@@ -173,6 +187,7 @@ impl AppState {
             stoppable: self.run == Some(Run::Running)
                 && self.native.is_some()
                 && matches!(e.native, Some(Native::AppKitHub { .. })),
+            autostart: self.autostart,
             install: install_view(e),
             repo: repo_view(e),
         }
@@ -189,6 +204,7 @@ pub struct Detector {
     modes: RwLock<BTreeMap<String, Mode>>,
     /// What the person hid and ordered (`catalog-overlay.json`).
     overlay: Overlay,
+    autostart: AutostartReader,
     cache: Mutex<Option<(Instant, Arc<Vec<AppState>>)>>,
 }
 
@@ -206,6 +222,7 @@ impl Detector {
             ttl,
             modes: RwLock::new(BTreeMap::new()),
             overlay: Overlay::default(),
+            autostart: no_autostart,
             cache: Mutex::new(None),
         }
     }
@@ -223,6 +240,13 @@ impl Detector {
     #[must_use]
     pub fn with_overlay(mut self, overlay: Overlay) -> Self {
         self.overlay = overlay;
+        self
+    }
+
+    /// How the login entry of an app is read (the kit's `autostart_of` in the program).
+    #[must_use]
+    pub fn with_autostart(mut self, reader: AutostartReader) -> Self {
+        self.autostart = reader;
         self
     }
 
@@ -272,10 +296,11 @@ impl Detector {
 
     /// One app, looked at now: not from the cache, and the cache is forgotten afterwards (what is found
     /// here is newer than what it holds). A start asks this: it must not act on a state that is ten
-    /// seconds old.
+    /// seconds old. The login entry is not
+    /// read (a start does not need it, and it costs a program run).
     pub async fn look_one(&self, entry: &'static Entry) -> AppState {
         let roots = web_roots(self.web_root.as_deref(), &self.env);
-        let mut state = detect(entry, &self.env, &roots).await;
+        let mut state = detect(entry, &self.env, &roots, no_autostart).await;
         state.chosen = self.chosen(entry.id);
         self.invalidate();
         state
@@ -297,8 +322,9 @@ impl Detector {
             let env = Arc::clone(&self.env);
             let web = roots.clone();
             let chosen = self.chosen(entry.id);
+            let autostart = self.autostart;
             tasks.spawn(async move {
-                let mut state = detect(entry, &env, &web).await;
+                let mut state = detect(entry, &env, &web, autostart).await;
                 state.chosen = chosen;
                 (index, state)
             });
@@ -352,10 +378,16 @@ fn find_native(native: &Native, env: &Env) -> Option<PathBuf> {
     }
 }
 
-async fn detect(entry: &'static Entry, env: &Env, web_roots: &[PathBuf]) -> AppState {
+async fn detect(
+    entry: &'static Entry,
+    env: &Env,
+    web_roots: &[PathBuf],
+    autostart: AutostartReader,
+) -> AppState {
     let native = entry.native.as_ref().and_then(|n| find_native(n, env));
     let web = find_web(entry, web_roots);
     let mut port = None;
+    let mut login = None;
     let (run, setup) = match (&entry.native, &native) {
         (
             Some(Native::AppKitHub {
@@ -363,7 +395,14 @@ async fn detect(entry: &'static Entry, env: &Env, web_roots: &[PathBuf]) -> AppS
                 vault_var,
             }),
             Some(_),
-        ) => appkit_state(identity, vault_var, env).await,
+        ) => {
+            // `reg.exe` is a program run: off the threads that answer requests.
+            login = tokio::task::spawn_blocking(move || autostart(identity))
+                .await
+                .ok()
+                .flatten();
+            appkit_state(identity, vault_var, env).await
+        }
         (
             Some(Native::LoopbackServer {
                 port_var,
@@ -386,6 +425,7 @@ async fn detect(entry: &'static Entry, env: &Env, web_roots: &[PathBuf]) -> AppS
         setup,
         port,
         chosen: None,
+        autostart: login,
     }
 }
 

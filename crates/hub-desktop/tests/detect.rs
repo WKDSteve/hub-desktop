@@ -393,3 +393,41 @@ async fn only_a_running_hub_of_an_appkit_app_can_be_stopped() {
     assert!(stoppable(&all, "tasks"));
     assert!(!stoppable(&all, "docmap") && !stoppable(&all, "rules"));
 }
+
+/// A registry that holds the login entry of tasks only: `None` for what it cannot tell.
+fn login_of_tasks_only(identity: &'static appkit_core::identity::AppIdentity) -> Option<bool> {
+    Some(identity.app == catalog::TASKS.app)
+}
+
+#[tokio::test]
+async fn the_login_entry_is_read_for_an_installed_app_of_the_kit_only() {
+    let machine = Machine::new("hub-detect-autostart");
+    machine.tasks_program();
+    machine.program(&format!(
+        "Local/rules-desktop/bin/{}",
+        catalog::RULES.program_file()
+    ));
+    machine.program("Local/docmap-desktop/docmap-desktop.exe");
+    let detector = Detector::with_ttl(machine.env(&[]), None, Duration::ZERO)
+        .with_autostart(login_of_tasks_only);
+    let all = detector.apps().await.as_ref().clone();
+    assert_eq!(app(&all, "tasks").view().autostart, Some(true));
+    assert_eq!(app(&all, "rules").view().autostart, Some(false));
+    // A program that is no app of the kit has no login entry of the kit to read.
+    assert_eq!(app(&all, "docmap").view().autostart, None);
+    // The page gets the word as `true`, `false` or `null`, never missing.
+    let json = |id: &str| serde_json::to_value(app(&all, id).view()).unwrap();
+    assert_eq!(json("tasks")["autostart"], true);
+    assert_eq!(json("rules")["autostart"], false);
+    assert!(json("docmap")["autostart"].is_null());
+    // An app that is not installed is not asked about at all.
+    let empty = Machine::new("hub-detect-autostart-empty");
+    let detector = Detector::with_ttl(empty.env(&[]), None, Duration::ZERO)
+        .with_autostart(login_of_tasks_only);
+    for state in detector.apps().await.iter() {
+        assert_eq!(state.autostart, None, "{}", state.entry.id);
+    }
+    // The default tells nothing: a test never reads the registry of the machine.
+    let detector = Detector::with_ttl(machine.env(&[]), None, Duration::ZERO);
+    assert_eq!(app(&detector.apps().await, "tasks").autostart, None);
+}

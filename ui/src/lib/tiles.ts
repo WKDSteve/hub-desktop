@@ -28,6 +28,14 @@ export function stateOf(app: HubApp, starting: boolean, failed?: string): TileSt
   return { kind: 'none', label: '' };
 }
 
+/** The word for whether the app starts with the login; none when that is not known (never a guess). */
+export function autostartWord(app: HubApp): string | null {
+  if (!app.installed || app.href) return null;
+  if (app.autostart === true) return 'Starts at login';
+  if (app.autostart === false) return 'No autostart';
+  return null;
+}
+
 export const modeName = (mode: Mode): string => (mode === 'web' ? 'web' : 'native');
 
 /** The mode a second action opens: the one a click does not. */

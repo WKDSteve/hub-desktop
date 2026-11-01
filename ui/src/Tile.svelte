@@ -4,7 +4,7 @@
   // machine: the same tile quieter, as a link to the page where the app is to be had, or a badge when there is none.
   import { contextTarget } from 'appkit-ui/contextmenu';
   import type { HubApp } from './lib/api';
-  import { getting, hasMenu, modeName, stateOf } from './lib/tiles';
+  import { autostartWord, getting, hasMenu, modeName, stateOf } from './lib/tiles';
 
   let {
     app,
@@ -27,6 +27,7 @@
 
   const state = $derived(stateOf(app, starting, failed));
   const get = $derived(getting(app));
+  const login = $derived(autostartWord(app));
   const initial = $derived(app.name.slice(0, 1).toUpperCase());
 </script>
 
@@ -73,6 +74,7 @@
           >
         {/if}
         <span class="chip">{modeName(app.default_mode)}</span>
+        {#if login}<span class="note">{login}</span>{/if}
       </span>
     </button>
     <button

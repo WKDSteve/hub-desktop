@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HubApp } from './api';
-import { areas, getting, hasMenu, hasMode, moveFocus, otherMode, stateOf, type Box } from './tiles';
+import { areas, autostartWord, getting, hasMenu, hasMode, moveFocus, otherMode, stateOf, type Box } from './tiles';
 
 const base: HubApp = {
   id: 'tasks',
@@ -124,5 +124,18 @@ describe('moveFocus', () => {
     expect(moveFocus(grid, 0, 'a')).toBeNull();
     expect(moveFocus(grid, 99, 'ArrowRight')).toBeNull();
     expect(moveFocus([], 0, 'Home')).toBeNull();
+  });
+});
+
+describe('autostartWord', () => {
+  it('says what is known about the login entry and nothing else', () => {
+    expect(autostartWord(app({ autostart: true }))).toBe('Starts at login');
+    expect(autostartWord(app({ autostart: false }))).toBe('No autostart');
+    // Not known is no word: it is not "off".
+    expect(autostartWord(app({ autostart: null }))).toBeNull();
+    expect(autostartWord(app({}))).toBeNull();
+    // Not on the machine, or the web hub's link: there is no login entry to speak of.
+    expect(autostartWord(app({ installed: false, autostart: true }))).toBeNull();
+    expect(autostartWord(app({ href: '../tasks-web/tasks.html', autostart: true }))).toBeNull();
   });
 });

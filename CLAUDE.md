@@ -88,8 +88,11 @@ python tools/check-lock-age.py --min-days 7
 - Stop: `POST /api/hub/apps/{id}/stop` (steht in `MUTATION_ROUTES`), nur für `Native::AppKitHub`, nur wenn der Hub der
   App läuft; das Programm der Erkennung wird mit dem einen Argument `stop` gestartet. Der Hub liest nie das Secret
   einer App und beendet nie selbst einen Prozess.
-- Offen in M2: Autostart-Anzeige (braucht eine Funktion in appkit, die den Run-Key einer fremden App liest) und das
-  Update-Badge (braucht `version.json` im Rolling-Build, Task `appkit/release-kit-version-json-...`).
+- Autostart-Anzeige: `appkit_hub::background::autostart_of` (liest den Run-Key der fremden App über `reg.exe`, nur
+  lesend) wird nur in `app.rs` an den `Detector` gehängt (`with_autostart`); ohne sie, also in allen Tests, weiß der
+  Detector nichts (`None`) und liest nie die Registry. Die Kachel sagt „Starts at login“ / „No autostart“, bei `None`
+  nichts. Unter Linux/macOS gibt es keine Anzeige.
+- Offen in M2: das Update-Badge (braucht `version.json` im Rolling-Build, Task `appkit/release-kit-version-json-...`).
 
 ## Monitor (M3, Teil 1)
 

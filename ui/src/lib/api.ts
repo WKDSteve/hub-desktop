@@ -27,6 +27,8 @@ export interface HubApp {
   setup: string | null;
   /** The app runs and is one the hub can ask to stop. */
   stoppable: boolean;
+  /** The native app starts with the login (an app of the kit on Windows); `null` or missing: not known. */
+  autostart?: boolean | null;
   install: {
     hint: 'release' | 'clone' | 'planned' | 'build_yourself' | 'native_only';
     page: string | null;
