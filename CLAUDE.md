@@ -100,8 +100,9 @@ python tools/check-lock-age.py --min-days 7
 - Leserregeln aus testing.nvim `docs/OUTPUT-FORMATS.md`: zuerst das Manifest, nur `fleet.json` mit der Größe des Manifests,
   höheres Schema, falsche `kind`/`form`, über 8 MiB und eine Flotte ohne `classes.checked` werden abgelehnt;
   Unbekanntes wird ignoriert, `null` ist unbekannt. Jedes Wort der fremden Datei wird auf ein Wort des Hubs abgebildet,
-  der Grund einer Ablehnung ist ein fester Satz ohne Pfad. Die Prüfsumme `sha256` des Manifests wird nicht geprüft (keine
-  Hash-Abhängigkeit im Hub; Task).
+  der Grund einer Ablehnung ist ein fester Satz ohne Pfad. Die Prüfsumme `sha256` des Manifests wird bewusst nicht geprüft
+  (entschieden 2026-11-01: die Größe fängt den halb geschriebenen Export, der Hub führt nichts aus dem Export aus;
+  Wiedervorlage, falls er je etwas daraus öffnet oder ausführt).
 - Ampel: schlechteste Quelle gewinnt (lokal, lokale Pipeline, CI), nichts bekannt = "No result", nie grün.
 - Offen: Lauf starten über den Einstieg von testing-desktop (gibt es noch nicht), Fall-Details aus `repos/<key>.json`.
 

@@ -12,7 +12,8 @@
 //! Nothing a foreign file says reaches the page as it is: every word is mapped to a word of this module,
 //! every text is cut. The reason a folder cannot be read is a fixed sentence, never a path.
 //!
-//! The check of `sha256` of the manifest is not made (no hash in the dependencies of the hub); the size is.
+//! The check of `sha256` of the manifest is not made on purpose (the hub runs nothing from the export, and the
+//! manifest is written last, so the size catches a half-written export); the size is checked.
 
 use std::collections::HashSet;
 use std::io::Read;
