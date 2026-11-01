@@ -54,8 +54,8 @@ pub fn web_catalog() -> Vec<WebEntry> {
 
 /// The text of `ui/src/web/catalog.json`: pretty JSON with a final newline.
 ///
-/// # Panics
-/// Never in practice: the entries are plain strings and booleans.
+/// A serialization error cannot happen for plain strings and booleans; the empty text it would give is caught by
+/// the test that holds the file to this text.
 #[must_use]
 pub fn web_catalog_json() -> String {
     let mut text = serde_json::to_string_pretty(&web_catalog()).unwrap_or_default();

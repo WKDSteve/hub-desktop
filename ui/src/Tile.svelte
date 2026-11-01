@@ -30,6 +30,10 @@
   const initial = $derived(app.name.slice(0, 1).toUpperCase());
 </script>
 
+{#snippet more(label: string)}
+  <button type="button" class="more" tabindex="-1" aria-haspopup="menu" aria-label={label} onclick={onmore}>▾</button>
+{/snippet}
+
 <li class="tile" class:dim={!app.installed} use:contextTarget={hasMenu(app) ? { kind: 'tile', id: app.id } : undefined}>
   {#if app.installed && app.href}
     <!-- The web hub: the page of the web variant is one link away (same file:// origin), so a click is a navigation. -->
@@ -49,14 +53,7 @@
         <span class="chip">web</span>
       </span>
     </a>
-    <button
-      type="button"
-      class="more"
-      tabindex="-1"
-      aria-haspopup="menu"
-      aria-label={`More about ${app.name}`}
-      onclick={onmore}>▾</button
-    >
+    {@render more(`More about ${app.name}`)}
   {:else if app.installed}
     <button
       type="button"
@@ -103,14 +100,7 @@
       {#if app.install.file}<span class="file">{app.install.file}</span>{/if}
     </a>
     {#if hasMenu(app)}
-      <button
-        type="button"
-        class="more"
-        tabindex="-1"
-        aria-haspopup="menu"
-        aria-label={`More about ${app.name}`}
-        onclick={onmore}>▾</button
-      >
+      {@render more(`More about ${app.name}`)}
     {/if}
   {:else}
     <button type="button" class="main" data-tile={app.id} tabindex={tab ? 0 : -1} aria-disabled="true" onfocus={onfocus}>
@@ -120,14 +110,7 @@
       {#if get.note}<span class="file">{get.note}</span>{/if}
     </button>
     {#if hasMenu(app)}
-      <button
-        type="button"
-        class="more"
-        tabindex="-1"
-        aria-haspopup="menu"
-        aria-label={`More about ${app.name}`}
-        onclick={onmore}>▾</button
-      >
+      {@render more(`More about ${app.name}`)}
     {/if}
   {/if}
 </li>

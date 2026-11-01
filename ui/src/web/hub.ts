@@ -114,7 +114,8 @@ export class WebHub implements HubApi, Presence {
 
   async mark(id: string, missing: boolean): Promise<void> {
     const ids = await this.#ids();
-    if (!this.catalog.some((e) => e.id === id)) return;
+    // Only an app with a web variant can be missing; the menu offers nothing else.
+    if (!this.catalog.some((e) => e.id === id && e.web)) return;
     const next = new Set(ids);
     if (missing) next.add(id);
     else next.delete(id);

@@ -76,6 +76,7 @@ describe('WebHub', () => {
     const store = memory(['tasks', 'nope']);
     const hub = new WebHub(entries, store, '1');
     await hub.mark('other', true);
+    await hub.mark('rules', true);
     expect(store.saved).toEqual([]);
     expect((await hub.apps()).apps.find((a) => a.id === 'tasks')?.missing).toBe(true);
     await hub.mark('tasks', true);
@@ -88,8 +89,8 @@ describe('WebHub', () => {
     const other = new WebHub(entries, store, '1');
     await mine.apps();
     await other.mark('tasks', true);
-    await mine.mark('rules', true);
-    expect(store.saved.at(-1)).toEqual(['tasks', 'rules']);
+    await mine.mark('testing', true);
+    expect(store.saved.at(-1)).toEqual(['tasks', 'testing']);
   });
 
   it('remembers a mark for as long as the page is open when the browser keeps nothing', async () => {
