@@ -1,0 +1,144 @@
+# CI of hub-desktop.
+#
+# One pipeline, two kinds of runner. Windows is the only platform built and tested here.
+#
+# - push to main: the self-hosted Windows runner of the maintainer (its stable toolchain, node, pnpm, python and the
+#   supply-chain tools on PATH). The runner guard of that machine refuses a push run until the maintainer has released
+#   the commit; without a running runner a push stays "Queued" (no red mark, discarded after 24 h).
+# - every other event (pull_request, forks included): windows-latest, a throwaway VM with a read-only token and no
+#   secrets. A pull request never runs on the self-hosted runner: it would run its own code on the maintainer's
+#   machine. Every job picks its runner with the same matrix expression; keep the four in step.
+#
+# A fork can edit this file in its pull request (e.g. `runs-on: self-hosted`). The repository therefore requires
+# approval before a workflow of an outside contributor runs; never approve a pull request that touches `.github/`.
+# There is no `pull_request_target` on purpose.
+#
+# The shell comes from the matrix: `bash` is the WSL launcher on the self-hosted machine, so Git Bash is named there
+# explicitly, in 8.3 form because the shell string is split at spaces; on windows-latest `bash` is Git Bash.
+#
+# Tools are expected on the PATH and not pinned here (cargo, clippy, rustfmt, pnpm, node, python). The floating
+# `stable` toolchain is a known choice: a new stable release can turn clippy red without a code change, and the answer
+# is then to change the code, not to pin the toolchain.
+#
+# The sources are public and fetched without credentials (appkit through Cargo and pnpm).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The interface is part of the binary, so it is built first and the Rust checks run on a binary that has it.
+  rust:
+    name: rust (${{ matrix.leg }})
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        include: ${{ fromJSON(github.event_name == 'push' && '[{"leg":"self-hosted","runs-on":["self-hosted","windows"],"shell":"C:\\PROGRA~1\\Git\\bin\\bash.exe --noprofile --norc -e -o pipefail {0}"}]' || '[{"leg":"windows-latest","runs-on":"windows-latest","shell":"bash --noprofile --norc -e -o pipefail {0}"}]') }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    timeout-minutes: 40
+    steps:
+      # Actions are pinned by commit; the comment names the tag.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0 (node24)
+        with:
+          persist-credentials: false
+      - name: pnpm (the hosted runner has node, not pnpm)
+        if: matrix.leg == 'windows-latest'
+        run: npm install --global pnpm@10
+      - run: cargo --version && node --version && pnpm --version
+      - name: Build the interface
+        working-directory: ui
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+
+  ui:
+    name: ui (${{ matrix.leg }})
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        include: ${{ fromJSON(github.event_name == 'push' && '[{"leg":"self-hosted","runs-on":["self-hosted","windows"],"shell":"C:\\PROGRA~1\\Git\\bin\\bash.exe --noprofile --norc -e -o pipefail {0}"}]' || '[{"leg":"windows-latest","runs-on":"windows-latest","shell":"bash --noprofile --norc -e -o pipefail {0}"}]') }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+        working-directory: ui
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0 (node24)
+        with:
+          persist-credentials: false
+      - name: pnpm (the hosted runner has node, not pnpm)
+        if: matrix.leg == 'windows-latest'
+        run: npm install --global pnpm@10
+      # The lockfile is the truth; the age and trust policy are in ui/pnpm-workspace.yaml.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm audit --audit-level high
+
+  # The supply chain: advisories, licenses, sources, the age of every crate, and the appkit pin. The tools are on the
+  # maintainer's runner; a pull request does not wait for a compile of them.
+  supply:
+    name: supply chain (${{ matrix.leg }})
+    if: github.event_name == 'push'
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        include: ${{ fromJSON(github.event_name == 'push' && '[{"leg":"self-hosted","runs-on":["self-hosted","windows"],"shell":"C:\\PROGRA~1\\Git\\bin\\bash.exe --noprofile --norc -e -o pipefail {0}"}]' || '[{"leg":"windows-latest","runs-on":"windows-latest","shell":"bash --noprofile --norc -e -o pipefail {0}"}]') }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0 (node24)
+        with:
+          persist-credentials: false
+      - run: cargo audit
+      - run: cargo deny check
+      # No crate version younger than a week (a hijacked release is caught within hours, usually).
+      - run: python tools/check-lock-age.py --min-days 7
+      # appkit is the one git source: the commit Cargo.lock pins must be the one its tag names now.
+      - run: python tools/check-appkit-pin.py
+
+  # A control or invisible character in a tracked text file (a backspace in a path, a bidirectional override in
+  # source) is refused; the tools test themselves.
+  hygiene:
+    name: hygiene (${{ matrix.leg }})
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        include: ${{ fromJSON(github.event_name == 'push' && '[{"leg":"self-hosted","runs-on":["self-hosted","windows"],"shell":"C:\\PROGRA~1\\Git\\bin\\bash.exe --noprofile --norc -e -o pipefail {0}"}]' || '[{"leg":"windows-latest","runs-on":"windows-latest","shell":"bash --noprofile --norc -e -o pipefail {0}"}]') }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0 (node24)
+        with:
+          persist-credentials: false
+      - run: python -m unittest discover -s tools -p "test_*.py"
+      - run: python tools/check-control-chars.py
+      # A colour the CSS of the page states is a token of appkit-ui (the same check runs in appkit).
+      - run: python tools/check-color-literals.py
+      # The shell scripts of the repository: ShellCheck is on the maintainer's runner (`scoop install shellcheck`).
+      - name: ShellCheck
+        if: github.event_name == 'push'
+        run: shellcheck scripts/*.sh

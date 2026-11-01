@@ -3,7 +3,8 @@
 One place to start every `*-desktop` and `*-web` app: a local hub that shows each app as a tile and
 opens it as a native app or as a web app with a single click.
 
-> **Status: concept.** There is no code and no release yet. The first milestone is described below.
+> **Status: scaffold.** The hub starts, pairs with the browser and shows an empty page. The list of apps, the
+> start of an app and a release are the next steps of the first milestone, described below. There is no release yet.
 
 ## What it will do
 
@@ -25,6 +26,18 @@ opens it as a native app or as a web app with a single click.
 - a catalog of the known apps compiled into the program: it only names fixed ways to detect and
   start an app, never a command line;
 - a web variant `hub-web` (one HTML file, no server) for machines where no native program may run.
+
+## Build and run from source
+
+```
+cd ui && pnpm install --frozen-lockfile && pnpm build && cd ..
+cargo build --release --locked
+target/release/hub-desktop            # runs the hub in this window and opens the browser
+```
+
+`hub-desktop open --launch` opens a paired page for a hub that runs, `hub-desktop stop` ends it. Checks before a
+change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,
+`cargo test --workspace --locked` and, in `ui/`, `pnpm check && pnpm test`.
 
 ## License
 
