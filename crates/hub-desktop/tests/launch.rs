@@ -147,6 +147,19 @@ async fn a_start_of_one_app_does_not_hold_up_another() {
     wait_for_starts(&docmap, 1);
 }
 
+#[test]
+fn a_log_line_that_is_still_being_written_is_not_a_start_yet() {
+    let machine = Machine::new("hub-launch-halfline");
+    let program = machine.program("Local/fake/fake.exe");
+    std::fs::write(
+        program.with_file_name("fake-app.log"),
+        "{\"argv\":[]}
+{\"argv\":[\"sta",
+    )
+    .unwrap();
+    assert_eq!(starts_of(&program).len(), 1);
+}
+
 #[tokio::test]
 async fn an_app_that_needs_setup_is_not_started_but_its_setup_is() {
     let machine = Machine::new("hub-launch-setup");

@@ -37,12 +37,13 @@ pub fn fake_app_exe() -> PathBuf {
     file
 }
 
-/// The lines the fake program wrote (one JSON document per start), if it ever ran.
+/// The lines the fake program wrote (one JSON document per start), if it ever ran. A line that is
+/// still being written is not a start yet: the next look sees it whole.
 pub fn starts_of(program: &Path) -> Vec<serde_json::Value> {
     std::fs::read_to_string(program.with_file_name("fake-app.log"))
         .map(|text| {
             text.lines()
-                .map(|l| serde_json::from_str(l).unwrap())
+                .filter_map(|l| serde_json::from_str(l).ok())
                 .collect()
         })
         .unwrap_or_default()
