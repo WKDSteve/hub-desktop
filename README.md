@@ -3,10 +3,22 @@
 One place to start every `*-desktop` and `*-web` app: a local hub that shows each app as a tile and
 opens it as a native app or as a web app with a single click.
 
-> **Status: scaffold.** The hub starts, pairs with the browser and shows an empty page. The list of apps, the
-> start of an app and a release are the next steps of the first milestone, described below. There is no release yet.
+> **Status: first milestone.** The hub lists the installed apps as tiles and starts them with one click, natively or
+> as a web app. There is no versioned release yet; the newest state of `main` is on the
+> [`latest` pre-release](https://github.com/WKDSteve/hub-desktop/releases/tag/latest).
 
-## What it will do
+## Install (Windows)
+
+In your own PowerShell (not elevated; no administrator rights, no SmartScreen stop):
+
+```
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.ps1 | iex"
+```
+
+Add `-InstallArgs '--shortcut'` (run the script as a script block) for a link on the desktop. `hub-desktop uninstall`
+and `uninstall.ps1` take it away again. The hub needs none of the other apps to run.
+
+## What it does
 
 - **Installed apps** appear as tiles: `tasks-desktop`, `rules-desktop`, `docmap-desktop`, `ai-desktop`
   and the apps that follow. One click starts the app (its own hub first, if it is not running) and

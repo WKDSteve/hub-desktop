@@ -12,8 +12,9 @@ const USAGE: &str = "usage:
   hub-desktop start [--open]               run the hub in the background (no window; log in the
                                            config folder); --open also opens the browser
   hub-desktop stop                         stop the hub that runs in the background
-  hub-desktop install                      copy this program to a fixed place (a build then does
-                                           not fight the running hub for the file)
+  hub-desktop install [--shortcut]         copy this program to a fixed place (a build then does
+                                           not fight the running hub for the file); --shortcut
+                                           also puts a link on the desktop
   hub-desktop uninstall [--purge-settings] stop the hub and take away what install made;
                                            --purge-settings also removes the settings; the program
                                            file is left for the script
@@ -74,9 +75,13 @@ async fn run(args: Vec<String>) -> Result<(), String> {
                 Err(e) => Err(e),
             }
         }
-        Some("install") if args.len() == 1 => background::install(InstallOptions::default())
-            .await
-            .map(|t| print!("{t}")),
+        Some("install") if args.len() == 1 || (args.len() == 2 && args[1] == "--shortcut") => {
+            let opts = InstallOptions {
+                shortcut: args.len() == 2,
+                ..InstallOptions::default()
+            };
+            background::install(opts).await.map(|t| print!("{t}"))
+        }
         Some("uninstall")
             if args.len() == 1 || (args.len() == 2 && args[1] == "--purge-settings") =>
         {

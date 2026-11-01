@@ -1,0 +1,144 @@
+# The rolling build: after every green CI run on main, the program of exactly that commit is built for
+# Windows and put on the pre-release `latest`, whose files are replaced each time. It is for looking at
+# the newest state with a click, not a release: no version tag, not signed. A release stays a deliberate
+# act (release.yml, rule NREL-07).
+#
+#   hub-desktop-windows-x86_64.exe        a double click sets up and starts the hub, and opens the browser
+#   install.ps1                         installs exactly this build for the current user (release-kit
+#                                       of appkit, stamped for the channel `latest`)
+#   uninstall.ps1                       the script of scripts/ at this commit
+#   SHA256SUMS                          the checksums of all of them
+#
+# Runs on the self-hosted Windows runner of the maintainer (`runs-on: [self-hosted, windows]`), so only Windows is
+# built: the Linux archive and install.sh of the earlier hosted workflow are gone. The release-kit actions
+# run there by Git Bash (appkit v0.23.1 and later). appkit is public and read without credentials.
+#
+# Deciding (only the tip of main is built) and publishing (SHA256SUMS first, the words of the page
+# last) are the actions prepare and publish of appkit's release-kit, pinned by the commit of the tag
+# that Cargo.lock pins (tools/check-appkit-pin.py checks that they agree). The build is ours: its
+# files go to publish as artifacts.
+#
+# Actions are pinned by commit (NREL-03); a job gets only the rights it needs.
+
+name: rolling
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+# Only the run of the TIP of main may build, and a newer tip replaces a build that is still running: the
+# pre-release must end on the newest commit. The group tells the two kinds of run apart before any step runs:
+# for a `workflow_run` event `github.sha` is the tip of main when the run started, `head_sha` is the commit the
+# CI run was about. A CI run of an OLDER commit that finishes late is not the tip: it lands in a group of its own
+# (it builds nothing, `prepare` says so), so it can neither cancel the build of the tip nor push the waiting
+# build of the tip out of the queue (a waiting run is replaced by a newer one of the SAME group, even without
+# `cancel-in-progress`). The runs that do nothing (a failed CI, a pull request) share that group too.
+concurrency:
+  group: rolling-${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_sha == github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+# `shell: bash` resolves to the WSL launcher on this machine; Git Bash is named explicitly, in 8.3 form because the
+# shell string is split at spaces.
+defaults:
+  run:
+    shell: C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}
+
+jobs:
+  prepare:
+    # Only a green run that came from a push to main (not a pull request).
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      current: ${{ steps.prepare.outputs.current }}
+      sha: ${{ steps.prepare.outputs.sha }}
+      short: ${{ steps.prepare.outputs.short }}
+    steps:
+      - id: prepare
+        uses: WKDSteve/appkit/release-kit/prepare@9de80faae4c3b31c8ad3199641ebb601412400b2 # v0.27.1
+        with:
+          sha: ${{ github.event.workflow_run.head_sha }}
+          token: ${{ github.token }}
+
+  build:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.current == 'true' }}
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0 (node24)
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      # The interface is part of the binary (NREL-04): it is built first, then the program.
+      - name: Build the interface
+        working-directory: ui
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Build the program
+        env:
+          HUB_DESKTOP_BUILD: ${{ needs.prepare.outputs.short }}
+        run: cargo build --release --locked -p hub-desktop
+      - name: Pack and look at what it says
+        env:
+          SHORT: ${{ needs.prepare.outputs.short }}
+        run: |
+          set -eu
+          got="$(target/release/hub-desktop.exe --version)"
+          case "$got" in
+            *"(build ${SHORT})") ;;
+            *) echo "::error::the program says '$got', it should name the build ${SHORT}"; exit 1 ;;
+          esac
+          mkdir -p dist
+          cp target/release/hub-desktop.exe dist/hub-desktop-windows-x86_64.exe
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rolling-windows
+          path: dist/hub-desktop-windows-x86_64.exe
+          if-no-files-found: error
+          retention-days: 1
+
+  # The files, the stamped install script and the checksums go up in one job; the words of the page
+  # move last, so only then does it name this commit.
+  publish:
+    needs: [prepare, build]
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0 (node24)
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: rolling-*
+          path: dist
+          merge-multiple: true
+      - uses: WKDSteve/appkit/release-kit/publish@9de80faae4c3b31c8ad3199641ebb601412400b2 # v0.27.1
+        with:
+          token: ${{ github.token }}
+          tag: latest
+          sha: ${{ needs.prepare.outputs.sha }}
+          files: dist
+          expect: 1
+          app: hub-desktop
+          windows-kind: hub
+          windows-program: hub-desktop.exe
+          windows-release-asset: hub-desktop-{version}-{triple}.zip
+          windows-rolling-asset: hub-desktop-windows-x86_64.exe
+          extra: |
+            scripts/uninstall.ps1
+          notes-file: .github/rolling-notes.md

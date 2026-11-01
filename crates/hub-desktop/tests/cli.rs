@@ -193,7 +193,8 @@ fn an_unknown_verb_and_a_stray_argument_print_the_usage_and_fail() {
     let scratch = Scratch::new("hub-cli-usage");
     for args in [
         vec!["bogus"],
-        vec!["install", "--shortcut"],
+        vec!["install", "--autostart"],
+        vec!["install", "--shortcut", "--shortcut"],
         vec!["serve", "--port", "80"],
         vec!["open", "extra"],
         vec!["--version", "x"],
