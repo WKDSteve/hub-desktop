@@ -1,0 +1,11 @@
+# Supply chain (concept 7.1): nothing younger than seven days, no downgrade
+# of the trust level, no install scripts unless named here.
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade
+blockExoticSubdeps: true
+onlyBuiltDependencies: []
+# One named exception: chokidar 4.0.3 (a dependency of svelte-check, used only
+# to watch files in dev) was published without the provenance its earlier
+# versions had. It is a build-time tool, never in the shipped bundle.
+trustPolicyExclude:
+  - chokidar@4.0.3

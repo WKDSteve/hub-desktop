@@ -1,0 +1,7 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+# the Lua sources of the engine for the web variant, made from engine.lock by web/engine-bundle.mjs
+src/web/generated/
+dist-web/
