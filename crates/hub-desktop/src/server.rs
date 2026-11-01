@@ -1,5 +1,5 @@
-//! The server of the hub: the `appkit-hub` core, a runtime that holds only its status, and the routes
-//! of the hub below `/api/hub/`.
+//! The server of the hub: the `appkit-hub` core, a runtime that holds the look at the machine, and the
+//! routes of the hub below `/api/hub/`.
 //!
 //! The hub has no vault and no engine, so it does not call `setup::run` and hands the core a runtime
 //! without vaults (`vaults: None`). Its routes are closed to anything without a session; `hello` is the
@@ -13,34 +13,38 @@ use appkit_core::authn::{Clock, Secret};
 use appkit_hub::{
     serve, Core, GuardRules, HubStatus, Limits, Pages, RunningServer, Runtime, ServeParts,
 };
+use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::{json, Value};
 
+use crate::detect::Detector;
 use crate::IDENTITY;
 
-/// What the hub keeps: nothing but the status `hello` reports. It starts and stops nothing.
+/// What the hub keeps: the status `hello` reports (it has no engine) and the way to look at the machine.
+/// It starts and stops nothing.
 pub struct HubRuntime {
     status: HubStatus,
+    detector: Arc<Detector>,
 }
 
 impl HubRuntime {
     /// The runtime of a hub that has no engine: `hello` says it is not ready for one, and that is right.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(detector: Arc<Detector>) -> Self {
         Self {
             status: HubStatus {
                 engine_ready: false,
                 problem: None,
                 capabilities: Vec::new(),
             },
+            detector,
         }
     }
-}
 
-impl Default for HubRuntime {
-    fn default() -> Self {
-        Self::new()
+    #[must_use]
+    pub fn detector(&self) -> &Arc<Detector> {
+        &self.detector
     }
 }
 
@@ -55,7 +59,7 @@ impl Runtime for HubRuntime {
 }
 
 /// How the server is started. Everything that is not the page is a decision of the caller, so that a
-/// test can hold the clock and the secrets.
+/// test can hold the clock, the secrets and the machine it looks at.
 pub struct ServerConfig {
     /// Must be loopback; port 0 picks a free port.
     pub addr: SocketAddr,
@@ -65,16 +69,20 @@ pub struct ServerConfig {
     pub control_secret: Secret,
     pub instance: Secret,
     pub ui: Arc<dyn Pages>,
+    pub detector: Arc<Detector>,
 }
 
 /// The names (below `/api/hub/`) of the routes that need a session. The security matrix reads them
 /// from here: a route added to [`routes`] and left out of this list would be a route the matrix
-/// never tries.
+/// never tries (`tests/hub.rs` asks every name with a session).
 pub const DATA_ROUTES: [&str; 1] = ["apps"];
 
-/// `GET /api/hub/apps`: the apps the hub knows. None yet; the catalog follows.
-async fn apps() -> Json<Value> {
-    Json(json!({ "apps": [] }))
+/// `GET /api/hub/apps`: the apps of the catalog and what the machine says about each. No path of the
+/// machine is in it.
+async fn apps(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
+    let found = core.rt().detector().apps().await;
+    let views: Vec<_> = found.iter().map(|a| a.view()).collect();
+    Json(json!({ "apps": views }))
 }
 
 fn routes(_core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
@@ -87,6 +95,8 @@ fn routes(_core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
 ///
 /// An I/O error of binding, or `InvalidInput` for an address that is not loopback.
 pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
+    let detector = cfg.detector;
+    let for_build = Arc::clone(&detector);
     serve(
         ServeParts {
             addr: cfg.addr,
@@ -100,9 +110,9 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
             // `hello` needs no session; no route of the hub is coarse (rate limited on its own) yet.
             guard_rules: GuardRules::new(IDENTITY.route("hello"), Vec::<String>::new()),
             ui: cfg.ui,
-            runtime: HubRuntime::new(),
+            runtime: HubRuntime::new(detector),
             // There is no vault to choose, so no runtime is ever made again.
-            build: Arc::new(|()| HubRuntime::new()),
+            build: Arc::new(move |()| HubRuntime::new(Arc::clone(&for_build))),
             vaults: None,
         },
         routes,

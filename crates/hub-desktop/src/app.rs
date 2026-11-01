@@ -12,6 +12,7 @@ use serde_json::Value;
 
 use crate::client;
 use crate::config::{self, Env};
+use crate::detect::Detector;
 use crate::server::{self, ServerConfig};
 use crate::ui::UiFiles;
 use appkit_hub::Limits;
@@ -89,6 +90,7 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
 
     let control = Secret::generate(TOKEN_BYTES).map_err(|e| e.to_string())?;
     let instance = Secret::generate(CODE_BYTES).map_err(|e| e.to_string())?;
+    let detector = Arc::new(Detector::new(env.clone(), file.app.web_root.clone()));
     let make_cfg = |port: u16| ServerConfig {
         addr: std::net::SocketAddr::from(([127, 0, 0, 1], port)),
         limits: Limits::default(),
@@ -97,6 +99,7 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
         control_secret: control.clone(),
         instance: instance.clone(),
         ui: Arc::new(UiFiles::embedded()),
+        detector: Arc::clone(&detector),
     };
     // The port is part of the origin, so the wanted one is tried first. When it is taken the server
     // still starts, on another port, and says so: the page then has another origin.

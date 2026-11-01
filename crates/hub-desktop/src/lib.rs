@@ -6,7 +6,11 @@
 
 pub mod app;
 pub mod background;
+pub mod catalog;
 pub mod config;
+pub mod detect;
+pub mod paths;
+pub mod probe;
 pub mod server;
 pub mod ui;
 

@@ -7,6 +7,8 @@ use std::time::Duration;
 use appkit_core::authn::{ManualClock, Secret, CODE_BYTES, TOKEN_BYTES};
 use appkit_hub::Limits;
 use appkit_testkit::wire::{request, send};
+use hub_desktop::config::Env;
+use hub_desktop::detect::Detector;
 use hub_desktop::server::{self, ServerConfig, DATA_ROUTES};
 use hub_desktop::ui::UiFiles;
 
@@ -21,6 +23,10 @@ async fn start_with_secret() -> (appkit_hub::RunningServer, String) {
         control_secret: control.clone(),
         instance: Secret::generate(CODE_BYTES).unwrap(),
         ui: Arc::new(UiFiles::none()),
+        detector: Arc::new(Detector::new(
+            Env::from_pairs([("APPDATA", "C:/none")]),
+            None,
+        )),
     })
     .await
     .expect("the hub starts");

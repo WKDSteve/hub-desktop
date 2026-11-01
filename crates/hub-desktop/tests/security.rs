@@ -6,6 +6,8 @@ use std::sync::Arc;
 use appkit_core::identity::AppIdentity;
 use appkit_hub::{BoxFuture, RunningServer};
 use appkit_testkit::subject::{StartConfig, Subject};
+use hub_desktop::config::Env;
+use hub_desktop::detect::Detector;
 use hub_desktop::server::{self, ServerConfig, DATA_ROUTES};
 use hub_desktop::ui::UiFiles;
 
@@ -28,6 +30,10 @@ impl Subject for Hub {
                 control_secret: cfg.control_secret,
                 instance: cfg.instance,
                 ui: Arc::new(UiFiles::none()),
+                detector: Arc::new(Detector::new(
+                    Env::from_pairs([("APPDATA", "C:/none")]),
+                    None,
+                )),
             })
             .await
         })
