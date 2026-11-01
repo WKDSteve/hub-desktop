@@ -228,7 +228,7 @@ export class App {
     }
   }
 
-  /** Ask an app that runs to stop; the tile says so until the list shows it stopped. */
+  /** Ask an app that runs to stop; the list is read until it shows it stopped (a message says the app was asked). */
   async stop(app: HubApp): Promise<void> {
     try {
       const result = await this.hub.stop(app.id);

@@ -42,13 +42,6 @@
     return [
       {
         kind: 'action',
-        label: 'Stop',
-        disabled: !tile.stoppable,
-        hint: tile.stoppable ? undefined : stopReason(tile),
-        onselect: () => void app.stop(tile),
-      },
-      {
-        kind: 'action',
         label: other === 'web' ? 'Open as web app' : 'Open natively',
         disabled: !there,
         hint,
@@ -60,6 +53,13 @@
         disabled: !there,
         hint,
         onselect: () => void app.makeDefault(tile, other),
+      },
+      {
+        kind: 'action',
+        label: 'Stop',
+        disabled: !tile.stoppable,
+        hint: tile.stoppable ? undefined : stopReason(tile),
+        onselect: () => void app.stop(tile),
       },
     ];
   });
