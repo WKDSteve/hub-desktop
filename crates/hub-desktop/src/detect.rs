@@ -4,8 +4,9 @@
 //! program. "Running" is a look at a loopback port (`probe`), at all apps at once. The answer is cached
 //! for a few seconds, so that a page that asks again and again costs one round of looks.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use appkit_core::registry;
@@ -53,6 +54,8 @@ pub struct AppState {
     /// The loopback port of a program that serves a page (ai-desktop): where it is, and where its
     /// page is once it runs.
     pub port: Option<u16>,
+    /// The mode a person chose for the tile; none: the default of the catalog.
+    pub chosen: Option<Mode>,
 }
 
 impl AppState {
@@ -65,7 +68,7 @@ impl AppState {
     #[must_use]
     pub fn mode(&self) -> Mode {
         match (
-            self.entry.default_mode,
+            self.chosen.unwrap_or(self.entry.default_mode),
             self.native.is_some(),
             self.web.is_some(),
         ) {
@@ -158,6 +161,8 @@ pub struct Detector {
     /// The folder with the checkouts of the web variants, from the settings; none: the usual places.
     web_root: Option<PathBuf>,
     ttl: Duration,
+    /// The modes people chose, by app id (`config.json`, `tiles`).
+    modes: RwLock<BTreeMap<String, Mode>>,
     cache: Mutex<Option<(Instant, Arc<Vec<AppState>>)>>,
 }
 
@@ -173,8 +178,33 @@ impl Detector {
             env: Arc::new(env),
             web_root,
             ttl,
+            modes: RwLock::new(BTreeMap::new()),
             cache: Mutex::new(None),
         }
+    }
+
+    /// The chosen modes, from the settings.
+    #[must_use]
+    pub fn with_modes(self, modes: BTreeMap<String, Mode>) -> Self {
+        if let Ok(mut held) = self.modes.write() {
+            *held = modes;
+        }
+        self
+    }
+
+    /// Choose (or, with `None`, forget) the mode a click opens for an app; the next look shows it.
+    pub fn set_mode(&self, id: &str, mode: Option<Mode>) {
+        if let Ok(mut held) = self.modes.write() {
+            match mode {
+                Some(mode) => held.insert(id.to_owned(), mode),
+                None => held.remove(id),
+            };
+        }
+        self.invalidate();
+    }
+
+    fn chosen(&self, id: &str) -> Option<Mode> {
+        self.modes.read().ok()?.get(id).copied()
     }
 
     /// Forget what was found (an app was started: the next look must see it).
@@ -205,7 +235,8 @@ impl Detector {
     /// seconds old.
     pub async fn look_one(&self, entry: &'static Entry) -> AppState {
         let roots = web_roots(self.web_root.as_deref(), &self.env);
-        let state = detect(entry, &self.env, &roots).await;
+        let mut state = detect(entry, &self.env, &roots).await;
+        state.chosen = self.chosen(entry.id);
         self.invalidate();
         state
     }
@@ -222,7 +253,12 @@ impl Detector {
         for (index, entry) in CATALOG.iter().enumerate() {
             let env = Arc::clone(&self.env);
             let web = roots.clone();
-            tasks.spawn(async move { (index, detect(entry, &env, &web).await) });
+            let chosen = self.chosen(entry.id);
+            tasks.spawn(async move {
+                let mut state = detect(entry, &env, &web).await;
+                state.chosen = chosen;
+                (index, state)
+            });
         }
         let mut found: Vec<Option<AppState>> = vec![None; CATALOG.len()];
         while let Some(done) = tasks.join_next().await {
@@ -303,6 +339,7 @@ async fn detect(entry: &'static Entry, env: &Env, web_roots: &[PathBuf]) -> AppS
         run,
         setup,
         port,
+        chosen: None,
     }
 }
 

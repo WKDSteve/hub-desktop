@@ -11,6 +11,7 @@ pub mod config;
 pub mod detect;
 pub mod launch;
 pub mod paths;
+pub mod prefs;
 pub mod probe;
 pub mod server;
 pub mod ui;

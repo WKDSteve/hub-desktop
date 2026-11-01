@@ -9,6 +9,7 @@ use appkit_hub::{Limits, RunningServer};
 use appkit_testkit::wire::{request, send, Reply};
 use hub_desktop::detect::Detector;
 use hub_desktop::launch::{Browser, LaunchConfig, Launcher};
+use hub_desktop::prefs::Prefs;
 use hub_desktop::server::{self, ServerConfig, MUTATION_ROUTES};
 use hub_desktop::ui::UiFiles;
 
@@ -42,7 +43,8 @@ impl Hub {
             instance: Secret::generate(CODE_BYTES).unwrap(),
             ui: Arc::new(UiFiles::none()),
             detector: Arc::clone(&detector),
-            launcher: Arc::new(Launcher::new(detector, cfg)),
+            launcher: Arc::new(Launcher::new(Arc::clone(&detector), cfg)),
+            prefs: Arc::new(Prefs::new(Some(machine.path("cfg-hub")), detector)),
         })
         .await
         .unwrap();
@@ -279,5 +281,76 @@ async fn a_get_does_not_start_anything() {
     assert_eq!(reply.status, 405, "{reply:?}");
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert!(starts_of(&program).is_empty());
+    hub.server.shutdown().await;
+}
+
+fn settings(hub: &Hub) -> serde_json::Value {
+    let text = std::fs::read_to_string(hub.machine.path("cfg-hub/config.json")).unwrap();
+    serde_json::from_str(&text).unwrap()
+}
+
+/// Acceptance 4: the mode a click opens is kept in `config.json`, as a word for an app of the catalog that has
+/// that mode, and what a person wrote there by hand stays.
+#[tokio::test]
+async fn the_mode_of_a_tile_is_kept_in_the_settings_and_the_rest_of_the_file_stays() {
+    let hub = Hub::new("hub-route-mode", &[]).await;
+    std::fs::create_dir_all(hub.machine.path("cfg-hub")).unwrap();
+    std::fs::write(
+        hub.machine.path("cfg-hub/config.json"),
+        r#"{"port":20000,"web_root":"C:/web"}"#,
+    )
+    .unwrap();
+
+    let saved = hub
+        .post("/api/hub/apps/tasks/mode", r#"{"mode":"web"}"#)
+        .await;
+    assert_eq!(saved.status, 200, "{saved:?}");
+    let file = settings(&hub);
+    assert_eq!(file["tiles"]["tasks"]["mode"], "web");
+    assert_eq!(file["port"], 20000, "what was there stays");
+    assert_eq!(file["web_root"], "C:/web");
+
+    // Back to the default of the app: the tile entry goes.
+    let reset = hub
+        .post("/api/hub/apps/tasks/mode", r#"{"mode":null}"#)
+        .await;
+    assert_eq!(reset.status, 200, "{reset:?}");
+    assert!(settings(&hub).get("tiles").is_none());
+    assert_eq!(settings(&hub)["port"], 20000);
+    hub.server.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_mode_the_app_has_not_or_a_word_that_is_none_is_refused_and_nothing_is_written() {
+    let hub = Hub::new("hub-route-mode-bad", &[]).await;
+    std::fs::create_dir_all(hub.machine.path("cfg-hub")).unwrap();
+    for (path, body, status) in [
+        ("/api/hub/apps/rules/mode", r#"{"mode":"web"}"#, 409),
+        ("/api/hub/apps/streamtap/mode", r#"{"mode":"native"}"#, 409),
+        ("/api/hub/apps/nope/mode", r#"{"mode":"web"}"#, 404),
+        ("/api/hub/apps/tasks/mode", r#"{"mode":"fly"}"#, 400),
+        (
+            "/api/hub/apps/tasks/mode",
+            r#"{"mode":"native","program":"x"}"#,
+            400,
+        ),
+        ("/api/hub/apps/tasks/mode", r#"{}"#, 200),
+        ("/api/hub/apps/tasks/mode", "not json", 400),
+    ] {
+        let reply = hub.post(path, body).await;
+        assert_eq!(reply.status, status, "{path} {body}: {reply:?}");
+    }
+    // `{}` is "no mode" (the default): it wrote a file without tiles, never one with a bad word.
+    let text = std::fs::read_to_string(hub.machine.path("cfg-hub/config.json")).unwrap_or_default();
+    assert!(!text.contains("fly") && !text.contains("program"), "{text}");
+    hub.server.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_rescan_is_a_post_with_a_session_and_answers_ok() {
+    let hub = Hub::new("hub-route-rescan", &[]).await;
+    let reply = hub.post("/api/hub/rescan", "{}").await;
+    assert_eq!(reply.status, 200, "{reply:?}");
+    assert_eq!(reply.json()["result"], "ok");
     hub.server.shutdown().await;
 }

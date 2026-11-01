@@ -5,6 +5,7 @@
 //! The file is read by the hub and written by a person. Nothing in it names a program or a way to
 //! start one: those are in the catalog.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,37 @@ pub struct HubSettings {
     /// `<home>\hub-web-apps`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub web_root: Option<PathBuf>,
+    /// What a person chose for a tile, by the id of the app of the catalog.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tiles: BTreeMap<String, TileSettings>,
+}
+
+/// The choices for one tile. Only the mode a click opens: nothing that names a program.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct TileSettings {
+    /// `native` or `web`; none: the default of the catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+}
+
+/// The mode a word of the settings or of a request names.
+#[must_use]
+pub fn mode_of(word: &str) -> Option<crate::catalog::Mode> {
+    match word {
+        "native" => Some(crate::catalog::Mode::Native),
+        "web" => Some(crate::catalog::Mode::Web),
+        _ => None,
+    }
+}
+
+/// The word of a mode.
+#[must_use]
+pub fn mode_word(mode: crate::catalog::Mode) -> &'static str {
+    match mode {
+        crate::catalog::Mode::Native => "native",
+        crate::catalog::Mode::Web => "web",
+    }
 }
 
 impl AppSettings for HubSettings {
@@ -33,6 +65,16 @@ impl AppSettings for HubSettings {
                 "web_root: {} is not an absolute folder of this machine",
                 root.display()
             ));
+        }
+        for (id, tile) in &self.tiles {
+            if crate::catalog::find(id).is_none() {
+                return Err(format!("tiles: {id:?} is not an app of the catalog"));
+            }
+            if let Some(word) = &tile.mode
+                && mode_of(word).is_none()
+            {
+                return Err(format!("tiles.{id}.mode: {word:?} is not native or web"));
+            }
         }
         Ok(())
     }
@@ -54,6 +96,15 @@ pub fn config_dir(env: &Env) -> Option<PathBuf> {
 /// [`ConfigError`] when the file exists and cannot be read or is not valid.
 pub fn load_file(dir: &Path) -> Result<FileConfig, ConfigError> {
     appkit_hub::config::load_file(dir)
+}
+
+/// Write `config.json` into `dir` in one step.
+///
+/// # Errors
+///
+/// The reason, as text.
+pub fn save_file(dir: &Path, cfg: &FileConfig) -> Result<(), String> {
+    appkit_hub::config::save_file(dir, cfg)
 }
 
 #[cfg(test)]
@@ -100,6 +151,7 @@ mod tests {
         let ok = |root: &str| {
             HubSettings {
                 web_root: Some(PathBuf::from(root)),
+                ..HubSettings::default()
             }
             .validate()
         };
@@ -108,5 +160,25 @@ mod tests {
             assert!(ok(bad).is_err(), "{bad}");
         }
         assert!(HubSettings::default().validate().is_ok());
+    }
+
+    fn tiles(json: &str) -> Result<HubSettings, String> {
+        let cfg: FileConfig = serde_json::from_str(json).map_err(|e| e.to_string())?;
+        cfg.app.validate().map(|()| cfg.app)
+    }
+
+    #[test]
+    fn a_tile_can_name_a_mode_of_an_app_of_the_catalog_and_nothing_else() {
+        let ok = tiles(r#"{"tiles":{"tasks":{"mode":"web"},"rules":{}}}"#).unwrap();
+        assert_eq!(ok.tiles["tasks"].mode.as_deref(), Some("web"));
+        for bad in [
+            r#"{"tiles":{"nope":{"mode":"web"}}}"#,
+            r#"{"tiles":{"tasks":{"mode":"fly"}}}"#,
+            r#"{"tiles":{"tasks":{"mode":"native","program":"C:/x.exe"}}}"#,
+            r#"{"tiles":{"tasks":{"argv":["--evil"]}}}"#,
+            r#"{"tiles":{"hub":{"mode":"native"}}}"#,
+        ] {
+            assert!(tiles(bad).is_err(), "{bad}");
+        }
     }
 }

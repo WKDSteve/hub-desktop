@@ -24,6 +24,7 @@ use serde_json::{json, Value};
 
 use crate::detect::Detector;
 use crate::launch::{LaunchError, Launcher, Outcome, Request};
+use crate::prefs::{Prefs, PrefsError};
 use crate::IDENTITY;
 
 /// What the hub keeps: the status `hello` reports (it has no engine) and the way to look at the machine.
@@ -32,12 +33,13 @@ pub struct HubRuntime {
     status: HubStatus,
     detector: Arc<Detector>,
     launcher: Arc<Launcher>,
+    prefs: Arc<Prefs>,
 }
 
 impl HubRuntime {
     /// The runtime of a hub that has no engine: `hello` says it is not ready for one, and that is right.
     #[must_use]
-    pub fn new(detector: Arc<Detector>, launcher: Arc<Launcher>) -> Self {
+    pub fn new(detector: Arc<Detector>, launcher: Arc<Launcher>, prefs: Arc<Prefs>) -> Self {
         Self {
             status: HubStatus {
                 engine_ready: false,
@@ -46,7 +48,13 @@ impl HubRuntime {
             },
             detector,
             launcher,
+            prefs,
         }
+    }
+
+    #[must_use]
+    pub fn prefs(&self) -> &Arc<Prefs> {
+        &self.prefs
     }
 
     #[must_use]
@@ -83,6 +91,7 @@ pub struct ServerConfig {
     pub ui: Arc<dyn Pages>,
     pub detector: Arc<Detector>,
     pub launcher: Arc<Launcher>,
+    pub prefs: Arc<Prefs>,
 }
 
 /// The names (below `/api/hub/`) of the routes that need a session. The security matrix reads them
@@ -100,7 +109,7 @@ async fn apps(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
 
 /// The routes that change something (a `POST`, a session and a JSON body): `{id}` stands for an app. The
 /// tests ask each of them without a session, with a wrong content type and with a body that is not one.
-pub const MUTATION_ROUTES: [&str; 1] = ["apps/{id}/launch"];
+pub const MUTATION_ROUTES: [&str; 3] = ["apps/{id}/launch", "apps/{id}/mode", "rescan"];
 
 /// What a click sends: a mode, or nothing (the default of the app). Nothing else is read.
 #[derive(Deserialize)]
@@ -180,6 +189,64 @@ async fn launch(
     }
 }
 
+/// What a choice of the mode sends: `native`, `web`, or `null` to go back to the default of the app.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModeBody {
+    mode: Option<String>,
+}
+
+/// `POST /api/hub/apps/{id}/mode`: the mode a click opens for the app, kept in the settings.
+async fn choose_mode(
+    State(core): State<Arc<Core<HubRuntime>>>,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Ok(parsed) = serde_json::from_slice::<ModeBody>(&body) else {
+        return appkit_hub::error_body(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "the body is not {\"mode\": ...}",
+        );
+    };
+    let mode = match parsed.mode.as_deref().map(crate::config::mode_of) {
+        None => None,
+        Some(Some(mode)) => Some(mode),
+        Some(None) => {
+            return appkit_hub::error_body(
+                StatusCode::BAD_REQUEST,
+                "bad_request",
+                "mode is native, web or null",
+            );
+        }
+    };
+    match core.rt().prefs().set_mode(&id, mode) {
+        Ok(()) => Json(json!({ "result": "saved" })).into_response(),
+        Err(PrefsError::UnknownApp) => {
+            appkit_hub::error_body(StatusCode::NOT_FOUND, "not_found", "no such app")
+        }
+        Err(PrefsError::NotAvailable(what)) => appkit_hub::error_body(
+            StatusCode::CONFLICT,
+            "not_available",
+            &format!("the app has no {what} mode"),
+        ),
+        Err(PrefsError::Failed(why)) => {
+            eprintln!("settings: {why}");
+            appkit_hub::error_body(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "not_saved",
+                "the settings could not be written",
+            )
+        }
+    }
+}
+
+/// `POST /api/hub/rescan`: forget what was found; the next `GET /api/hub/apps` looks at the machine again.
+async fn rescan(State(core): State<Arc<Core<HubRuntime>>>, _body: Bytes) -> Json<Value> {
+    core.rt().detector().invalidate();
+    Json(json!({ "result": "ok" }))
+}
+
 fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
     let small = core.limits.small_body_bytes;
     Router::new()
@@ -187,6 +254,14 @@ fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
         .route(
             &IDENTITY.route(MUTATION_ROUTES[0]),
             post(launch).layer(DefaultBodyLimit::max(small)),
+        )
+        .route(
+            &IDENTITY.route(MUTATION_ROUTES[1]),
+            post(choose_mode).layer(DefaultBodyLimit::max(small)),
+        )
+        .route(
+            &IDENTITY.route(MUTATION_ROUTES[2]),
+            post(rescan).layer(DefaultBodyLimit::max(small)),
         )
 }
 
@@ -198,7 +273,12 @@ fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
 pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
     let detector = cfg.detector;
     let launcher = cfg.launcher;
-    let for_build = (Arc::clone(&detector), Arc::clone(&launcher));
+    let prefs = cfg.prefs;
+    let for_build = (
+        Arc::clone(&detector),
+        Arc::clone(&launcher),
+        Arc::clone(&prefs),
+    );
     serve(
         ServeParts {
             addr: cfg.addr,
@@ -212,10 +292,14 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
             // `hello` needs no session; no route of the hub is coarse (rate limited on its own) yet.
             guard_rules: GuardRules::new(IDENTITY.route("hello"), Vec::<String>::new()),
             ui: cfg.ui,
-            runtime: HubRuntime::new(detector, launcher),
+            runtime: HubRuntime::new(detector, launcher, prefs),
             // There is no vault to choose, so no runtime is ever made again.
             build: Arc::new(move |()| {
-                HubRuntime::new(Arc::clone(&for_build.0), Arc::clone(&for_build.1))
+                HubRuntime::new(
+                    Arc::clone(&for_build.0),
+                    Arc::clone(&for_build.1),
+                    Arc::clone(&for_build.2),
+                )
             }),
             vaults: None,
         },

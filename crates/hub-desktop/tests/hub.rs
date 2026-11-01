@@ -10,6 +10,7 @@ use appkit_testkit::wire::{request, send};
 use hub_desktop::config::Env;
 use hub_desktop::detect::Detector;
 use hub_desktop::launch::{Browser, LaunchConfig, Launcher};
+use hub_desktop::prefs::Prefs;
 use hub_desktop::server::{self, ServerConfig, DATA_ROUTES};
 use hub_desktop::ui::UiFiles;
 
@@ -33,6 +34,7 @@ async fn start_with_secret() -> (appkit_hub::RunningServer, String) {
             Arc::clone(&detector),
             LaunchConfig::new(None, Browser::System),
         )),
+        prefs: Arc::new(Prefs::new(None, Arc::clone(&detector))),
     })
     .await
     .expect("the hub starts");

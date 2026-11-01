@@ -9,6 +9,7 @@ use appkit_testkit::subject::{StartConfig, Subject};
 use hub_desktop::config::Env;
 use hub_desktop::detect::Detector;
 use hub_desktop::launch::{Browser, LaunchConfig, Launcher};
+use hub_desktop::prefs::Prefs;
 use hub_desktop::server::{self, ServerConfig, DATA_ROUTES};
 use hub_desktop::ui::UiFiles;
 
@@ -40,6 +41,7 @@ impl Subject for Hub {
                     Arc::clone(&detector),
                     LaunchConfig::new(None, Browser::System),
                 )),
+                prefs: Arc::new(Prefs::new(None, Arc::clone(&detector))),
             })
             .await
         })

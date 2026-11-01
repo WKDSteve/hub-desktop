@@ -14,6 +14,7 @@ use crate::client;
 use crate::config::{self, Env};
 use crate::detect::Detector;
 use crate::launch::{Browser, LaunchConfig, Launcher};
+use crate::prefs::Prefs;
 use crate::server::{self, ServerConfig};
 use crate::ui::UiFiles;
 use crate::webserve::{self, WebServer};
@@ -95,7 +96,15 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
 
     let control = Secret::generate(TOKEN_BYTES).map_err(|e| e.to_string())?;
     let instance = Secret::generate(CODE_BYTES).map_err(|e| e.to_string())?;
-    let detector = Arc::new(Detector::new(env.clone(), file.app.web_root.clone()));
+    let chosen = file
+        .app
+        .tiles
+        .iter()
+        .filter_map(|(id, tile)| Some((id.clone(), config::mode_of(tile.mode.as_deref()?)?)))
+        .collect();
+    let detector =
+        Arc::new(Detector::new(env.clone(), file.app.web_root.clone()).with_modes(chosen));
+    let prefs = Arc::new(Prefs::new(Some(dir.clone()), Arc::clone(&detector)));
     // The pages of the web variants have a listener (and an origin) of their own. When its port is taken
     // the hub runs without it: the apps start, the web mode says why it cannot.
     let web = match webserve::start(wanted_web_port(&env)?, Arc::clone(&detector)).await {
@@ -123,6 +132,7 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
         ui: Arc::new(UiFiles::embedded()),
         detector: Arc::clone(&detector),
         launcher: Arc::clone(&launcher),
+        prefs: Arc::clone(&prefs),
     };
     // The port is part of the origin, so the wanted one is tried first. When it is taken the server
     // still starts, on another port, and says so: the page then has another origin.
