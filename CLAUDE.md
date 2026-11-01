@@ -41,6 +41,8 @@ python tools/check-lock-age.py --min-days 7
   `nvim -n -i NONE --headless -u NONE -l E:/repos/testing.nvim/scripts/testing.lua ci trust WKDSteve/hub-desktop <sha>`,
   dann `gh run rerun <id> -R WKDSteve/hub-desktop`. Vorher `pwsh $env:NVIM_CONFIG_DIR\scripts\runners.ps1 ensure
   hub-desktop`.
+  Eigene, lokal erzeugte Commits gibt der pre-push-Hook frei, den der Nutzer mit `testing ci hook install --auto-trust`
+  installiert (testing.nvim `docs/RUNNER-GUARD.md`); Claude installiert ihn nicht und führt `trust` nie selbst aus.
 
 ## appkit (der geteilte Unterbau)
 
