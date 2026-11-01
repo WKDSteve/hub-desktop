@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = ["crates/hub-desktop"]
+
+# The shared foundation of the hub (https://github.com/WKDSteve/appkit), by tag; Cargo.lock pins the
+# commit and tools/check-appkit-pin.py checks that the tag still names it. To work on appkit and
+# this app at once, point these at a local checkout in a .cargo/config.toml that is not committed
+# (`[patch."https://github.com/WKDSteve/appkit"]`, see the README of appkit).
+[workspace.dependencies]
+appkit-core = { git = "https://github.com/WKDSteve/appkit", tag = "v0.27.1" }
+appkit-hub = { git = "https://github.com/WKDSteve/appkit", tag = "v0.27.1" }
+appkit-testkit = { git = "https://github.com/WKDSteve/appkit", tag = "v0.27.1" }
+appkit-scratch = { git = "https://github.com/WKDSteve/appkit", tag = "v0.27.1" }
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+authors = ["Stefan Bartl"]
+repository = "https://github.com/WKDSteve/hub-desktop"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
+# The program `hub-desktop install` copies: small and quick to start. No `panic = "abort"`: a panic in
+# one task of the runtime must not end the hub.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true

@@ -1,0 +1,32 @@
+[package]
+name = "hub-desktop"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "The central hub: lists the other apps and starts them with one click"
+
+[lints]
+workspace = true
+
+[lib]
+name = "hub_desktop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hub-desktop"
+path = "src/main.rs"
+
+[dependencies]
+appkit-core.workspace = true
+appkit-hub.workspace = true
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", default-features = false, features = ["sync", "rt", "rt-multi-thread", "net", "time", "macros", "io-util", "signal"] }
+
+[dev-dependencies]
+appkit-scratch.workspace = true
+appkit-testkit.workspace = true
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros"] }
