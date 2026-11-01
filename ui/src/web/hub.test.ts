@@ -13,7 +13,7 @@ function memory(start: string[] = []): MissingStore & { saved: string[][] } {
   const saved: string[][] = [];
   return {
     saved,
-    load: async () => start,
+    load: async () => saved.at(-1) ?? start,
     save: async (ids) => void saved.push(ids),
   };
 }
@@ -80,5 +80,27 @@ describe('WebHub', () => {
     expect((await hub.apps()).apps.find((a) => a.id === 'tasks')?.missing).toBe(true);
     await hub.mark('tasks', true);
     expect(store.saved).toEqual([['tasks']]);
+  });
+
+  it('starts from what another tab kept, not from what this one read first', async () => {
+    const store = memory();
+    const mine = new WebHub(entries, store, '1');
+    const other = new WebHub(entries, store, '1');
+    await mine.apps();
+    await other.mark('tasks', true);
+    await mine.mark('rules', true);
+    expect(store.saved.at(-1)).toEqual(['tasks', 'rules']);
+  });
+
+  it('remembers a mark for as long as the page is open when the browser keeps nothing', async () => {
+    const blocked: MissingStore = {
+      load: async () => null,
+      save: async () => {
+        throw new Error('blocked');
+      },
+    };
+    const hub = new WebHub(entries, blocked, '1');
+    await hub.mark('tasks', true);
+    expect((await hub.apps()).apps.find((a) => a.id === 'tasks')?.missing).toBe(true);
   });
 });

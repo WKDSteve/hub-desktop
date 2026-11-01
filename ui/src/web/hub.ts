@@ -19,7 +19,8 @@ export interface CatalogEntry {
 
 /** What the viewer said, kept in the browser: the ids of the apps that are not on this machine. */
 export interface MissingStore {
-  load(): Promise<string[]>;
+  /** `null`: the browser does not let the page keep anything (the page then remembers for as long as it is open). */
+  load(): Promise<string[] | null>;
   save(ids: string[]): Promise<void>;
 }
 
@@ -67,7 +68,8 @@ export function view(e: CatalogEntry, missing: ReadonlySet<string>): HubApp {
 
 export class WebHub implements HubApi, Presence {
   onUnauthorized: () => void = () => {};
-  #missing: Set<string> | null = null;
+  /** What the page itself last said: what is shown when the browser keeps nothing. */
+  #local = new Set<string>();
 
   constructor(
     private readonly catalog: readonly CatalogEntry[],
@@ -86,13 +88,14 @@ export class WebHub implements HubApi, Presence {
     return { instance: 'web', version: this.version, engine: { ready: true, problem: null, capabilities: null } };
   }
 
+  /** Read every time: another tab of the page may have changed the marks, and a write must start from them. */
   async #ids(): Promise<Set<string>> {
-    if (!this.#missing) {
-      const known = new Set(this.catalog.map((e) => e.id));
-      // What the browser kept may be old or foreign: only ids of the catalog count.
-      this.#missing = new Set((await this.store.load()).filter((id) => known.has(id)));
-    }
-    return this.#missing;
+    const kept = await this.store.load();
+    if (kept === null) return this.#local;
+    const known = new Set(this.catalog.map((e) => e.id));
+    // What the browser kept may be old or foreign: only ids of the catalog count.
+    this.#local = new Set(kept.filter((id) => known.has(id)));
+    return this.#local;
   }
 
   async apps(): Promise<Apps> {
@@ -115,8 +118,12 @@ export class WebHub implements HubApi, Presence {
     const next = new Set(ids);
     if (missing) next.add(id);
     else next.delete(id);
-    await this.store.save([...next]);
-    this.#missing = next;
+    this.#local = next;
+    try {
+      await this.store.save([...next]);
+    } catch {
+      // The browser keeps nothing: the mark holds while the page is open.
+    }
   }
 }
 
@@ -151,12 +158,12 @@ export function indexedDbMissing(factory: IDBFactory | undefined): MissingStore 
   };
   return {
     async load() {
-      // A browser that blocks the database: the page works, it just forgets the marks.
+      // A browser that blocks the database: the page works, it just forgets the marks (`null`).
       try {
         const value: unknown = await run('readonly', (s) => s.get(KEY));
         return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
       } catch {
-        return [];
+        return null;
       }
     },
     async save(ids) {
