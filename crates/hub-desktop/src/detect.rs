@@ -50,6 +50,9 @@ pub struct AppState {
     pub run: Option<Run>,
     /// Why the app cannot be used yet (`no_vault`), as the app says it or as its settings show it.
     pub setup: Option<String>,
+    /// The loopback port of a program that serves a page (ai-desktop): where it is, and where its
+    /// page is once it runs.
+    pub port: Option<u16>,
 }
 
 impl AppState {
@@ -197,6 +200,16 @@ impl Detector {
         fresh
     }
 
+    /// One app, looked at now: not from the cache, and the cache is forgotten afterwards (what is found
+    /// here is newer than what it holds). A start asks this: it must not act on a state that is ten
+    /// seconds old.
+    pub async fn look_one(&self, entry: &'static Entry) -> AppState {
+        let roots = web_roots(self.web_root.as_deref(), &self.env);
+        let state = detect(entry, &self.env, &roots).await;
+        self.invalidate();
+        state
+    }
+
     /// One app, from the same look.
     pub async fn app(&self, id: &str) -> Option<AppState> {
         self.apps().await.iter().find(|a| a.entry.id == id).cloned()
@@ -260,6 +273,7 @@ fn find_native(native: &Native, env: &Env) -> Option<PathBuf> {
 async fn detect(entry: &'static Entry, env: &Env, web_roots: &[PathBuf]) -> AppState {
     let native = entry.native.as_ref().and_then(|n| find_native(n, env));
     let web = find_web(entry, web_roots);
+    let mut port = None;
     let (run, setup) = match (&entry.native, &native) {
         (
             Some(Native::AppKitHub {
@@ -275,10 +289,11 @@ async fn detect(entry: &'static Entry, env: &Env, web_roots: &[PathBuf]) -> AppS
                 ..
             }),
             Some(_),
-        ) => (
-            Some(health_state(ai_port(port_var, *default_port, env)).await),
-            None,
-        ),
+        ) => {
+            let at = ai_port(port_var, *default_port, env);
+            port = Some(at);
+            (Some(health_state(at).await), None)
+        }
         _ => (None, None),
     };
     AppState {
@@ -287,6 +302,7 @@ async fn detect(entry: &'static Entry, env: &Env, web_roots: &[PathBuf]) -> AppS
         web,
         run,
         setup,
+        port,
     }
 }
 

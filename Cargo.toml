@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/hub-desktop"]
+members = ["crates/hub-desktop", "crates/fake-app"]
 
 # The shared foundation of the hub (https://github.com/WKDSteve/appkit), by tag; Cargo.lock pins the
 # commit and tools/check-appkit-pin.py checks that the tag still names it. To work on appkit and

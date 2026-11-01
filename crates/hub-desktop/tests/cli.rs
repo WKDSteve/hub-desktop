@@ -25,6 +25,8 @@ fn command(config: &Path, port: u16) -> Command {
     cmd.env("HUB_DESKTOP_CONFIG_DIR", config)
         .env("HUB_DESKTOP_PORT", port.to_string())
         .env("HUB_DESKTOP_NO_LAUNCH", "1")
+        // Never the port of a hub that may run on this machine.
+        .env("HUB_DESKTOP_WEB_PORT", free_port().to_string())
         .stdin(Stdio::null());
     cmd
 }
@@ -58,8 +60,16 @@ impl Drop for Running {
 }
 
 fn start_by_click(config: &Path, port: u16) -> Running {
+    start_by_click_with(config, port, &[])
+}
+
+fn start_by_click_with(config: &Path, port: u16, env: &[(&str, &Path)]) -> Running {
     let out = std::fs::File::create(config.join("click-out.txt")).unwrap();
-    let child = command(config, port)
+    let mut cmd = command(config, port);
+    for (name, value) in env {
+        cmd.env(name, value);
+    }
+    let child = cmd
         .stdout(Stdio::from(out))
         .stderr(Stdio::null())
         .spawn()
@@ -196,4 +206,51 @@ fn an_unknown_verb_and_a_stray_argument_print_the_usage_and_fail() {
             "{args:?}: {err}"
         );
     }
+}
+
+/// The listener of the web variants is part of the program: its own port, its own origin, the page of an
+/// app of the catalog from the checkout, and nothing of the hub.
+#[test]
+fn the_program_serves_a_web_variant_on_a_port_of_its_own() {
+    let scratch = Scratch::new("hub-cli-web");
+    let config = scratch.path().join("config");
+    std::fs::create_dir_all(&config).unwrap();
+    let repos = scratch.path().join("repos");
+    std::fs::create_dir_all(repos.join("tasks-web")).unwrap();
+    std::fs::write(repos.join("tasks-web/tasks.html"), "<title>a page</title>").unwrap();
+    let port = free_port();
+    let web_port = free_port();
+    let web = web_port.to_string();
+    let _hub = start_by_click_with(
+        &config,
+        port,
+        &[
+            ("REPOS_DIR", repos.as_path()),
+            ("HUB_DESKTOP_WEB_PORT", Path::new(&web)),
+            (
+                "HUB_DESKTOP_BROWSER_LOG",
+                scratch.path().join("browser.log").as_path(),
+            ),
+        ],
+    );
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(async {
+        let page = hub_desktop::client::request(web_port, "GET", "/tasks-web/tasks.html", &[], "")
+            .await
+            .unwrap();
+        assert_eq!(page.status, 200, "{page:?}");
+        assert_eq!(page.body, "<title>a page</title>");
+        // The hub is not on this port, and the page is not on the port of the hub.
+        let api = hub_desktop::client::request(web_port, "GET", "/api/hub/hello", &[], "")
+            .await
+            .unwrap();
+        assert_eq!(api.status, 404);
+        let wrong = hub_desktop::client::request(port, "GET", "/tasks-web/tasks.html", &[], "")
+            .await
+            .unwrap();
+        assert!(!wrong.body.contains("a page"), "{wrong:?}");
+    });
 }

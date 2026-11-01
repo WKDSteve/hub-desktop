@@ -13,12 +13,17 @@ use appkit_core::authn::{Clock, Secret};
 use appkit_hub::{
     serve, Core, GuardRules, HubStatus, Limits, Pages, RunningServer, Runtime, ServeParts,
 };
-use axum::extract::State;
-use axum::routing::get;
+use axum::body::Bytes;
+use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
 use axum::{Json, Router};
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::detect::Detector;
+use crate::launch::{LaunchError, Launcher, Outcome, Request};
 use crate::IDENTITY;
 
 /// What the hub keeps: the status `hello` reports (it has no engine) and the way to look at the machine.
@@ -26,12 +31,13 @@ use crate::IDENTITY;
 pub struct HubRuntime {
     status: HubStatus,
     detector: Arc<Detector>,
+    launcher: Arc<Launcher>,
 }
 
 impl HubRuntime {
     /// The runtime of a hub that has no engine: `hello` says it is not ready for one, and that is right.
     #[must_use]
-    pub fn new(detector: Arc<Detector>) -> Self {
+    pub fn new(detector: Arc<Detector>, launcher: Arc<Launcher>) -> Self {
         Self {
             status: HubStatus {
                 engine_ready: false,
@@ -39,7 +45,13 @@ impl HubRuntime {
                 capabilities: Vec::new(),
             },
             detector,
+            launcher,
         }
+    }
+
+    #[must_use]
+    pub fn launcher(&self) -> &Arc<Launcher> {
+        &self.launcher
     }
 
     #[must_use]
@@ -70,6 +82,7 @@ pub struct ServerConfig {
     pub instance: Secret,
     pub ui: Arc<dyn Pages>,
     pub detector: Arc<Detector>,
+    pub launcher: Arc<Launcher>,
 }
 
 /// The names (below `/api/hub/`) of the routes that need a session. The security matrix reads them
@@ -85,8 +98,96 @@ async fn apps(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
     Json(json!({ "apps": views }))
 }
 
-fn routes(_core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
-    Router::new().route(&IDENTITY.route("apps"), get(apps))
+/// The routes that change something (a `POST`, a session and a JSON body): `{id}` stands for an app. The
+/// tests ask each of them without a session, with a wrong content type and with a body that is not one.
+pub const MUTATION_ROUTES: [&str; 1] = ["apps/{id}/launch"];
+
+/// What a click sends: a mode, or nothing (the default of the app). Nothing else is read.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LaunchBody {
+    mode: Option<String>,
+}
+
+fn request_of(body: &[u8]) -> Result<Request, &'static str> {
+    if body.iter().all(u8::is_ascii_whitespace) {
+        return Ok(Request::Default);
+    }
+    let parsed: LaunchBody =
+        serde_json::from_slice(body).map_err(|_| "the body is not {\"mode\": ...}")?;
+    match parsed.mode.as_deref() {
+        None => Ok(Request::Default),
+        Some("native") => Ok(Request::Native),
+        Some("web") => Ok(Request::Web),
+        Some("setup") => Ok(Request::Setup),
+        Some(_) => Err("mode is native, web or setup"),
+    }
+}
+
+/// `POST /api/hub/apps/{id}/launch`: start an app. The answer comes at once and does not wait for the app.
+async fn launch(
+    State(core): State<Arc<Core<HubRuntime>>>,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let ask = match request_of(&body) {
+        Ok(ask) => ask,
+        Err(why) => return appkit_hub::error_body(StatusCode::BAD_REQUEST, "bad_request", why),
+    };
+    let launcher = Arc::clone(core.rt().launcher());
+    match launcher.launch(&id, ask).await {
+        Ok(outcome) => Json(json!({
+            "result": match outcome {
+                Outcome::Started => "started",
+                Outcome::Starting => "starting",
+                Outcome::Opened => "opened",
+                Outcome::SetupRequired => "setup_required",
+            }
+        }))
+        .into_response(),
+        Err(LaunchError::UnknownApp) => {
+            appkit_hub::error_body(StatusCode::NOT_FOUND, "not_found", "no such app")
+        }
+        Err(LaunchError::NotInstalled) => appkit_hub::error_body(
+            StatusCode::CONFLICT,
+            "not_installed",
+            "the app is not installed",
+        ),
+        Err(LaunchError::NotAvailable(what)) => appkit_hub::error_body(
+            StatusCode::CONFLICT,
+            "not_available",
+            &format!("the app has no {what} mode"),
+        ),
+        Err(LaunchError::PortBusy) => appkit_hub::error_body(
+            StatusCode::CONFLICT,
+            "port_busy",
+            "something else answers on the port of the app",
+        ),
+        Err(LaunchError::WebUnavailable) => appkit_hub::error_body(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "web_unavailable",
+            "the web variants are not served (the port is taken)",
+        ),
+        Err(LaunchError::Failed(why)) => {
+            // What went wrong may hold a path: it goes to the console of the hub, not to the page.
+            eprintln!("launch {id}: {why}");
+            appkit_hub::error_body(
+                StatusCode::BAD_GATEWAY,
+                "start_failed",
+                "the app could not be started",
+            )
+        }
+    }
+}
+
+fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
+    let small = core.limits.small_body_bytes;
+    Router::new()
+        .route(&IDENTITY.route("apps"), get(apps))
+        .route(
+            &IDENTITY.route(MUTATION_ROUTES[0]),
+            post(launch).layer(DefaultBodyLimit::max(small)),
+        )
 }
 
 /// Start the server.
@@ -96,7 +197,8 @@ fn routes(_core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
 /// An I/O error of binding, or `InvalidInput` for an address that is not loopback.
 pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
     let detector = cfg.detector;
-    let for_build = Arc::clone(&detector);
+    let launcher = cfg.launcher;
+    let for_build = (Arc::clone(&detector), Arc::clone(&launcher));
     serve(
         ServeParts {
             addr: cfg.addr,
@@ -110,9 +212,11 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
             // `hello` needs no session; no route of the hub is coarse (rate limited on its own) yet.
             guard_rules: GuardRules::new(IDENTITY.route("hello"), Vec::<String>::new()),
             ui: cfg.ui,
-            runtime: HubRuntime::new(detector),
+            runtime: HubRuntime::new(detector, launcher),
             // There is no vault to choose, so no runtime is ever made again.
-            build: Arc::new(move |()| HubRuntime::new(Arc::clone(&for_build))),
+            build: Arc::new(move |()| {
+                HubRuntime::new(Arc::clone(&for_build.0), Arc::clone(&for_build.1))
+            }),
             vaults: None,
         },
         routes,

@@ -13,9 +13,14 @@ use serde_json::Value;
 use crate::client;
 use crate::config::{self, Env};
 use crate::detect::Detector;
+use crate::launch::{Browser, LaunchConfig, Launcher};
 use crate::server::{self, ServerConfig};
 use crate::ui::UiFiles;
+use crate::webserve::{self, WebServer};
 use appkit_hub::Limits;
+
+/// The default port of the listener of the web variants (`appkit-testkit`'s list of ports).
+pub const WEB_PORT: u16 = 17611;
 
 /// What to do when the hub is started.
 #[derive(Debug, Clone, Default)]
@@ -91,6 +96,23 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
     let control = Secret::generate(TOKEN_BYTES).map_err(|e| e.to_string())?;
     let instance = Secret::generate(CODE_BYTES).map_err(|e| e.to_string())?;
     let detector = Arc::new(Detector::new(env.clone(), file.app.web_root.clone()));
+    // The pages of the web variants have a listener (and an origin) of their own. When its port is taken
+    // the hub runs without it: the apps start, the web mode says why it cannot.
+    let web = match webserve::start(wanted_web_port(&env)?, Arc::clone(&detector)).await {
+        Ok(web) => Some(web),
+        Err(e) => {
+            eprintln!("note: the web variants are not served: {e}");
+            None
+        }
+    };
+    let browser = match env.path(&crate::IDENTITY.var("BROWSER_LOG")) {
+        Some(file) => Browser::Log(file),
+        None => Browser::System,
+    };
+    let launcher = Arc::new(Launcher::new(
+        Arc::clone(&detector),
+        LaunchConfig::new(web.as_ref().map(|w| w.addr().port()), browser),
+    ));
     let make_cfg = |port: u16| ServerConfig {
         addr: std::net::SocketAddr::from(([127, 0, 0, 1], port)),
         limits: Limits::default(),
@@ -100,6 +122,7 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
         instance: instance.clone(),
         ui: Arc::new(UiFiles::embedded()),
         detector: Arc::clone(&detector),
+        launcher: Arc::clone(&launcher),
     };
     // The port is part of the origin, so the wanted one is tried first. When it is taken the server
     // still starts, on another port, and says so: the page then has another origin.
@@ -113,14 +136,22 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
                 .await
                 .is_some()
             {
+                stop_web(web).await;
                 return Err(format!("a hub is already running on port {want}"));
             }
             eprintln!("note: port {want} is in use, using a free port; the origin changes");
-            server::start(make_cfg(0))
-                .await
-                .map_err(|e| e.to_string())?
+            match server::start(make_cfg(0)).await {
+                Ok(r) => r,
+                Err(e) => {
+                    stop_web(web).await;
+                    return Err(e.to_string());
+                }
+            }
         }
-        Err(e) => return Err(e.to_string()),
+        Err(e) => {
+            stop_web(web).await;
+            return Err(e.to_string());
+        }
     };
     let port = running.addr().port();
 
@@ -138,6 +169,7 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
         registry::remove_secret(&dir);
         registry::remove_record(&dir);
         running.shutdown().await;
+        stop_web(web).await;
         return Err(e.to_string());
     }
 
@@ -161,7 +193,28 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
     registry::remove_record(&dir);
     registry::remove_secret(&dir);
     running.shutdown().await;
+    stop_web(web).await;
     Ok(())
+}
+
+/// The port of the listener of the web variants: `HUB_DESKTOP_WEB_PORT`, else the default.
+fn wanted_web_port(env: &Env) -> Result<u16, String> {
+    let var = crate::IDENTITY.var("WEB_PORT");
+    match env.get(&var) {
+        None => Ok(WEB_PORT),
+        Some(v) => v
+            .to_string_lossy()
+            .parse::<u16>()
+            .ok()
+            .filter(|p| *p >= 1024)
+            .ok_or_else(|| format!("{var} is not a port from 1024 to 65535")),
+    }
+}
+
+async fn stop_web(web: Option<WebServer>) {
+    if let Some(web) = web {
+        web.shutdown().await;
+    }
 }
 
 /// What a double click does: the hub runs in this window (minimized by the link that starts it) and the

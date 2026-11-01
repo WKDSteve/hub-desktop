@@ -2,147 +2,15 @@
 //! `PROGRAMFILES`, the home folder, the config folders of the apps), fake programs that are files with
 //! a name, and fake servers on loopback ports. The real machine is never looked at.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use appkit_core::registry::{self, HubRecord};
-use appkit_scratch::Scratch;
 use hub_desktop::catalog::{self, AI_PORT};
 use hub_desktop::config::Env;
 use hub_desktop::detect::{AppState, Detector, Run};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
 
-/// A machine in a folder.
-struct Machine {
-    dir: Scratch,
-}
-
-impl Machine {
-    fn new(name: &str) -> Self {
-        Self {
-            dir: Scratch::new(name),
-        }
-    }
-
-    fn path(&self, below: &str) -> PathBuf {
-        self.dir.path().join(below)
-    }
-
-    fn touch(&self, below: &str) -> PathBuf {
-        let file = self.path(below);
-        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        std::fs::write(&file, b"a program").unwrap();
-        file
-    }
-
-    fn env(&self, extra: &[(&str, String)]) -> Env {
-        let mut pairs: Vec<(String, String)> = vec![
-            (
-                "LOCALAPPDATA".into(),
-                self.path("Local").display().to_string(),
-            ),
-            (
-                "PROGRAMFILES".into(),
-                self.path("Program Files").display().to_string(),
-            ),
-            (
-                "USERPROFILE".into(),
-                self.path("Home").display().to_string(),
-            ),
-            ("APPDATA".into(), self.path("Roaming").display().to_string()),
-            (
-                "TASKS_DESKTOP_CONFIG_DIR".into(),
-                self.path("cfg-tasks").display().to_string(),
-            ),
-            (
-                "RULES_DESKTOP_CONFIG_DIR".into(),
-                self.path("cfg-rules").display().to_string(),
-            ),
-            // Never the port of a real ai-desktop on the machine that runs the test.
-            ("AI_DESKTOP_PORT".into(), free_port().to_string()),
-        ];
-        for (k, v) in extra {
-            pairs.retain(|(name, _)| name != k);
-            pairs.push(((*k).to_owned(), v.clone()));
-        }
-        Env::from_pairs(pairs)
-    }
-
-    fn tasks_program(&self) -> PathBuf {
-        self.touch(&format!(
-            "Local/tasks-desktop/bin/{}",
-            catalog::TASKS.program_file()
-        ))
-    }
-}
-
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
-}
-
-/// A server that answers every request with `status` and `body` and closes.
-async fn fake_server(status: u16, body: String) -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    tokio::spawn(async move {
-        while let Ok((mut stream, _)) = listener.accept().await {
-            let body = body.clone();
-            tokio::spawn(async move {
-                let mut buf = [0u8; 2048];
-                let _ = stream.read(&mut buf).await;
-                let reply = format!(
-                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
-                    body.len()
-                );
-                let _ = stream.write_all(reply.as_bytes()).await;
-            });
-        }
-    });
-    port
-}
-
-/// A server that takes the connection and never says a word.
-async fn hanging_server() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let port = listener.local_addr().unwrap().port();
-    tokio::spawn(async move {
-        let mut held = Vec::new();
-        while let Ok((stream, _)) = listener.accept().await {
-            held.push(stream);
-        }
-    });
-    port
-}
-
-fn write_hub_json(dir: &Path, port: u16, instance: &str) {
-    std::fs::create_dir_all(dir).unwrap();
-    registry::write_record(
-        dir,
-        &HubRecord {
-            app: "tasks-desktop".to_owned(),
-            port,
-            pid: 4242,
-            version: "0.0.0".to_owned(),
-            instance: instance.to_owned(),
-        },
-    )
-    .unwrap();
-}
-
-fn hello(setup: Option<&str>) -> String {
-    serde_json::json!({
-        "app": "tasks-desktop",
-        "instance": "abc123",
-        "setup_required": setup.is_some(),
-        "setup_reason": setup,
-    })
-    .to_string()
-}
+mod common;
+use common::*;
 
 /// Every look at the machine, fresh.
 async fn look(env: Env, web_root: Option<PathBuf>) -> Vec<AppState> {
@@ -442,23 +310,6 @@ async fn a_web_page_that_is_a_link_out_of_the_web_root_is_not_found() {
     link(&machine.path("Outside/tasks-web"), &root.join("tasks-web"));
     assert!(outside.exists());
     assert!(!app(&look(machine.env(&[]), Some(root)).await, "tasks").installed());
-}
-
-#[cfg(windows)]
-fn link(target: &Path, at: &Path) {
-    let status = std::process::Command::new("cmd")
-        .args(["/C", "mklink", "/J"])
-        .arg(at.to_string_lossy().replace('/', "\\"))
-        .arg(target.to_string_lossy().replace('/', "\\"))
-        .stdout(std::process::Stdio::null())
-        .status()
-        .unwrap();
-    assert!(status.success());
-}
-
-#[cfg(unix)]
-fn link(target: &Path, at: &Path) {
-    std::os::unix::fs::symlink(target, at).unwrap();
 }
 
 #[tokio::test]

@@ -9,10 +9,12 @@ pub mod background;
 pub mod catalog;
 pub mod config;
 pub mod detect;
+pub mod launch;
 pub mod paths;
 pub mod probe;
 pub mod server;
 pub mod ui;
+pub mod webserve;
 
 pub use appkit_hub::client;
 

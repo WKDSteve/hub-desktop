@@ -9,12 +9,17 @@ use appkit_hub::Limits;
 use appkit_testkit::wire::{request, send};
 use hub_desktop::config::Env;
 use hub_desktop::detect::Detector;
+use hub_desktop::launch::{Browser, LaunchConfig, Launcher};
 use hub_desktop::server::{self, ServerConfig, DATA_ROUTES};
 use hub_desktop::ui::UiFiles;
 
 /// The control secret of the hub that `start_with_secret` makes, as the bearer credential of a program.
 async fn start_with_secret() -> (appkit_hub::RunningServer, String) {
     let control = Secret::generate(TOKEN_BYTES).unwrap();
+    let detector = Arc::new(Detector::new(
+        Env::from_pairs([("APPDATA", "C:/none")]),
+        None,
+    ));
     let server = server::start(ServerConfig {
         addr: "127.0.0.1:0".parse().unwrap(),
         limits: Limits::default(),
@@ -23,9 +28,10 @@ async fn start_with_secret() -> (appkit_hub::RunningServer, String) {
         control_secret: control.clone(),
         instance: Secret::generate(CODE_BYTES).unwrap(),
         ui: Arc::new(UiFiles::none()),
-        detector: Arc::new(Detector::new(
-            Env::from_pairs([("APPDATA", "C:/none")]),
-            None,
+        detector: Arc::clone(&detector),
+        launcher: Arc::new(Launcher::new(
+            Arc::clone(&detector),
+            LaunchConfig::new(None, Browser::System),
         )),
     })
     .await
