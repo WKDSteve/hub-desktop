@@ -79,6 +79,18 @@ python tools/check-lock-age.py --min-days 7
   im Test eine Datei (`Browser::Log`, im Binary `HUB_DESKTOP_BROWSER_LOG`). `HUB_DESKTOP_WEB_PORT` setzt den Port des
   Web-Listeners (Tests nie auf 17611).
 
+## Overlay und Stop (M2, Teil 1)
+
+- `overlay.rs`: `catalog-overlay.json` im Config-Ordner, Schema `hub-catalog/1`. Nur ausblenden, ordnen, `web_root`;
+  höhere Major-Version wird abgelehnt, Unbekanntes ignoriert, nie ein Programm oder eine Startart. Eine unbrauchbare
+  Datei stoppt den Hub nie (Hinweis in der Konsole). Ein ausgeblendeter Eintrag wird nicht gelistet, gestartet,
+  gestoppt und nicht ausgeliefert (`Detector::hides`).
+- Stop: `POST /api/hub/apps/{id}/stop` (steht in `MUTATION_ROUTES`), nur für `Native::AppKitHub`, nur wenn der Hub der
+  App läuft; das Programm der Erkennung wird mit dem einen Argument `stop` gestartet. Der Hub liest nie das Secret
+  einer App und beendet nie selbst einen Prozess.
+- Offen in M2: Autostart-Anzeige (braucht eine Funktion in appkit, die den Run-Key einer fremden App liest) und das
+  Update-Badge (braucht `version.json` im Rolling-Build, Task `appkit/release-kit-version-json-...`).
+
 ## Web-Hub (`hub.html`, M1W)
 
 - Dieselbe Oberfläche als eine HTML-Datei (`ui/index.web.html`, `src/main.web.ts`, `vite build --mode web`, gepackt von

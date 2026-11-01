@@ -62,3 +62,19 @@ change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --loc
 program is shown as "native only". The page cannot look at your machine: an app that is not there is one you mark
 yourself ("Mark as not present" in the menu of the tile). Build it with `cd ui && pnpm web:build`
 (`ui/dist-web/hub.html`).
+
+## Hide, order and stop
+
+Put a file `catalog-overlay.json` into the config folder of the hub to hide or order tiles:
+
+```json
+{ "schema": "hub-catalog/1", "hidden": ["streamtap"], "order": ["tasks", "rules"], "web_root": "C:/repos" }
+```
+
+It can only hide, order and name the folder of the web variants (`config.json` wins when it names one too). A
+newer schema (`hub-catalog/2`) is refused, keys it does not know are ignored, and a program or a way to start one
+cannot be put in it. A file that cannot be used is reported in the console of the hub and ignored. A hidden app is
+not listed, not started and its page is not served.
+
+An app built on the kit (Tasks, Rules) that runs has a **Stop** entry in the menu of its tile: the hub runs
+`<program> stop` of that app, nothing else.

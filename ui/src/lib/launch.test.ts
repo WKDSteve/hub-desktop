@@ -13,6 +13,7 @@ const tasks: HubApp = {
   default_mode: 'native',
   run: 'stopped',
   setup: null,
+  stoppable: false,
   install: { hint: 'release', page: null, file: null },
   repo: { owner: 'x', name: 'y', private: false },
 };
@@ -39,7 +40,7 @@ class FakeClock implements Clock {
 }
 
 /** A hub that answers like the real one: a list that the test changes, and a launch that answers as told. */
-function fakeHub(options: { apps?: Partial<HubApp>[]; launch?: (id: string, body: unknown) => Response } = {}) {
+function fakeHub(options: { apps?: Partial<HubApp>[]; launch?: (id: string, body: unknown) => Response; stop?: (id: string) => Response } = {}) {
   const calls: { path: string; body: unknown }[] = [];
   let apps = (options.apps ?? [{}]).map((a) => ({ ...tasks, ...a }));
   const json = (status: number, body: unknown) =>
@@ -54,6 +55,8 @@ function fakeHub(options: { apps?: Partial<HubApp>[]; launch?: (id: string, body
     if (path === '/api/hub/rescan') return json(200, { result: 'ok' });
     const launch = /^\/api\/hub\/apps\/([^/]+)\/launch$/.exec(path);
     if (launch) return options.launch ? options.launch(decodeURIComponent(launch[1] ?? ''), body) : json(200, { result: 'started' });
+    const stop = /^\/api\/hub\/apps\/([^/]+)\/stop$/.exec(path);
+    if (stop) return options.stop ? options.stop(decodeURIComponent(stop[1] ?? '')) : json(200, { result: 'stopping' });
     if (/^\/api\/hub\/apps\/[^/]+\/mode$/.test(path)) return json(200, { result: 'saved' });
     return json(404, { error: { code: 'not_found', message: path } });
   }) as typeof fetch;
@@ -61,6 +64,7 @@ function fakeHub(options: { apps?: Partial<HubApp>[]; launch?: (id: string, body
     hub: new Hub(fetchFn),
     calls,
     launches: () => calls.filter((c) => c.path.endsWith('/launch')),
+    stops: () => calls.filter((c) => c.path.endsWith('/stop')),
     setApps(next: Partial<HubApp>[]) {
       apps = next.map((a) => ({ ...tasks, ...a }));
     },
@@ -205,5 +209,42 @@ describe('messages and choices', () => {
     const { hub, calls } = fakeHub();
     await hub.launch('a/b c', 'native').catch(() => undefined);
     expect(calls[0]?.path).toBe('/api/hub/apps/a%2Fb%20c/launch');
+  });
+});
+
+describe('stop', () => {
+  it('asks once, says so, and reads the list until the app no longer runs', async () => {
+    const { app, hub, stops, setApps } = await ready({ apps: [{ run: 'running', stoppable: true }] });
+    void hub;
+    const tile = app.apps[0] as HubApp;
+    // The app stops after the second look: the first one still finds it running.
+    let looks = 0;
+    const original = app.reload.bind(app);
+    app.reload = async () => {
+      looks += 1;
+      if (looks >= 2) setApps([{ run: 'stopped', stoppable: false }]);
+      await original();
+    };
+    await app.stop(tile);
+    expect(stops()).toHaveLength(1);
+    expect(app.toast?.text).toBe('Stopping Tasks…');
+    await app.watchStop('tasks');
+    expect(app.apps[0]?.run).toBe('stopped');
+    expect(looks).toBe(2);
+  });
+
+  it('says when the app does not run or is busy, and never reads the list for it', async () => {
+    const { app, stops } = await ready({ stop: () => new Response(JSON.stringify({ result: 'not_running' }), { status: 200 }) });
+    await app.stop(app.apps[0] as HubApp);
+    expect(app.toast?.text).toBe('Tasks is not running.');
+    expect(stops()).toHaveLength(1);
+  });
+
+  it('tells an app the hub cannot stop in words', async () => {
+    const refuse = () =>
+      new Response(JSON.stringify({ error: { code: 'not_available', message: 'x' } }), { status: 409 });
+    const { app } = await ready({ stop: refuse });
+    await app.stop(app.apps[0] as HubApp);
+    expect(app.toast).toEqual({ kind: 'error', text: 'Tasks cannot be stopped from here.' });
   });
 });

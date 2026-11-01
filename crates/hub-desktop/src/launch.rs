@@ -101,6 +101,10 @@ pub enum Outcome {
     Opened,
     /// The app cannot be used yet: nothing was done, the page says what to do.
     SetupRequired,
+    /// The app was asked to stop (`<program> stop`); it is not waited for.
+    Stopping,
+    /// The app does not run: nothing was done.
+    NotRunning,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,6 +154,13 @@ impl Launcher {
         }
     }
 
+    /// The entry of an app that is in the catalog and that the person did not hide.
+    fn shown(&self, id: &str) -> Result<&'static Entry, LaunchError> {
+        catalog::find(id)
+            .filter(|e| !self.detector.hides(e.id))
+            .ok_or(LaunchError::UnknownApp)
+    }
+
     fn begin(&self, id: &'static str) -> Option<Flight> {
         let mut set = self.inflight.0.lock().ok()?;
         set.insert(id).then(|| Flight {
@@ -164,7 +175,7 @@ impl Launcher {
     ///
     /// [`LaunchError`]: nothing was started.
     pub async fn launch(self: &Arc<Self>, id: &str, ask: Request) -> Result<Outcome, LaunchError> {
-        let entry = catalog::find(id).ok_or(LaunchError::UnknownApp)?;
+        let entry = self.shown(id)?;
         let Some(flight) = self.begin(entry.id) else {
             return Ok(Outcome::Starting);
         };
@@ -178,6 +189,58 @@ impl Launcher {
             Mode::Web => self.open_web(&state, flight),
             Mode::Native => self.start_native(entry, &state, ask, flight).await,
         }
+    }
+
+    /// Ask an app that runs to stop. Only an app built on `appkit-hub` can be stopped, and only by its own
+    /// program with the one argument `stop` (the app ends its own hub; the hub never reads its secret and
+    /// never kills a process of its own accord). The program is the one the detection found.
+    ///
+    /// # Errors
+    ///
+    /// [`LaunchError`]: nothing was done.
+    pub async fn stop(self: &Arc<Self>, id: &str) -> Result<Outcome, LaunchError> {
+        let entry = self.shown(id)?;
+        if !matches!(entry.native, Some(Native::AppKitHub { .. })) {
+            return Err(LaunchError::NotAvailable("stop"));
+        }
+        let Some(flight) = self.begin(entry.id) else {
+            return Ok(Outcome::Starting);
+        };
+        let state = self.detector.look_one(entry).await;
+        let program = state.native.clone().ok_or(LaunchError::NotInstalled)?;
+        if state.run != Some(Run::Running) {
+            return Ok(Outcome::NotRunning);
+        }
+        let cwd = program
+            .parent()
+            .ok_or_else(|| LaunchError::Failed("the program has no folder".to_owned()))?
+            .to_path_buf();
+        spawn(
+            &program,
+            &["stop"],
+            &LaunchOpts {
+                cwd: &cwd,
+                window: Window::Default,
+            },
+        )
+        .map_err(LaunchError::Failed)?;
+        self.wait_until_stopped(entry, flight);
+        Ok(Outcome::Stopping)
+    }
+
+    /// Until the app no longer answers (or the time is up); the next look then sees it.
+    fn wait_until_stopped(self: &Arc<Self>, entry: &'static Entry, flight: Flight) {
+        let this = Arc::clone(self);
+        tokio::spawn(async move {
+            let end = tokio::time::Instant::now() + this.cfg.ready_timeout;
+            while tokio::time::Instant::now() < end {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                if this.detector.look_one(entry).await.run != Some(Run::Running) {
+                    break;
+                }
+            }
+            drop(flight);
+        });
     }
 
     /// The web variant, served by the listener of the hub.

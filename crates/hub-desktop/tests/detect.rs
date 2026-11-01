@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use hub_desktop::catalog::{self, AI_PORT};
 use hub_desktop::config::Env;
 use hub_desktop::detect::{AppState, Detector, Run};
+use hub_desktop::overlay::Overlay;
 
 mod common;
 use common::*;
@@ -362,4 +363,33 @@ async fn an_answer_is_held_for_its_time_and_forgotten_on_request() {
     assert!(app(&third, "tasks").installed(), "looked at again");
     assert!(detector.app("tasks").await.is_some());
     assert!(detector.app("nope").await.is_none());
+}
+
+#[tokio::test]
+async fn an_app_the_overlay_hides_is_not_listed_and_the_others_follow_its_order() {
+    let machine = Machine::new("hub-detect-overlay");
+    let overlay = Overlay::parse(
+        r#"{"schema":"hub-catalog/1","hidden":["streamtap","ai"],"order":["testing","rules"]}"#,
+    )
+    .unwrap();
+    let detector = Detector::with_ttl(machine.env(&[]), None, Duration::ZERO).with_overlay(overlay);
+    let ids: Vec<&str> = detector.apps().await.iter().map(|a| a.entry.id).collect();
+    assert_eq!(ids, ["testing", "rules", "tasks", "docmap"]);
+    assert!(detector.hides("ai") && !detector.hides("tasks"));
+    assert!(detector.app("ai").await.is_none());
+}
+
+#[tokio::test]
+async fn only_a_running_hub_of_an_appkit_app_can_be_stopped() {
+    let machine = Machine::new("hub-detect-stoppable");
+    machine.tasks_program();
+    machine.program("Local/docmap-desktop/docmap-desktop.exe");
+    let port = fake_server(200, hello(None)).await;
+    let stoppable = |all: &[AppState], id: &str| app(all, id).view().stoppable;
+    let all = look(machine.env(&[]), None).await;
+    assert!(!stoppable(&all, "tasks"), "installed, not running");
+    write_hub_json(&machine.path("cfg-tasks"), port, "abc123");
+    let all = look(machine.env(&[]), None).await;
+    assert!(stoppable(&all, "tasks"));
+    assert!(!stoppable(&all, "docmap") && !stoppable(&all, "rules"));
 }

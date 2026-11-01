@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use appkit_testkit::wire::{request, send, Reply};
 use hub_desktop::detect::Detector;
+use hub_desktop::overlay::Overlay;
 use hub_desktop::webserve::{self, WebServer, CSP_STRICT, MAX_PAGE};
 
 mod common;
@@ -27,15 +28,22 @@ struct Setup {
 
 impl Setup {
     async fn new(name: &str, page: &str) -> Self {
+        Self::with_overlay(name, page, Overlay::default()).await
+    }
+
+    async fn with_overlay(name: &str, page: &str, overlay: Overlay) -> Self {
         let machine = Machine::new(name);
         let file = machine.path("Web/tasks-web/tasks.html");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(&file, page).unwrap();
-        let detector = Arc::new(Detector::with_ttl(
-            machine.env(&[]),
-            Some(machine.path("Web")),
-            Duration::from_secs(60),
-        ));
+        let detector = Arc::new(
+            Detector::with_ttl(
+                machine.env(&[]),
+                Some(machine.path("Web")),
+                Duration::from_secs(60),
+            )
+            .with_overlay(overlay),
+        );
         let server = webserve::start(0, detector).await.unwrap();
         Self { machine, server }
     }
@@ -338,5 +346,14 @@ async fn a_folder_that_becomes_a_link_out_of_the_root_after_the_first_request_is
     );
     let reply = setup.get("/tasks-web/tasks.html").await;
     assert_eq!(reply.status, 404, "{reply:?}");
+    setup.server.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_page_of_an_app_the_overlay_hides_is_not_served() {
+    let page = page_with(Some(PAGE_POLICY));
+    let overlay = Overlay::parse(r#"{"schema":"hub-catalog/1","hidden":["tasks"]}"#).unwrap();
+    let setup = Setup::with_overlay("hub-web-hidden", &page, overlay).await;
+    assert_eq!(setup.get("/tasks-web/tasks.html").await.status, 404);
     setup.server.shutdown().await;
 }

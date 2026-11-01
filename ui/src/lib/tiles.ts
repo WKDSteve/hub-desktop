@@ -40,6 +40,12 @@ export function hasMode(app: HubApp, mode: Mode): boolean {
   return mode === 'web' ? app.web : app.native;
 }
 
+/** Why a tile cannot be stopped, for the hint of the disabled entry. */
+export function stopReason(app: HubApp): string {
+  if (app.run === 'running') return `${app.name} cannot be stopped from here`;
+  return `${app.name} does not run`;
+}
+
 /** Why a mode is not there, for the hint of a disabled entry. */
 export function missingReason(app: HubApp, mode: Mode): string {
   return mode === 'web'

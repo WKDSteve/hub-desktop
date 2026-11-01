@@ -246,3 +246,38 @@ test('an empty machine shows empty areas in words and every app below', async ({
   await expect(page.getByText('No app is installed on this machine yet.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Install or download' }).getByRole('listitem')).toHaveCount(6);
 });
+
+test('a running app of the kit can be stopped from the menu, once, and the others cannot', async ({ page, hubOn }) => {
+  const hub = await hubOn({ ...FULL, tasksRunning: true });
+  await hub.open(page);
+  await expect(tile(page, 'tasks')).toContainText('Running');
+  await tile(page, 'tasks').focus();
+  await page.keyboard.press('Shift+Enter');
+  await page.getByRole('menuitem', { name: 'Stop' }).click();
+  await expect(page.getByRole('status')).toContainText('Stopping Tasks');
+  // The program of the app is asked with the one word, nothing else.
+  await until(() => hub.starts('tasks').length === 1, 'the program was asked to stop');
+  expect(hub.starts('tasks')).toEqual([['stop']]);
+  // An app that is not of the kit has no Stop to press.
+  await tile(page, 'docmap').focus();
+  await page.keyboard.press('Shift+Enter');
+  await expect(page.getByRole('menuitem', { name: 'Stop' })).toBeDisabled();
+});
+
+test('the overlay hides and orders tiles, and an app it hides is not there to start', async ({ page, hubOn }) => {
+  const hub = await hubOn({
+    ...FULL,
+    overlay: JSON.stringify({ schema: 'hub-catalog/1', hidden: ['docmap', 'streamtap'], order: ['ai', 'rules'] }),
+  });
+  await hub.open(page);
+  await expect(tile(page, 'docmap')).toHaveCount(0);
+  await expect(tile(page, 'streamtap')).toHaveCount(0);
+  const order = await page.locator('[data-tile]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset['tile']));
+  expect(order.slice(0, 3)).toEqual(['ai', 'rules', 'tasks']);
+});
+
+test('an overlay of a newer schema is ignored and the hub still runs', async ({ page, hubOn }) => {
+  const hub = await hubOn({ ...FULL, overlay: JSON.stringify({ schema: 'hub-catalog/2', hidden: ['tasks'] }) });
+  await hub.open(page);
+  await expect(tile(page, 'tasks')).toBeVisible();
+});

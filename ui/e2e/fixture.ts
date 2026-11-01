@@ -28,6 +28,10 @@ export interface Machine {
   ai: 'none' | 'stopped' | 'running' | 'busy';
   /** The page of testing-web is there (an app that is planned counts as installed then). */
   testingWeb: boolean;
+  /** The hub of tasks runs: `hub.json` in its config folder and a server that answers `hello` as that hub. */
+  tasksRunning?: boolean;
+  /** The text of `catalog-overlay.json` in the config folder of the hub. */
+  overlay?: string;
 }
 
 export const FULL: Machine = {
@@ -121,6 +125,21 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
     ai.push(server);
   }
 
+  const tasksHub: Server[] = [];
+  if (machine.tasksRunning) {
+    const tasksPort = await freePort();
+    const server = createHttp((_req, res) => {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ app: 'tasks-desktop', instance: 'e2e-instance', setup_required: false, setup_reason: null }));
+    });
+    await listen(server, tasksPort);
+    tasksHub.push(server);
+    mkdirSync(at('cfg-tasks'), { recursive: true });
+    writeFileSync(
+      at('cfg-tasks/hub.json'),
+      JSON.stringify({ app: 'tasks-desktop', port: tasksPort, pid: 4242, version: '0.0.0', instance: 'e2e-instance' }),
+    );
+  }
   const port = await freePort();
   const webPort = await freePort();
   const env: Record<string, string> = {
@@ -149,6 +168,7 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
   if (machine.tasks.vault) env['TASKS_VAULT'] = at('vault');
 
   mkdirSync(at('cfg-hub'), { recursive: true });
+  if (machine.overlay !== undefined) writeFileSync(at('cfg-hub/catalog-overlay.json'), machine.overlay);
   const child: ChildProcess = spawn(HUB, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '';
   child.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()));
@@ -199,7 +219,7 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
   const stop = async () => {
     child.kill();
     await new Promise<void>((r) => (child.exitCode !== null ? r() : child.once('exit', () => r())));
-    await Promise.all(ai.map((s) => new Promise<void>((r) => s.close(() => r()))));
+    await Promise.all([...ai, ...tasksHub].map((s) => new Promise<void>((r) => s.close(() => r()))));
     // The files of the fake programs may be held for a moment after the process ended.
     for (let i = 0; i < 20; i++) {
       try {

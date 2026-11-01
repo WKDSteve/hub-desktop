@@ -109,7 +109,12 @@ async fn apps(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
 
 /// The routes that change something (a `POST`, a session and a JSON body): `{id}` stands for an app. The
 /// tests ask each of them without a session, with a wrong content type and with a body that is not one.
-pub const MUTATION_ROUTES: [&str; 3] = ["apps/{id}/launch", "apps/{id}/mode", "rescan"];
+pub const MUTATION_ROUTES: [&str; 4] = [
+    "apps/{id}/launch",
+    "apps/{id}/mode",
+    "rescan",
+    "apps/{id}/stop",
+];
 
 /// What a click sends: a mode, or nothing (the default of the app). Nothing else is read.
 #[derive(Deserialize)]
@@ -151,6 +156,8 @@ async fn launch(
                 Outcome::Starting => "starting",
                 Outcome::Opened => "opened",
                 Outcome::SetupRequired => "setup_required",
+                Outcome::Stopping => "stopping",
+                Outcome::NotRunning => "not_running",
             }
         }))
         .into_response(),
@@ -184,6 +191,41 @@ async fn launch(
                 StatusCode::BAD_GATEWAY,
                 "start_failed",
                 "the app could not be started",
+            )
+        }
+    }
+}
+
+/// `POST /api/hub/apps/{id}/stop`: ask an app that runs to stop. The body is `{}`; nothing in it is read.
+async fn stop(
+    State(core): State<Arc<Core<HubRuntime>>>,
+    Path(id): Path<String>,
+    _body: Bytes,
+) -> Response {
+    let launcher = Arc::clone(core.rt().launcher());
+    match launcher.stop(&id).await {
+        Ok(Outcome::Stopping) => Json(json!({ "result": "stopping" })).into_response(),
+        Ok(Outcome::NotRunning) => Json(json!({ "result": "not_running" })).into_response(),
+        Ok(_) => Json(json!({ "result": "starting" })).into_response(),
+        Err(LaunchError::UnknownApp) => {
+            appkit_hub::error_body(StatusCode::NOT_FOUND, "not_found", "no such app")
+        }
+        Err(LaunchError::NotInstalled) => appkit_hub::error_body(
+            StatusCode::CONFLICT,
+            "not_installed",
+            "the app is not installed",
+        ),
+        Err(LaunchError::NotAvailable(_)) => appkit_hub::error_body(
+            StatusCode::CONFLICT,
+            "not_available",
+            "the hub cannot stop this app",
+        ),
+        Err(other) => {
+            eprintln!("stop {id}: {other:?}");
+            appkit_hub::error_body(
+                StatusCode::BAD_GATEWAY,
+                "stop_failed",
+                "the app could not be asked to stop",
             )
         }
     }
@@ -262,6 +304,10 @@ fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
         .route(
             &IDENTITY.route(MUTATION_ROUTES[2]),
             post(rescan).layer(DefaultBodyLimit::max(small)),
+        )
+        .route(
+            &IDENTITY.route(MUTATION_ROUTES[3]),
+            post(stop).layer(DefaultBodyLimit::max(small)),
         )
 }
 

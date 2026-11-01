@@ -24,6 +24,8 @@ export interface HubApp {
   run: Run | null;
   /** A short code (`no_vault`) of why the app cannot be used yet. */
   setup: string | null;
+  /** The app runs and is one the hub can ask to stop. */
+  stoppable: boolean;
   install: {
     hint: 'release' | 'clone' | 'planned' | 'build_yourself' | 'native_only';
     page: string | null;
@@ -42,6 +44,9 @@ export interface Apps {
 /** What a start came to: a program was started, a start is on its way, a page was opened, or the app needs setup. */
 export type LaunchResult = 'started' | 'starting' | 'opened' | 'setup_required';
 
+/** What a stop came to: the app was asked, it does not run, or another start or stop of it is on its way. */
+export type StopResult = 'stopping' | 'not_running' | 'starting';
+
 /** What a click asks for; `setup` is the first-start questions of an app. */
 export type LaunchAsk = Mode | 'setup';
 
@@ -54,6 +59,7 @@ export interface HubApi {
   apps(): Promise<Apps>;
   launch(id: string, ask?: LaunchAsk): Promise<LaunchResult>;
   setMode(id: string, mode: Mode | null): Promise<void>;
+  stop(id: string): Promise<StopResult>;
   rescan(): Promise<void>;
 }
 
@@ -72,6 +78,14 @@ export class Hub extends HubClient implements HubApi {
     const doc = await this.postJson<{ result?: unknown }>(this.route(`apps/${encodeURIComponent(id)}/launch`), body);
     const result = doc.result;
     if (result === 'started' || result === 'starting' || result === 'opened' || result === 'setup_required') return result;
+    throw new ApiError(502, 'bad_reply', 'unexpected answer');
+  }
+
+  /** Ask an app that runs to stop (its own program does it). The answer comes at once. */
+  async stop(id: string): Promise<StopResult> {
+    const doc = await this.postJson<{ result?: unknown }>(this.route(`apps/${encodeURIComponent(id)}/stop`), {});
+    const result = doc.result;
+    if (result === 'stopping' || result === 'not_running' || result === 'starting') return result;
     throw new ApiError(502, 'bad_reply', 'unexpected answer');
   }
 

@@ -228,6 +228,31 @@ export class App {
     }
   }
 
+  /** Ask an app that runs to stop; the tile says so until the list shows it stopped. */
+  async stop(app: HubApp): Promise<void> {
+    try {
+      const result = await this.hub.stop(app.id);
+      if (result === 'not_running') this.say('ok', `${app.name} is not running.`);
+      else if (result === 'starting') this.say('ok', `${app.name} is busy: a start or stop is on its way.`);
+      else {
+        this.say('ok', `Stopping ${app.name}…`);
+        void this.watchStop(app.id);
+      }
+    } catch (e) {
+      this.say('error', e instanceof ApiError && e.code === 'not_available' ? `${app.name} cannot be stopped from here.` : `${app.name} could not be asked to stop.`);
+    }
+  }
+
+  /** Read the list until the app no longer runs, or the time is up. */
+  async watchStop(id: string): Promise<void> {
+    const began = this.clock.now();
+    while (this.clock.now() - began < START_LIMIT_MS) {
+      await this.clock.sleep(1000);
+      await this.reload();
+      if (this.apps.find((a) => a.id === id)?.run !== 'running') break;
+    }
+  }
+
   /** Keep a mode as the one a click opens. */
   async makeDefault(app: HubApp, mode: Mode): Promise<void> {
     try {

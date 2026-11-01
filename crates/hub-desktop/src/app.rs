@@ -14,6 +14,7 @@ use crate::client;
 use crate::config::{self, Env};
 use crate::detect::Detector;
 use crate::launch::{Browser, LaunchConfig, Launcher};
+use crate::overlay::Overlay;
 use crate::prefs::Prefs;
 use crate::server::{self, ServerConfig};
 use crate::ui::UiFiles;
@@ -102,8 +103,22 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
         .iter()
         .filter_map(|(id, tile)| Some((id.clone(), config::mode_of(tile.mode.as_deref()?)?)))
         .collect();
-    let detector =
-        Arc::new(Detector::new(env.clone(), file.app.web_root.clone()).with_modes(chosen));
+    // The overlay is the person's file; one that cannot be used never stops the hub.
+    let overlay = Overlay::load(&dir).unwrap_or_else(|e| {
+        eprintln!("note: {e}; the hub runs without it");
+        Overlay::default()
+    });
+    // `config.json` names the folder first; the overlay only fills in when it does not.
+    let web_root = file
+        .app
+        .web_root
+        .clone()
+        .or_else(|| overlay.web_root.clone());
+    let detector = Arc::new(
+        Detector::new(env.clone(), web_root)
+            .with_modes(chosen)
+            .with_overlay(overlay),
+    );
     let prefs = Arc::new(Prefs::new(Some(dir.clone()), Arc::clone(&detector)));
     // The pages of the web variants have a listener (and an origin) of their own. When its port is taken
     // the hub runs without it: the apps start, the web mode says why it cannot.

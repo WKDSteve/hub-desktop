@@ -17,6 +17,7 @@ use tokio::time::Instant;
 
 use crate::catalog::{self, Entry, Hint, Mode, Native, Status, CATALOG};
 use crate::config::Env;
+use crate::overlay::Overlay;
 use crate::paths::{self, Candidate};
 use crate::probe::{self, Probe};
 
@@ -92,6 +93,8 @@ pub struct AppView {
     pub default_mode: &'static str,
     pub run: Option<Run>,
     pub setup: Option<String>,
+    /// The app runs and is one the hub can ask to stop (an app built on `appkit-hub`).
+    pub stoppable: bool,
     pub install: InstallView,
     pub repo: RepoView,
 }
@@ -167,6 +170,9 @@ impl AppState {
             default_mode: mode_word(self.mode()),
             run: self.run,
             setup: self.setup.clone(),
+            stoppable: self.run == Some(Run::Running)
+                && self.native.is_some()
+                && matches!(e.native, Some(Native::AppKitHub { .. })),
             install: install_view(e),
             repo: repo_view(e),
         }
@@ -181,6 +187,8 @@ pub struct Detector {
     ttl: Duration,
     /// The modes people chose, by app id (`config.json`, `tiles`).
     modes: RwLock<BTreeMap<String, Mode>>,
+    /// What the person hid and ordered (`catalog-overlay.json`).
+    overlay: Overlay,
     cache: Mutex<Option<(Instant, Arc<Vec<AppState>>)>>,
 }
 
@@ -197,6 +205,7 @@ impl Detector {
             web_root,
             ttl,
             modes: RwLock::new(BTreeMap::new()),
+            overlay: Overlay::default(),
             cache: Mutex::new(None),
         }
     }
@@ -208,6 +217,19 @@ impl Detector {
             *held = modes;
         }
         self
+    }
+
+    /// The overlay of the person: which apps are not shown, and in which order the others are.
+    #[must_use]
+    pub fn with_overlay(mut self, overlay: Overlay) -> Self {
+        self.overlay = overlay;
+        self
+    }
+
+    /// Whether the person hid the app: it is not listed, not started and its page is not served.
+    #[must_use]
+    pub fn hides(&self, id: &str) -> bool {
+        self.overlay.hides(id)
     }
 
     /// Choose (or, with `None`, forget) the mode a click opens for an app; the next look shows it.
@@ -269,6 +291,9 @@ impl Detector {
         let roots = web_roots(self.web_root.as_deref(), &self.env);
         let mut tasks = JoinSet::new();
         for (index, entry) in CATALOG.iter().enumerate() {
+            if self.overlay.hides(entry.id) {
+                continue;
+            }
             let env = Arc::clone(&self.env);
             let web = roots.clone();
             let chosen = self.chosen(entry.id);
@@ -285,7 +310,10 @@ impl Detector {
                 found[index] = Some(state);
             }
         }
-        found.into_iter().flatten().collect()
+        let mut apps: Vec<AppState> = found.into_iter().flatten().collect();
+        // Stable: the apps the person did not name stay in the order of the catalog, behind the named ones.
+        apps.sort_by_key(|a| self.overlay.rank(a.entry.id));
+        apps
     }
 }
 

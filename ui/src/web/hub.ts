@@ -2,7 +2,7 @@
 // look at (the page may not even know the kind of computer), so nothing is detected: a web app is a link to its page
 // next to this one, until the viewer says it is not there; a native app is listed as "native only".
 
-import type { Apps, Hello, HubApi, HubApp, LaunchAsk, LaunchResult, Mode } from '../lib/api';
+import type { Apps, Hello, HubApi, HubApp, LaunchAsk, LaunchResult, Mode, StopResult } from '../lib/api';
 import type { Presence } from '../lib/app.svelte';
 
 /** One entry of `catalog.json` (the rendering of `catalog.rs`, see `webcatalog.rs`). */
@@ -45,6 +45,7 @@ export function view(e: CatalogEntry, missing: ReadonlySet<string>): HubApp {
     default_mode: 'web' as Mode,
     run: null,
     setup: null,
+    stoppable: false,
     repo: e.repo,
   };
   if (e.web && e.status === 'available') {
@@ -109,6 +110,10 @@ export class WebHub implements HubApi, Presence {
   }
 
   async setMode(): Promise<void> {}
+
+  async stop(): Promise<StopResult> {
+    throw new Error('the web hub starts and stops nothing');
+  }
 
   async rescan(): Promise<void> {}
 

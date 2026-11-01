@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use hub_desktop::config::Env;
 use hub_desktop::detect::Detector;
 use hub_desktop::launch::{Browser, LaunchConfig, LaunchError, Launcher, Outcome, Request};
+use hub_desktop::overlay::Overlay;
 
 mod common;
 use common::*;
@@ -435,4 +436,84 @@ fn the_browser_opens_only_loopback_pages_of_the_ports_it_was_given() {
         opened(&log),
         ["http://127.0.0.1:17611/tasks-web/tasks.html"]
     );
+}
+
+/// A stop is the program of the app asked with the one word `stop`, and only for an app that runs.
+#[tokio::test]
+async fn a_running_hub_is_asked_to_stop_with_stop_and_nothing_else() {
+    let machine = Machine::new("hub-launch-stop");
+    let program = machine.tasks_program();
+    let port = fake_server(200, hello(None)).await;
+    write_hub_json(&machine.path("cfg-tasks"), port, "abc123");
+    let (launcher, _) = launcher(&machine, vault_env(&machine), None, None);
+    assert_eq!(launcher.stop("tasks").await, Ok(Outcome::Stopping));
+    wait_for_starts(&program, 1);
+    assert_eq!(argv(&starts_of(&program)[0]), ["stop"]);
+}
+
+#[tokio::test]
+async fn an_app_that_does_not_run_is_not_asked_to_stop() {
+    let machine = Machine::new("hub-launch-stop-idle");
+    let program = machine.tasks_program();
+    let (launcher, _) = launcher(&machine, vault_env(&machine), None, None);
+    assert_eq!(launcher.stop("tasks").await, Ok(Outcome::NotRunning));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(starts_of(&program).is_empty());
+}
+
+#[tokio::test]
+async fn only_an_appkit_app_that_is_there_can_be_stopped() {
+    let machine = Machine::new("hub-launch-stop-kinds");
+    let docmap = machine.program("Local/docmap-desktop/docmap-desktop.exe");
+    let (launcher, _) = launcher(&machine, vault_env(&machine), None, None);
+    assert_eq!(launcher.stop("nope").await, Err(LaunchError::UnknownApp));
+    assert_eq!(launcher.stop("rules").await, Err(LaunchError::NotInstalled));
+    assert_eq!(
+        launcher.stop("docmap").await,
+        Err(LaunchError::NotAvailable("stop"))
+    );
+    assert_eq!(
+        launcher.stop("streamtap").await,
+        Err(LaunchError::NotAvailable("stop"))
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(starts_of(&docmap).is_empty());
+}
+
+#[tokio::test]
+async fn a_second_stop_while_one_is_on_its_way_does_nothing_more() {
+    let machine = Machine::new("hub-launch-stop-twice");
+    let program = machine.tasks_program();
+    let port = fake_server(200, hello(None)).await;
+    write_hub_json(&machine.path("cfg-tasks"), port, "abc123");
+    let (launcher, _) = launcher(&machine, vault_env(&machine), None, None);
+    assert_eq!(launcher.stop("tasks").await, Ok(Outcome::Stopping));
+    assert_eq!(launcher.stop("tasks").await, Ok(Outcome::Starting));
+    wait_for_starts(&program, 1);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(starts_of(&program).len(), 1);
+}
+
+/// A hidden app is not there for the hub: not started, not stopped.
+#[tokio::test]
+async fn an_app_the_overlay_hides_cannot_be_started_or_stopped() {
+    let machine = Machine::new("hub-launch-hidden");
+    let program = machine.tasks_program();
+    let port = fake_server(200, hello(None)).await;
+    write_hub_json(&machine.path("cfg-tasks"), port, "abc123");
+    let overlay = Overlay::parse(r#"{"schema":"hub-catalog/1","hidden":["tasks"]}"#).unwrap();
+    let detector = Arc::new(
+        Detector::with_ttl(vault_env(&machine), None, Duration::ZERO).with_overlay(overlay),
+    );
+    let launcher = Arc::new(Launcher::new(
+        detector,
+        LaunchConfig::new(None, Browser::Log(machine.path("browser.log"))),
+    ));
+    assert_eq!(
+        launcher.launch("tasks", Request::Default).await,
+        Err(LaunchError::UnknownApp)
+    );
+    assert_eq!(launcher.stop("tasks").await, Err(LaunchError::UnknownApp));
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(starts_of(&program).is_empty());
 }

@@ -354,3 +354,36 @@ async fn a_rescan_is_a_post_with_a_session_and_answers_ok() {
     assert_eq!(reply.json()["result"], "ok");
     hub.server.shutdown().await;
 }
+
+#[tokio::test]
+async fn the_stop_route_asks_a_running_app_once_and_says_so_when_it_does_not_run() {
+    let hub = Hub::new("hub-route-stop", &[]).await;
+    let program = hub.machine.tasks_program();
+    let idle = hub.post("/api/hub/apps/tasks/stop", "{}").await;
+    assert_eq!(idle.status, 200, "{idle:?}");
+    assert_eq!(idle.json()["result"], "not_running");
+    let port = fake_server(200, hello(None)).await;
+    write_hub_json(&hub.machine.path("cfg-tasks"), port, "abc123");
+    let first = hub.post("/api/hub/apps/tasks/stop", "{}").await;
+    assert_eq!(first.json()["result"], "stopping");
+    let second = hub.post("/api/hub/apps/tasks/stop", "{}").await;
+    assert_eq!(second.json()["result"], "starting");
+    let end = std::time::Instant::now() + Duration::from_secs(15);
+    while starts_of(&program).is_empty() && std::time::Instant::now() < end {
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let starts = starts_of(&program);
+    assert_eq!(starts.len(), 1);
+    assert_eq!(starts[0]["argv"], serde_json::json!(["stop"]));
+    for (id, status, code) in [
+        ("nope", 404, "not_found"),
+        ("docmap", 409, "not_available"),
+        ("rules", 409, "not_installed"),
+    ] {
+        let reply = hub.post(&format!("/api/hub/apps/{id}/stop"), "{}").await;
+        assert_eq!(reply.status, status, "{id}: {reply:?}");
+        assert_eq!(reply.json()["error"]["code"], code);
+    }
+    hub.server.shutdown().await;
+}

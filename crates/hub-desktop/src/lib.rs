@@ -10,6 +10,7 @@ pub mod catalog;
 pub mod config;
 pub mod detect;
 pub mod launch;
+pub mod overlay;
 pub mod paths;
 pub mod prefs;
 pub mod probe;

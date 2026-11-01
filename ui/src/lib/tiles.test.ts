@@ -13,6 +13,7 @@ const base: HubApp = {
   default_mode: 'native',
   run: 'stopped',
   setup: null,
+  stoppable: false,
   install: { hint: 'release', page: 'https://github.com/x/y/releases/latest', file: 'x.exe' },
   repo: { owner: 'x', name: 'y', private: false },
 };

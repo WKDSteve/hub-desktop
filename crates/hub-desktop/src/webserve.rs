@@ -176,8 +176,9 @@ async fn answer(shared: &Shared, method: &Method, headers: &HeaderMap, uri: &Uri
     let path = uri.path();
     // The page of an app of the catalog, by exactly this path.
     let Some(entry) = CATALOG.iter().find(|e| {
-        e.web
-            .is_some_and(|w| path == format!("/{}/{}", w.repo_dir, w.entry))
+        !shared.detector.hides(e.id)
+            && e.web
+                .is_some_and(|w| path == format!("/{}/{}", w.repo_dir, w.entry))
     }) else {
         return refuse(StatusCode::NOT_FOUND);
     };

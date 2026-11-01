@@ -5,7 +5,7 @@
   import Toast from 'appkit-ui/Toast.svelte';
   import { ContextRegistry } from 'appkit-ui/contextmenu';
   import type { App } from './lib/app.svelte';
-  import { areas, hasMenu, hasMode, missingReason, moveFocus, otherMode } from './lib/tiles';
+  import { areas, hasMenu, hasMode, missingReason, moveFocus, otherMode, stopReason } from './lib/tiles';
   import Tile from './Tile.svelte';
 
   let { app, code }: { app: App; code: string | null } = $props();
@@ -40,6 +40,13 @@
     const hint = there ? undefined : missingReason(tile, other);
     const as = other === 'web' ? 'web app' : 'native app';
     return [
+      {
+        kind: 'action',
+        label: 'Stop',
+        disabled: !tile.stoppable,
+        hint: tile.stoppable ? undefined : stopReason(tile),
+        onselect: () => void app.stop(tile),
+      },
       {
         kind: 'action',
         label: other === 'web' ? 'Open as web app' : 'Open natively',
