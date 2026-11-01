@@ -18,6 +18,7 @@ cargo build --locked
 cargo fmt --all --check && cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo build --workspace --locked && (cd ui && pnpm e2e)   # echtes Binary + fake-app, Chrome, axe hell/dunkel
+cd ui && pnpm web:test && pnpm web:build && pnpm web:e2e   # hub.html (Web-Hub), von der Platte in Chrome
 python tools/check-control-chars.py
 python tools/check-color-literals.py      # keine Farbe außerhalb der Tokens von appkit-ui
 python tools/check-appkit-pin.py
@@ -77,6 +78,15 @@ python tools/check-lock-age.py --min-days 7
 - Tests starten Programme nur über `crates/fake-app` (schreibt argv und cwd in `fake-app.log` neben sich); der Browser ist
   im Test eine Datei (`Browser::Log`, im Binary `HUB_DESKTOP_BROWSER_LOG`). `HUB_DESKTOP_WEB_PORT` setzt den Port des
   Web-Listeners (Tests nie auf 17611).
+
+## Web-Hub (`hub.html`, M1W)
+
+- Dieselbe Oberfläche als eine HTML-Datei (`ui/index.web.html`, `src/main.web.ts`, `vite build --mode web`, gepackt von
+  `ui/web/pack.mjs` mit `CSP_STRICT`). `src/web/hub.ts` (`WebHub`) beantwortet die Aufrufe des Hubs in der Seite: keine
+  Erkennung, Web-Einträge sind Links `../<dir>/<datei>`, Programme "Native only", "fehlt" ist eine Markierung des
+  Betrachters (IndexedDB `hub-web`). Veröffentlicht wird nach `WKDSteve/hub-web` (`web.yml`, auf einem Tag).
+- `ui/src/web/catalog.json` ist die Wiedergabe von `catalog.rs` (`webcatalog.rs`); ein Test hält sie gleich. Nach einer
+  Änderung am Katalog: `UPDATE_WEB_CATALOG=1 cargo test -p hub-desktop web_catalog`.
 
 ## Svelte 5 und Browser-Tests
 

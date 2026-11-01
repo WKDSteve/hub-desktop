@@ -2,7 +2,7 @@
 // one-line message of the last click.
 
 import type { ToastMessage } from 'appkit-ui/toast';
-import { ApiError, type Apps, type Hello, type HubApp, type Hub, type LaunchAsk, type Mode } from './api';
+import { ApiError, type Apps, type Hello, type HubApp, type HubApi, type LaunchAsk, type Mode } from './api';
 
 /** `starting`: the code is traded. `unpaired`: no session and no code (open the link of `hub-desktop open`). */
 export type Phase = 'starting' | 'ready' | 'unpaired' | 'error';
@@ -30,6 +30,11 @@ export const realClock: Clock = {
     return () => clearTimeout(timer);
   },
 };
+
+/** The viewer's word about an app of the web hub (the page cannot look at the machine). */
+export interface Presence {
+  mark(id: string, missing: boolean): Promise<void>;
+}
 
 const TOKEN_KEY = 'hub-desktop.session';
 
@@ -85,9 +90,11 @@ export class App {
   #cancelToast: (() => void) | null = null;
 
   constructor(
-    private readonly hub: Hub,
+    private readonly hub: HubApi,
     private readonly session: TokenStore,
     private readonly clock: Clock = realClock,
+    /** What only the web hub can do: keep the word of the viewer that an app is not on this machine. */
+    readonly presence: Presence | null = null,
   ) {
     // The session that was refused is gone: the page asks for a new link instead of showing stale data.
     hub.onUnauthorized = () => {
@@ -144,9 +151,26 @@ export class App {
     }
   }
 
+  /** The web hub has no machine to look at again. */
+  get canRescan(): boolean {
+    return this.presence === null;
+  }
+
+  /** Say an app is (not) on this machine; the list is read again. */
+  async mark(app: HubApp, missing: boolean): Promise<void> {
+    if (!this.presence) return;
+    try {
+      await this.presence.mark(app.id, missing);
+      this.apps = (await this.hub.apps()).apps;
+      this.say('ok', missing ? `${app.name} is marked as not present.` : `${app.name} is marked as present.`);
+    } catch {
+      this.say('error', 'The mark could not be kept.');
+    }
+  }
+
   /** Ask the hub to look at the machine again, then read the list. */
   async rescan(): Promise<void> {
-    if (this.phase !== 'ready') return;
+    if (this.phase !== 'ready' || !this.canRescan) return;
     try {
       await this.hub.rescan();
       this.apps = (await this.hub.apps()).apps;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HubApp } from './api';
-import { areas, getting, hasMode, moveFocus, otherMode, stateOf, type Box } from './tiles';
+import { areas, getting, hasMenu, hasMode, moveFocus, otherMode, stateOf, type Box } from './tiles';
 
 const base: HubApp = {
   id: 'tasks',
@@ -69,13 +69,30 @@ describe('modes', () => {
 
 describe('getting', () => {
   it('links only what has a page, and names what is planned or built by hand', () => {
-    expect(getting(app({}))).toEqual({ badge: 'Download', linked: true });
-    expect(getting(app({ install: { hint: 'planned', page: null, file: null } }))).toEqual({ badge: 'Planned', linked: false });
+    expect(getting(app({}))).toEqual({ badge: 'Download', linked: true, note: null });
+    expect(getting(app({ install: { hint: 'planned', page: null, file: null } }))).toEqual({ badge: 'Planned', linked: false, note: null });
     expect(getting(app({ install: { hint: 'build_yourself', page: null, file: null } }))).toEqual({
       badge: 'Build it yourself',
       linked: false,
+      note: null,
     });
     expect(getting(app({ install: { hint: 'release', page: null, file: null } })).linked).toBe(false);
+  });
+
+  it('says that a native app is not startable in the web hub, and what the viewer marked', () => {
+    const native = getting(app({ install: { hint: 'native_only', page: null, file: null } }));
+    expect(native).toEqual({ badge: 'Native only', linked: false, note: 'Not startable in the web hub' });
+    const gone = getting(app({ missing: true, install: { hint: 'clone', page: 'https://github.com/x/y-web', file: null } }));
+    expect(gone).toEqual({ badge: 'Clone the web variant', linked: true, note: 'Marked as not present' });
+  });
+});
+
+describe('hasMenu', () => {
+  it('is for an installed app, a link of the web hub and an app the viewer marked', () => {
+    expect(hasMenu(app({}))).toBe(true);
+    expect(hasMenu(app({ installed: false }))).toBe(false);
+    expect(hasMenu(app({ installed: true, href: '../tasks-web/tasks.html' }))).toBe(true);
+    expect(hasMenu(app({ installed: false, missing: true }))).toBe(true);
   });
 });
 

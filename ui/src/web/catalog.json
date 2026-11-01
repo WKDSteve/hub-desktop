@@ -1,0 +1,116 @@
+[
+  {
+    "id": "tasks",
+    "name": "Tasks",
+    "summary": "The task overview of tasks.nvim",
+    "status": "available",
+    "native": true,
+    "web": {
+      "dir": "tasks-web",
+      "entry": "tasks.html"
+    },
+    "install": {
+      "hint": "release",
+      "page": "https://github.com/WKDSteve/tasks-desktop/releases/tag/latest",
+      "file": "tasks-hub-windows-x86_64.exe"
+    },
+    "repo": {
+      "owner": "WKDSteve",
+      "name": "tasks-desktop",
+      "private": false
+    }
+  },
+  {
+    "id": "rules",
+    "name": "Rules",
+    "summary": "The rule sets of rules.nvim",
+    "status": "available",
+    "native": true,
+    "web": null,
+    "install": {
+      "hint": "release",
+      "page": "https://github.com/WKDSteve/rules-desktop/releases/tag/latest",
+      "file": "rules-hub-windows-x86_64.exe"
+    },
+    "repo": {
+      "owner": "WKDSteve",
+      "name": "rules-desktop",
+      "private": false
+    }
+  },
+  {
+    "id": "docmap",
+    "name": "Docmap",
+    "summary": "The map of the documents of a project",
+    "status": "available",
+    "native": true,
+    "web": null,
+    "install": {
+      "hint": "release",
+      "page": "https://github.com/WKDSteve/docmap-desktop/releases/latest",
+      "file": "docmap-desktop-windows-x86_64-setup.exe"
+    },
+    "repo": {
+      "owner": "WKDSteve",
+      "name": "docmap-desktop",
+      "private": true
+    }
+  },
+  {
+    "id": "ai",
+    "name": "AI Desktop",
+    "summary": "The local AI workbench with its dashboard",
+    "status": "available",
+    "native": true,
+    "web": null,
+    "install": {
+      "hint": "release",
+      "page": "https://github.com/WKDSteve/ai-desktop/releases/latest",
+      "file": "ai-desktop-setup-x64.exe"
+    },
+    "repo": {
+      "owner": "WKDSteve",
+      "name": "ai-desktop",
+      "private": true
+    }
+  },
+  {
+    "id": "testing",
+    "name": "Testing",
+    "summary": "The test runs of testing.nvim",
+    "status": "planned",
+    "native": false,
+    "web": {
+      "dir": "testing-web",
+      "entry": "testing.html"
+    },
+    "install": {
+      "hint": "planned",
+      "page": null,
+      "file": null
+    },
+    "repo": {
+      "owner": "WKDSteve",
+      "name": "testing-web",
+      "private": false
+    }
+  },
+  {
+    "id": "streamtap",
+    "name": "streamtap",
+    "summary": "Taps a stream into a file",
+    "status": "build_only",
+    "native": false,
+    "web": null,
+    "install": {
+      "hint": "build_yourself",
+      "page": null,
+      "file": null
+    },
+    "repo": {
+      "owner": "WKDSteve",
+      "name": "streamtap",
+      "private": true
+    }
+  }
+]

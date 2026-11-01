@@ -54,3 +54,11 @@ change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --loc
 ## License
 
 [MIT](LICENSE)
+
+## Web hub (for machines that may not run programs)
+
+`hub.html` is the same page as one file that is opened from disk: no program, no server. It lists the web variants
+(`tasks-web`, ...) as links to the page next to it, so clone the `*-web` repositories side by side in one folder. A
+program is shown as "native only". The page cannot look at your machine: an app that is not there is one you mark
+yourself ("Mark as not present" in the menu of the tile). Build it with `cd ui && pnpm web:build`
+(`ui/dist-web/hub.html`).

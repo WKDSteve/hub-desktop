@@ -24,8 +24,15 @@ export interface HubApp {
   run: Run | null;
   /** A short code (`no_vault`) of why the app cannot be used yet. */
   setup: string | null;
-  install: { hint: 'release' | 'clone' | 'planned' | 'build_yourself'; page: string | null; file: string | null };
+  install: {
+    hint: 'release' | 'clone' | 'planned' | 'build_yourself' | 'native_only';
+    page: string | null;
+    file: string | null;
+  };
   repo: { owner: string; name: string; private: boolean };
+  /** Only the web hub: the relative link to the page of the web variant, and whether the viewer said it is not there. */
+  href?: string | null;
+  missing?: boolean;
 }
 
 export interface Apps {
@@ -38,7 +45,19 @@ export type LaunchResult = 'started' | 'starting' | 'opened' | 'setup_required';
 /** What a click asks for; `setup` is the first-start questions of an app. */
 export type LaunchAsk = Mode | 'setup';
 
-export class Hub extends HubClient {
+/** What the page asks of its hub: the real one (over HTTP) or the one of `hub.html` (in the page). */
+export interface HubApi {
+  onUnauthorized: () => void;
+  setToken(token: string | null): void;
+  exchange(code: string): Promise<string>;
+  hello(): Promise<Hello>;
+  apps(): Promise<Apps>;
+  launch(id: string, ask?: LaunchAsk): Promise<LaunchResult>;
+  setMode(id: string, mode: Mode | null): Promise<void>;
+  rescan(): Promise<void>;
+}
+
+export class Hub extends HubClient implements HubApi {
   constructor(fetchFn: typeof fetch, base = '') {
     super(fetchFn, '/api/hub', base);
   }

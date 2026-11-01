@@ -117,6 +117,41 @@ fn mode_word(mode: Mode) -> &'static str {
     }
 }
 
+/// The word the page gets for how far an app is.
+#[must_use]
+pub fn status_word(status: Status) -> &'static str {
+    match status {
+        Status::Available => "available",
+        Status::Planned => "planned",
+        Status::BuildOnly => "build_only",
+    }
+}
+
+/// The way to get an app, as the page gets it.
+#[must_use]
+pub fn install_view(entry: &Entry) -> InstallView {
+    InstallView {
+        hint: match entry.install.hint {
+            Hint::Release => "release",
+            Hint::Clone => "clone",
+            Hint::Planned => "planned",
+            Hint::BuildYourself => "build_yourself",
+        },
+        page: entry.install.page,
+        file: entry.install.file,
+    }
+}
+
+/// Where the code of an app is, as the page gets it.
+#[must_use]
+pub fn repo_view(entry: &Entry) -> RepoView {
+    RepoView {
+        owner: entry.repo.owner,
+        name: entry.repo.name,
+        private: entry.repo.visibility == catalog::Visibility::Private,
+    }
+}
+
 impl AppState {
     #[must_use]
     pub fn view(&self) -> AppView {
@@ -125,32 +160,15 @@ impl AppState {
             id: e.id,
             name: e.name,
             summary: e.summary,
-            status: match e.status {
-                Status::Available => "available",
-                Status::Planned => "planned",
-                Status::BuildOnly => "build_only",
-            },
+            status: status_word(e.status),
             installed: self.installed(),
             native: self.native.is_some(),
             web: self.web.is_some(),
             default_mode: mode_word(self.mode()),
             run: self.run,
             setup: self.setup.clone(),
-            install: InstallView {
-                hint: match e.install.hint {
-                    Hint::Release => "release",
-                    Hint::Clone => "clone",
-                    Hint::Planned => "planned",
-                    Hint::BuildYourself => "build_yourself",
-                },
-                page: e.install.page,
-                file: e.install.file,
-            },
-            repo: RepoView {
-                owner: e.repo.owner,
-                name: e.repo.name,
-                private: e.repo.visibility == catalog::Visibility::Private,
-            },
+            install: install_view(e),
+            repo: repo_view(e),
         }
     }
 }

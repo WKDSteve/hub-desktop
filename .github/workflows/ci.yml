@@ -74,6 +74,14 @@ jobs:
       - name: Browser tests (Playwright, axe)
         working-directory: ui
         run: pnpm e2e
+      # The web variant (hub.html): the file is built, then opened from disk in Chrome with the requests counted
+      # (ui/e2e-web/); nothing of it is published here (web.yml does that on a tag).
+      - name: Web variant (one file, from disk)
+        working-directory: ui
+        run: |
+          pnpm web:test
+          pnpm web:build
+          pnpm web:e2e
       # A failed browser test leaves its trace (network, DOM, console) to read instead of a guess.
       - name: Traces of failed browser tests
         if: failure()

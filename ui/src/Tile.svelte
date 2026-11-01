@@ -4,7 +4,7 @@
   // machine: the same tile quieter, as a link to the page where the app is to be had, or a badge when there is none.
   import { contextTarget } from 'appkit-ui/contextmenu';
   import type { HubApp } from './lib/api';
-  import { getting, modeName, stateOf } from './lib/tiles';
+  import { getting, hasMenu, modeName, stateOf } from './lib/tiles';
 
   let {
     app,
@@ -30,8 +30,34 @@
   const initial = $derived(app.name.slice(0, 1).toUpperCase());
 </script>
 
-<li class="tile" class:dim={!app.installed} use:contextTarget={app.installed ? { kind: 'tile', id: app.id } : undefined}>
-  {#if app.installed}
+<li class="tile" class:dim={!app.installed} use:contextTarget={hasMenu(app) ? { kind: 'tile', id: app.id } : undefined}>
+  {#if app.installed && app.href}
+    <!-- The web hub: the page of the web variant is one link away (same file:// origin), so a click is a navigation. -->
+    <a
+      class="main"
+      data-tile={app.id}
+      href={app.href}
+      target="_blank"
+      rel="noopener"
+      tabindex={tab ? 0 : -1}
+      onfocus={onfocus}
+    >
+      <span class="icon" aria-hidden="true">{initial}</span>
+      <span class="name">{app.name}</span>
+      <span class="line">
+        <span class="note">Not checked</span>
+        <span class="chip">web</span>
+      </span>
+    </a>
+    <button
+      type="button"
+      class="more"
+      tabindex="-1"
+      aria-haspopup="menu"
+      aria-label={`More about ${app.name}`}
+      onclick={onmore}>▾</button
+    >
+  {:else if app.installed}
     <button
       type="button"
       class="main"
@@ -73,14 +99,36 @@
       <span class="icon" aria-hidden="true">{initial}</span>
       <span class="name">{app.name}</span>
       <span class="line"><span class="badge">{get.badge}</span></span>
+      {#if get.note}<span class="file">{get.note}</span>{/if}
       {#if app.install.file}<span class="file">{app.install.file}</span>{/if}
     </a>
+    {#if hasMenu(app)}
+      <button
+        type="button"
+        class="more"
+        tabindex="-1"
+        aria-haspopup="menu"
+        aria-label={`More about ${app.name}`}
+        onclick={onmore}>▾</button
+      >
+    {/if}
   {:else}
     <button type="button" class="main" data-tile={app.id} tabindex={tab ? 0 : -1} aria-disabled="true" onfocus={onfocus}>
       <span class="icon" aria-hidden="true">{initial}</span>
       <span class="name">{app.name}</span>
       <span class="line"><span class="badge">{get.badge}</span></span>
+      {#if get.note}<span class="file">{get.note}</span>{/if}
     </button>
+    {#if hasMenu(app)}
+      <button
+        type="button"
+        class="more"
+        tabindex="-1"
+        aria-haspopup="menu"
+        aria-label={`More about ${app.name}`}
+        onclick={onmore}>▾</button
+      >
+    {/if}
   {/if}
 </li>
 
@@ -174,6 +222,9 @@
     .state.starting .dot {
       animation: none;
     }
+  }
+  .note {
+    color: var(--muted);
   }
   .chip,
   .badge {

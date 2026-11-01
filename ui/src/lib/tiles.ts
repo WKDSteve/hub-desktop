@@ -48,16 +48,19 @@ export function missingReason(app: HubApp, mode: Mode): string {
 }
 
 /** What a tile of the second area says: the badge, and whether it is a link to the page to get the app. */
-export function getting(app: HubApp): { badge: string; linked: boolean } {
+export function getting(app: HubApp): { badge: string; linked: boolean; note: string | null } {
+  const plain = (badge: string, linked: boolean, note: string | null = null) => ({ badge, linked, note });
   switch (app.install.hint) {
+    case 'native_only':
+      return plain('Native only', false, 'Not startable in the web hub');
     case 'planned':
-      return { badge: 'Planned', linked: false };
+      return plain('Planned', false);
     case 'build_yourself':
-      return { badge: 'Build it yourself', linked: false };
+      return plain('Build it yourself', false);
     case 'clone':
-      return { badge: 'Clone the web variant', linked: app.install.page !== null };
+      return plain('Clone the web variant', app.install.page !== null, app.missing ? 'Marked as not present' : null);
     default:
-      return { badge: 'Download', linked: app.install.page !== null };
+      return plain('Download', app.install.page !== null);
   }
 }
 
@@ -107,3 +110,6 @@ export function moveFocus(boxes: readonly Box[], from: number, key: string): num
       return null;
   }
 }
+
+/** Whether a tile has the second action (its menu): an app on the machine, or one the viewer may mark in the web hub. */
+export const hasMenu = (app: HubApp): boolean => app.installed || (app.href !== undefined && app.href !== null) || app.missing === true;

@@ -15,6 +15,7 @@ pub mod prefs;
 pub mod probe;
 pub mod server;
 pub mod ui;
+pub mod webcatalog;
 pub mod webserve;
 
 pub use appkit_hub::client;

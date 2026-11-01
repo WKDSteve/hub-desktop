@@ -1,0 +1,77 @@
+# The web variant: builds the page as one file (ui/dist-web/hub.html), tests it, and puts it into the repository
+# WKDSteve/hub-web, from which it is opened on a machine that may not install anything:
+#
+#   git clone https://github.com/WKDSteve/hub-web   (git pull for a newer one)
+#   open file:///C:/repos/hub-web/hub.html          (a local file: no server, no hosting)
+#
+# Runs on a tag (v*) and by hand. Like ci.yml it runs on the maintainer's self-hosted Windows runner, whose git
+# credentials push to hub-web: there is no deploy key and no secret in this workflow, and a workflow that anybody
+# else could trigger would have the maintainer's rights, which is why it has no `pull_request` trigger and no
+# `workflow_run`. The repository hub-web must exist (public, empty) before the first run.
+
+name: web
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}
+
+jobs:
+  publish:
+    runs-on: [self-hosted, windows]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0 (node24)
+        with:
+          persist-credentials: false
+      - name: Install
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+      - name: Tests of the page's parts
+        working-directory: ui
+        run: pnpm web:test
+      - name: Build the page
+        working-directory: ui
+        env:
+          WEB_BUILD: ${{ github.ref_name }}
+        run: pnpm web:build
+      # The built file itself, from disk, in Chrome: what is published is what was tested.
+      - name: Open the file from disk in Chrome
+        working-directory: ui
+        run: pnpm web:e2e
+      - name: Traces of failed browser tests
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1 (node24)
+        with:
+          name: playwright-traces
+          path: ui/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+      # hub-web holds nothing but the built page and its sum. A page that did not change is not committed again.
+      - name: Publish to hub-web
+        run: |
+          sha="$(git rev-parse --short HEAD)"
+          publish="$RUNNER_TEMP/hub-web"
+          rm -rf "$publish"
+          git clone --quiet https://github.com/WKDSteve/hub-web "$publish"
+          cp ui/dist-web/hub.html "$publish/hub.html"
+          cd "$publish"
+          sha256sum hub.html > SHA256SUMS
+          git add hub.html SHA256SUMS
+          if git diff --cached --quiet; then
+            echo "hub.html is the same as the published one"
+          else
+            git commit --quiet -m "hub.html, built from hub-desktop@$sha (${{ github.ref_name }})"
+            git push --quiet origin HEAD
+          fi

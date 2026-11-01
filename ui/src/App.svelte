@@ -5,7 +5,7 @@
   import Toast from 'appkit-ui/Toast.svelte';
   import { ContextRegistry } from 'appkit-ui/contextmenu';
   import type { App } from './lib/app.svelte';
-  import { areas, hasMode, missingReason, moveFocus, otherMode } from './lib/tiles';
+  import { areas, hasMenu, hasMode, missingReason, moveFocus, otherMode } from './lib/tiles';
   import Tile from './Tile.svelte';
 
   let { app, code }: { app: App; code: string | null } = $props();
@@ -25,6 +25,16 @@
   registry.provide('tile', (target) => {
     const tile = app.apps.find((a) => a.id === target.id);
     if (!tile) return undefined;
+    // The web hub cannot look at a machine: the one thing a viewer can do is say whether the page is there.
+    if (tile.href !== undefined || tile.missing) {
+      return [
+        {
+          kind: 'action',
+          label: tile.missing ? 'Mark as present' : 'Mark as not present',
+          onselect: () => void app.mark(tile, !tile.missing),
+        },
+      ];
+    }
     const other = otherMode(tile);
     const there = hasMode(tile, other);
     const hint = there ? undefined : missingReason(tile, other);
@@ -114,7 +124,8 @@
     if (event.key === 'Enter' && event.shiftKey) {
       // The second action: the menu, from the keyboard (an installed tile has one).
       event.preventDefault();
-      if (app.apps.find((a) => a.id === id)?.installed) openMenu(id);
+      const tile = app.apps.find((a) => a.id === id);
+      if (tile && hasMenu(tile)) openMenu(id);
       return;
     }
     const list = mains();
@@ -147,7 +158,9 @@
     <span class="sr-only">Filter the apps</span>
     <input bind:this={filterBox} type="search" placeholder="Filter  (/)" aria-keyshortcuts="/" bind:value={app.filter} />
   </label>
-  <button type="button" class="tool" aria-keyshortcuts="r" onclick={() => void app.rescan()}>Look again</button>
+  {#if app.canRescan}
+    <button type="button" class="tool" aria-keyshortcuts="r" onclick={() => void app.rescan()}>Look again</button>
+  {/if}
   {#if app.version}<span class="version">{app.version}</span>{/if}
 </header>
 
@@ -197,7 +210,7 @@
                 failed={undefined}
                 tab={tabId === tile.id}
                 onlaunch={() => undefined}
-                onmore={() => undefined}
+                onmore={() => openMenu(tile.id)}
                 onfocus={() => (focused = tile.id)}
               />
             {/each}
