@@ -366,6 +366,7 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
             instance: cfg.instance,
             app: IDENTITY.app,
             version: crate::VERSION,
+            build_id: crate::BUILD,
             // `hello` needs no session; no route of the hub is coarse (rate limited on its own) yet.
             guard_rules: GuardRules::new(IDENTITY.route("hello"), Vec::<String>::new()),
             ui: cfg.ui,
