@@ -61,6 +61,10 @@ class Folder(unittest.TestCase):
         self.write({})
         (self.folder / "SOURCES.json").write_text('{"schema": 2, "icons": {}}', encoding="utf-8")
         self.assertIn("schema", sync.problems(self.folder)[0])
+        (self.folder / "SOURCES.json").write_text("[]", encoding="utf-8")
+        self.assertIn("schema", sync.problems(self.folder)[0])
+        self.write({"app": "text"})
+        self.assertIn("no object", sync.problems(self.folder)[0])
 
     def test_an_entry_cannot_name_a_path_out_of_the_icons_or_a_file_out_of_the_folder(self):
         for name, value in [
@@ -69,6 +73,7 @@ class Folder(unittest.TestCase):
             ("path", "assets/icons/app/app.png"),
             ("repo", "no-owner"),
             ("repo", "Owner/app/../other"),
+            ("repo", "Owner/.."),
         ]:
             self.assertTrue(sync.entry_problems("app", entry(**{name: value})), value)
         self.assertTrue(sync.entry_problems("../app", entry()))

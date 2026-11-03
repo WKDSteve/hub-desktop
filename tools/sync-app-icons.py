@@ -57,7 +57,8 @@ def entry_problems(icon, entry):
     found = []
     if not PLAIN_ID.match(icon):
         found.append(f"{icon}: not a plain id")
-    if not PLAIN_REPO.match(str(entry.get("repo"))):
+    repo = str(entry.get("repo"))
+    if not PLAIN_REPO.match(repo) or ".." in repo:
         found.append(f"{icon}: repo is not owner/name")
     path = str(entry.get("path"))
     if not PLAIN_PATH.match(path) or ".." in path:
@@ -70,8 +71,10 @@ def read_sources(folder):
         data = json.loads((folder / SOURCES).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         raise ValueError(f"{SOURCES}: {e}") from e
-    if data.get("schema") != 1 or not isinstance(data.get("icons"), dict):
+    if not isinstance(data, dict) or data.get("schema") != 1 or not isinstance(data.get("icons"), dict):
         raise ValueError(f"{SOURCES}: not schema 1 with icons")
+    if not all(isinstance(entry, dict) for entry in data["icons"].values()):
+        raise ValueError(f"{SOURCES}: an entry is no object")
     return data
 
 
