@@ -21,6 +21,8 @@ for (const scheme of ['light', 'dark'] as const) {
       const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
       await hub.open(page);
       await expect(page.getByRole('region', { name: 'Testing' })).toBeVisible();
+      await page.getByRole('button', { name: 'Red cases' }).click();
+      await expect(page.getByRole('region', { name: 'Red cases of alpha.nvim' }).locator('[data-case]')).toHaveCount(2);
       const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
       expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
     });

@@ -3,7 +3,9 @@ import { Hub } from './api';
 import { App, type TokenStore } from './app.svelte';
 
 /** A fetch that answers like the hub, and keeps what it was asked. */
-function fakeHub(options: { acceptCode?: string; token?: string; monitor?: () => Response } = {}) {
+function fakeHub(
+  options: { acceptCode?: string; token?: string; monitor?: () => Response; cases?: (path: string) => Response | Promise<Response> } = {},
+) {
   const asked: { path: string; auth: string | null }[] = [];
   const token = options.token ?? 'a'.repeat(64);
   const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -26,6 +28,7 @@ function fakeHub(options: { acceptCode?: string; token?: string; monitor?: () =>
     }
     if (path === '/api/hub/apps') return json(200, { apps: [{ id: 'tasks', name: 'Tasks' }] });
     if (path === '/api/hub/monitor' && options.monitor) return options.monitor();
+    if (path.startsWith('/api/hub/monitor/cases?') && options.cases) return options.cases(path);
     return json(404, { error: { code: 'not_found', message: path } });
   }) as typeof fetch;
   return { hub: new Hub(fetchFn), asked, token };
@@ -155,5 +158,69 @@ describe('App', () => {
     answer = reply({ state: 'problem', problem: 'the export cannot be read' });
     await app.reload();
     expect(app.monitor).toEqual({ state: 'problem', problem: 'the export cannot be read' });
+  });
+});
+
+describe('the red cases of the monitor', () => {
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  const ready = (key: string) => ({
+    state: 'ready',
+    key,
+    local_read: true,
+    cases_red: 1,
+    cases_omitted: 0,
+    cases: [
+      { file: 'a_spec.lua', line: 3, status: 'fail', name: 'n', describe: [], message: 'm', expected: null, actual: null, flaky: false },
+    ],
+  });
+
+  it('asks the hub for the key of the row, shows the answer and hides it on a second press', async () => {
+    const asked: string[] = [];
+    const { hub } = fakeHub({
+      acceptCode: 'c',
+      cases: (path) => {
+        asked.push(path);
+        return json(ready('a b/c'));
+      },
+    });
+    const app = new App(hub, memory());
+    await app.start('c');
+    await app.toggleCases('a b/c');
+    expect(asked).toEqual(['/api/hub/monitor/cases?key=a%20b%2Fc']);
+    expect(app.openCases).toBe('a b/c');
+    expect(app.cases).toEqual(ready('a b/c'));
+    await app.toggleCases('a b/c');
+    expect(app.openCases).toBeNull();
+  });
+
+  it('says the hub did not answer, and takes a reply of another shape as that', async () => {
+    for (const reply of [() => json({ error: { code: 'x', message: 'x' } }, 500), () => json({ state: 'fly' })]) {
+      const { hub } = fakeHub({ acceptCode: 'c', cases: reply });
+      const app = new App(hub, memory());
+      await app.start('c');
+      await app.toggleCases('k');
+      expect(app.cases).toEqual({ state: 'failed' });
+    }
+  });
+
+  it('shows the row that was opened last, even when an earlier answer comes later', async () => {
+    let release: () => void = () => {};
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    const { hub } = fakeHub({
+      acceptCode: 'c',
+      cases: async (path) => {
+        if (path.endsWith('=first')) await slow;
+        return json(ready(path.split('=')[1] ?? ''));
+      },
+    });
+    const app = new App(hub, memory());
+    await app.start('c');
+    const first = app.toggleCases('first');
+    await app.toggleCases('second');
+    release();
+    await first;
+    expect(app.openCases).toBe('second');
+    expect(app.cases).toEqual(ready('second'));
   });
 });

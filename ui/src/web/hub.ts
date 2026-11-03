@@ -5,7 +5,7 @@
 import type { DirHandleLike, FileHandleLike } from 'appkit-web/folder';
 import type { Apps, Hello, HubApi, HubApp, LaunchAsk, LaunchResult, Mode, StopResult } from '../lib/api';
 import type { FolderOutcome, Presence } from '../lib/app.svelte';
-import { type MonitorReading, NOT_CONFIGURED } from '../lib/monitor';
+import { type CasesReading, type MonitorReading, NOT_CONFIGURED } from '../lib/monitor';
 
 /** One entry of `catalog.json` (the rendering of `catalog.rs`, see `webcatalog.rs`). */
 export interface CatalogEntry {
@@ -195,6 +195,10 @@ export class WebHub implements HubApi, Presence {
   /** A page of a file has no export folder to read. */
   async monitor(): Promise<MonitorReading> {
     return NOT_CONFIGURED;
+  }
+
+  async monitorCases(): Promise<CasesReading> {
+    return { state: 'not_configured' };
   }
 
   async mark(id: string, missing: boolean): Promise<void> {

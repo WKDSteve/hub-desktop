@@ -86,6 +86,8 @@ An app built on the kit (Tasks, Rules) that runs has a **Stop** entry in the men
 Name the export folder of [testing.nvim](https://github.com/WKDSteve/testing.nvim) in `config.json`
 (`{ "testing_export": "C:/results/export" }`, an absolute folder) and the page shows a **Testing** section with a
 light for each repository: red, check (partly run, outdated, CI running or unknown), green, or no result. The worst
-of the local result, the local pipeline and the CI wins. The hub reads the folder (`testing export --out`) and starts
+of the local result, the local pipeline and the CI wins. A row whose last local run was red has a **Red cases**
+button: it shows the red cases of that run by file and line, with the message, expected and actual as plain text (as
+testing.nvim wrote them into the export, already without paths of your machine). The hub reads the folder (`testing export --out`) and starts
 nothing; the history and the start of a run stay with testing.nvim. A folder that cannot be read is said in one
 sentence, without its path.

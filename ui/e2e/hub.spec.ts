@@ -366,6 +366,36 @@ test('the monitor shows a light for each repository of the export, red first, in
   expect(hub.starts('tasks')).toEqual([]);
 });
 
+test('a red row opens its red cases by file and line, as text, and closes them again', async ({ page, hubOn }) => {
+  const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
+  await hub.open(page);
+  const monitor = page.getByRole('region', { name: 'Testing' });
+  // Only the red row offers its cases.
+  await expect(monitor.getByRole('button', { name: 'Red cases' })).toHaveCount(1);
+  const button = monitor.locator('[data-repo="alpha.nvim"]').getByRole('button', { name: 'Red cases' });
+  await expect(button).toHaveAttribute('aria-expanded', 'false');
+  await button.click();
+  await expect(button).toHaveAttribute('aria-expanded', 'true');
+  const cases = page.getByRole('region', { name: 'Red cases of alpha.nvim' });
+  await expect(cases.locator('[data-case]')).toHaveCount(2);
+  expect(await cases.locator('[data-case]').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset['case']))).toEqual([
+    'TESTS/a_spec.lua:20',
+    'TESTS/z_spec.lua:4',
+  ]);
+  const first = cases.locator('[data-case]').first();
+  await expect(first).toContainText('failed');
+  await expect(first).toContainText('reader › case at 20');
+  // The markup of a message is text: shown as it is, never an element, never run.
+  await expect(first).toContainText('<img src=x onerror="window.pwned=1"> expected two');
+  await expect(cases.locator('img')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { pwned?: number }).pwned)).toBeUndefined();
+  await expect(first.locator('dt')).toHaveText(['Expected', 'Actual']);
+  await expect(cases).toContainText('1 more red case is not shown.');
+  await button.click();
+  await expect(cases).toHaveCount(0);
+  expect(hub.starts('tasks')).toEqual([]);
+});
+
 test('an export that cannot be read is said in a sentence, without its path', async ({ page, hubOn }) => {
   const hub = await hubOn({ ...FULL, testingExport: 'broken' });
   await hub.open(page);

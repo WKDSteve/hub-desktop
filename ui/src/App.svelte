@@ -237,7 +237,12 @@
         {/if}
       </section>
     </div>
-    <Monitor monitor={app.monitor} />
+    <Monitor
+      monitor={app.monitor}
+      open={app.openCases}
+      cases={app.cases}
+      ontoggle={(key) => void app.toggleCases(key)}
+    />
   {/if}
   <!-- Inside the landmark: the menu is drawn at the pointer, but its content belongs to the page (axe: region). -->
   <ContextMenu {registry} label="Other ways to open the app" />

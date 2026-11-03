@@ -12,6 +12,9 @@
 //! Nothing a foreign file says reaches the page as it is: every word is mapped to a word of this module,
 //! every text is cut. The reason a folder cannot be read is a fixed sentence, never a path.
 //!
+//! The red cases of one repository (`repos/<key>.json`, kind `repo`) are read the same way, on request: only a file
+//! the manifest lists, of the size it says, whose `repo.key` is the key asked for.
+//!
 //! The check of `sha256` of the manifest is not made on purpose (the hub runs nothing from the export, and the
 //! manifest is written last, so the size catches a half-written export); the size is checked.
 
@@ -35,6 +38,17 @@ const MAX_NAME: usize = 80;
 
 /// The highest major version of `testing-export` this hub reads.
 const MAJOR: u64 = 1;
+
+/// More red cases than this are not shown (the document holds at most 500).
+const MAX_CASES: usize = 200;
+/// A failure text (message, expected, actual) longer than this is cut (the contract cuts at 4 KiB).
+const MAX_TEXT: usize = 4096;
+/// A file, a case name or a describe title longer than this is cut.
+const MAX_LABEL: usize = 300;
+/// At most this many describe titles of a case.
+const MAX_DESCRIBE: usize = 10;
+/// A key longer than this is no key of the export.
+const MAX_KEY: usize = 120;
 
 /// How a repository stands, worst first when sources disagree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -83,6 +97,44 @@ pub enum Reading {
     },
 }
 
+/// One red case of the last local run, as the page shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RedCase {
+    /// The spec file, relative to the repository (as the export writes it).
+    pub file: String,
+    pub line: Option<u64>,
+    /// `fail`, `error`, `timeout`, `crash`, `xpass`.
+    pub status: &'static str,
+    pub name: String,
+    /// The describe titles, outermost first.
+    pub describe: Vec<String>,
+    /// The texts of the failure, redacted by testing.nvim; line breaks kept, shown as text only.
+    pub message: Option<String>,
+    pub expected: Option<String>,
+    pub actual: Option<String>,
+    pub flaky: bool,
+}
+
+/// What the page gets for the red cases of one repository.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum CasesReading {
+    NotConfigured,
+    Problem {
+        problem: &'static str,
+    },
+    Ready {
+        key: String,
+        /// `false`: the export was made where nothing runs; there are no cases to tell.
+        local_read: bool,
+        /// All red cases of the last run (`None`: unknown).
+        cases_red: Option<u64>,
+        /// Red cases that are not in `cases` (left out by the export or by the hub).
+        cases_omitted: Option<u64>,
+        cases: Vec<RedCase>,
+    },
+}
+
 /// Why the folder is not read (the words of the page; no path in them).
 mod why {
     pub const MISSING: &str = "the export folder has no testing-export.json";
@@ -96,6 +148,10 @@ mod why {
         "fleet.json is not the size the manifest says (an export in the middle of a write?)";
     pub const NOT_A_FLEET: &str = "fleet.json is not a fleet of the export form";
     pub const CLASSES: &str = "fleet.json was made without asking the data classes";
+    pub const NO_REPO: &str = "the export has no document for this repository";
+    pub const REPO_SIZE: &str =
+        "the document of the repository is not the size the manifest says (an export in the middle of a write?)";
+    pub const NOT_A_REPO: &str = "the document of the repository is not one of the export form";
 }
 
 /// The monitor of a hub: the folder, or none.
@@ -121,6 +177,132 @@ impl Monitor {
             Err(problem) => Reading::Problem { problem },
         }
     }
+
+    /// The red cases of the repository `key` of the fleet, read now.
+    #[must_use]
+    pub fn cases(&self, key: &str) -> CasesReading {
+        let Some(dir) = &self.dir else {
+            return CasesReading::NotConfigured;
+        };
+        match read_cases(dir, key) {
+            Ok(ready) => ready,
+            Err(problem) => CasesReading::Problem { problem },
+        }
+    }
+}
+
+/// A key of the export: `<name>-<hex>`, letters, digits, `.`, `_` and `-`, not starting with a dot. Anything else
+/// is no file name of `repos/` and is never joined to a path.
+fn plain_key(key: &str) -> bool {
+    (1..=MAX_KEY).contains(&key.len())
+        && !key.starts_with('.')
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+fn read_cases(dir: &Path, key: &str) -> Result<CasesReading, &'static str> {
+    if !plain_key(key) {
+        return Err(why::NO_REPO);
+    }
+    let (text, _) = read_text(&dir.join(MANIFEST))?;
+    let manifest: Value = serde_json::from_str(&text).map_err(|_| why::NOT_JSON)?;
+    check_head(&manifest, "manifest", why::NOT_AN_EXPORT)?;
+    let path = format!("repos/{key}.json");
+    let listed = manifest
+        .get("files")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|f| f.get("path").and_then(Value::as_str) == Some(path.as_str()))
+        .ok_or(why::NO_REPO)?;
+    let (text, size) = match read_text(&dir.join("repos").join(format!("{key}.json"))) {
+        Err(problem) if problem == why::MISSING => return Err(why::NO_REPO),
+        other => other?,
+    };
+    if listed.get("bytes").and_then(Value::as_u64) != Some(size) {
+        return Err(why::REPO_SIZE);
+    }
+    let doc: Value = serde_json::from_str(&text).map_err(|_| why::NOT_JSON)?;
+    check_head(&doc, "repo", why::NOT_A_REPO)?;
+    if doc.get("form").and_then(Value::as_str) != Some("export")
+        || doc.pointer("/repo/key").and_then(Value::as_str) != Some(key)
+    {
+        return Err(why::NOT_A_REPO);
+    }
+    let local_read = doc.get("local_read").and_then(Value::as_bool) != Some(false);
+    let all: Vec<RedCase> = doc
+        .get("cases")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(red_case)
+        .collect();
+    let dropped = all.len().saturating_sub(MAX_CASES) as u64;
+    let mut cases: Vec<RedCase> = all.into_iter().take(MAX_CASES).collect();
+    // By file and line, as a person goes through them.
+    cases.sort_by(|a, b| a.file.cmp(&b.file).then_with(|| a.line.cmp(&b.line)));
+    // Without a local read the counts are unknown, whatever integers the document holds (the contract).
+    let (cases_red, cases_omitted) = if local_read {
+        (
+            count(doc.get("cases_red")),
+            count(doc.get("cases_omitted")).map(|n| n + dropped),
+        )
+    } else {
+        (None, None)
+    };
+    Ok(CasesReading::Ready {
+        key: key.to_owned(),
+        local_read,
+        cases_red,
+        cases_omitted,
+        cases: if local_read { cases } else { Vec::new() },
+    })
+}
+
+/// A text of the document cut to `max` characters, without control characters; `keep_lines` keeps line
+/// breaks and tabs (a failure text), else they go too.
+fn cut(value: Option<&Value>, max: usize, keep_lines: bool) -> Option<String> {
+    let raw = value?.as_str()?;
+    let clean: String = raw
+        .chars()
+        .filter(|c| !c.is_control() || (keep_lines && matches!(c, '\n' | '\t')))
+        .take(max)
+        .collect();
+    (!clean.is_empty()).then_some(clean)
+}
+
+fn red_word(word: &str) -> Option<&'static str> {
+    match word {
+        "fail" => Some("fail"),
+        "error" => Some("error"),
+        "timeout" => Some("timeout"),
+        "crash" => Some("crash"),
+        "xpass" => Some("xpass"),
+        _ => None,
+    }
+}
+
+fn red_case(value: &Value) -> Option<RedCase> {
+    let status = red_word(value.get("status")?.as_str()?)?;
+    Some(RedCase {
+        file: cut(value.get("file"), MAX_LABEL, false)?,
+        line: count(value.get("line")).filter(|n| *n > 0),
+        status,
+        name: cut(value.get("name"), MAX_LABEL, false).unwrap_or_default(),
+        describe: value
+            .get("describe")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|d| cut(Some(d), MAX_LABEL, false))
+            .take(MAX_DESCRIBE)
+            .collect(),
+        message: cut(value.get("message"), MAX_TEXT, true),
+        expected: cut(value.get("expected"), MAX_TEXT, true),
+        actual: cut(value.get("actual"), MAX_TEXT, true),
+        flaky: value.get("flaky").and_then(Value::as_bool) == Some(true),
+    })
 }
 
 /// The text of a file no bigger than [`MAX_BYTES`]; `size` is what the file says.
@@ -624,6 +806,263 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    fn repo_doc(key: &str, cases: Value) -> String {
+        json!({
+            "schema": "testing-export/1", "kind": "repo", "form": "export", "local_read": true,
+            "repo": { "key": key, "name": "a" },
+            "cases_red": 2, "cases_omitted": 0,
+            "cases": cases
+        })
+        .to_string()
+    }
+
+    /// A folder with one repository document, listed by the manifest with `bytes` (its real size by default).
+    fn repo_folder(key: &str, doc: &str, bytes: Option<usize>) -> Scratch {
+        let dir = Scratch::new("hub-cases");
+        std::fs::create_dir_all(dir.path().join("repos")).unwrap();
+        std::fs::write(dir.path().join("repos").join(format!("{key}.json")), doc).unwrap();
+        let manifest = json!({
+            "schema": "testing-export/1", "kind": "manifest", "form": "export",
+            "files": [{ "path": format!("repos/{key}.json"), "sha256": "0".repeat(64), "bytes": bytes.unwrap_or(doc.len()) }]
+        });
+        std::fs::write(dir.path().join(MANIFEST), manifest.to_string()).unwrap();
+        dir
+    }
+
+    fn red(file: &str, line: u64, status: &str) -> Value {
+        json!({
+            "id": format!("{file}::x"), "file": file, "line": line, "status": status, "name": "reads a file",
+            "describe": ["parser"], "duration_ms": 4, "flaky": false,
+            "message": "expected\n\tb", "expected": "b", "actual": null, "fails": [], "fails_total": null
+        })
+    }
+
+    fn cases_of(dir: &Scratch, key: &str) -> CasesReading {
+        Monitor::new(Some(dir.path().to_path_buf())).cases(key)
+    }
+
+    #[test]
+    fn the_red_cases_of_a_repository_come_by_file_and_line_with_their_texts() {
+        let key = "a-0123456789ab";
+        let doc = repo_doc(
+            key,
+            json!([
+                red("b_spec.lua", 3, "timeout"),
+                red("a_spec.lua", 9, "fail"),
+                red("a_spec.lua", 2, "crash")
+            ]),
+        );
+        let dir = repo_folder(key, &doc, None);
+        let CasesReading::Ready {
+            cases,
+            cases_red,
+            cases_omitted,
+            local_read,
+            ..
+        } = cases_of(&dir, key)
+        else {
+            panic!("not ready");
+        };
+        assert!(local_read);
+        assert_eq!((cases_red, cases_omitted), (Some(2), Some(0)));
+        let at: Vec<_> = cases
+            .iter()
+            .map(|c| (c.file.as_str(), c.line, c.status))
+            .collect();
+        assert_eq!(
+            at,
+            [
+                ("a_spec.lua", Some(2), "crash"),
+                ("a_spec.lua", Some(9), "fail"),
+                ("b_spec.lua", Some(3), "timeout")
+            ]
+        );
+        // Line breaks and tabs of a failure text stay, as text.
+        assert_eq!(cases[0].message.as_deref(), Some("expected\n\tb"));
+        assert_eq!(cases[0].describe, ["parser"]);
+    }
+
+    #[test]
+    fn a_case_that_is_not_red_or_has_no_file_is_left_out_and_texts_are_cut() {
+        let key = "a-0123456789ab";
+        let mut long = red("x_spec.lua", 1, "fail");
+        long["message"] = json!(format!("a\u{1b}[31m{}", "m".repeat(5000)));
+        long["name"] = json!("n\r\u{7}".repeat(200));
+        let doc = repo_doc(
+            key,
+            json!([
+                red("p_spec.lua", 1, "pass"),
+                red("s_spec.lua", 1, "skip"),
+                red("w_spec.lua", 1, "weird"),
+                json!({ "status": "fail", "line": 1 }),
+                long
+            ]),
+        );
+        let dir = repo_folder(key, &doc, None);
+        let CasesReading::Ready { cases, .. } = cases_of(&dir, key) else {
+            panic!("not ready")
+        };
+        assert_eq!(cases.len(), 1);
+        let message = cases[0].message.as_deref().unwrap();
+        assert_eq!(message.chars().count(), MAX_TEXT);
+        assert!(!message.contains('\u{1b}'));
+        assert!(!cases[0].name.chars().any(char::is_control));
+        assert!(cases[0].name.chars().count() <= MAX_LABEL);
+    }
+
+    #[test]
+    fn more_cases_than_the_hub_shows_are_counted_as_left_out() {
+        let key = "a-0123456789ab";
+        let many: Vec<Value> = (1..=(MAX_CASES as u64 + 5))
+            .map(|n| red("x_spec.lua", n, "fail"))
+            .collect();
+        let dir = repo_folder(key, &repo_doc(key, json!(many)), None);
+        let CasesReading::Ready {
+            cases,
+            cases_omitted,
+            ..
+        } = cases_of(&dir, key)
+        else {
+            panic!("not ready")
+        };
+        assert_eq!(cases.len(), MAX_CASES);
+        assert_eq!(cases_omitted, Some(5));
+    }
+
+    #[test]
+    fn only_a_listed_document_of_this_key_and_the_listed_size_is_read() {
+        let key = "a-0123456789ab";
+        let doc = repo_doc(key, json!([red("x_spec.lua", 1, "fail")]));
+        // Another size than the manifest says.
+        let dir = repo_folder(key, &doc, Some(doc.len() + 1));
+        assert_eq!(
+            cases_of(&dir, key),
+            CasesReading::Problem {
+                problem: why::REPO_SIZE
+            }
+        );
+        // A document of another repository under this name.
+        let other = repo_doc("b-0123456789ab", json!([]));
+        let dir = repo_folder(key, &other, None);
+        assert_eq!(
+            cases_of(&dir, key),
+            CasesReading::Problem {
+                problem: why::NOT_A_REPO
+            }
+        );
+        // A key the manifest does not list, also when the file is there.
+        let dir = repo_folder(key, &doc, None);
+        std::fs::write(dir.path().join("repos").join("c-0123456789ab.json"), &doc).unwrap();
+        assert_eq!(
+            cases_of(&dir, "c-0123456789ab"),
+            CasesReading::Problem {
+                problem: why::NO_REPO
+            }
+        );
+        // No folder named.
+        assert_eq!(Monitor::new(None).cases(key), CasesReading::NotConfigured);
+    }
+
+    #[test]
+    fn a_key_that_is_no_plain_name_is_never_joined_to_a_path() {
+        let key = "a-0123456789ab";
+        let dir = repo_folder(key, &repo_doc(key, json!([])), None);
+        for bad in [
+            "",
+            "../a-0123456789ab",
+            "a/b",
+            r"a\b",
+            ".hidden",
+            "a b",
+            "a%2e",
+            &"k".repeat(121),
+        ] {
+            assert_eq!(
+                cases_of(&dir, bad),
+                CasesReading::Problem {
+                    problem: why::NO_REPO
+                },
+                "{bad:?}"
+            );
+        }
+    }
+
+    /// A manifest made by hand may list a path that leaves `repos/`: the key is checked before any path is made.
+    #[test]
+    fn a_manifest_that_lists_a_path_out_of_repos_is_not_followed() {
+        let key = "../secret";
+        let dir = Scratch::new("hub-cases");
+        std::fs::create_dir_all(dir.path().join("repos")).unwrap();
+        let doc = repo_doc(key, json!([red("x_spec.lua", 1, "fail")]));
+        std::fs::write(dir.path().join("secret.json"), &doc).unwrap();
+        let manifest = json!({
+            "schema": "testing-export/1", "kind": "manifest", "form": "export",
+            "files": [{ "path": "repos/../secret.json", "sha256": "0".repeat(64), "bytes": doc.len() }]
+        });
+        std::fs::write(dir.path().join(MANIFEST), manifest.to_string()).unwrap();
+        assert_eq!(
+            cases_of(&dir, key),
+            CasesReading::Problem {
+                problem: why::NO_REPO
+            }
+        );
+    }
+
+    #[test]
+    fn a_document_of_another_kind_form_or_schema_is_refused() {
+        let key = "a-0123456789ab";
+        for (field, value, want) in [
+            ("kind", json!("fleet"), why::NOT_A_REPO),
+            ("form", json!("local"), why::NOT_A_REPO),
+            ("schema", json!("testing-export/2"), why::TOO_NEW),
+        ] {
+            let mut doc: Value = serde_json::from_str(&repo_doc(key, json!([]))).unwrap();
+            doc[field] = value;
+            let dir = repo_folder(key, &doc.to_string(), None);
+            assert_eq!(
+                cases_of(&dir, key),
+                CasesReading::Problem { problem: want },
+                "{field}"
+            );
+        }
+    }
+
+    #[test]
+    fn without_a_local_read_there_are_no_cases_and_the_counts_are_unknown() {
+        let key = "a-0123456789ab";
+        let mut doc: Value =
+            serde_json::from_str(&repo_doc(key, json!([red("x_spec.lua", 1, "fail")]))).unwrap();
+        doc["local_read"] = json!(false);
+        let dir = repo_folder(key, &doc.to_string(), None);
+        assert_eq!(
+            cases_of(&dir, key),
+            CasesReading::Ready {
+                key: key.to_owned(),
+                local_read: false,
+                cases_red: None,
+                cases_omitted: None,
+                cases: Vec::new()
+            }
+        );
+    }
+
+    /// The red cases of the golden export: beta has two, by file and line.
+    #[test]
+    fn the_red_cases_of_the_golden_export_are_read() {
+        let golden = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../testing.nvim/TESTS/golden/testing-export-1");
+        if !golden.join(MANIFEST).is_file() {
+            return;
+        }
+        let repos = ready(read_dir(&golden).expect("the golden export is readable"));
+        let beta = repos.iter().find(|r| r.name == "beta.nvim").expect("beta");
+        let CasesReading::Ready { cases, .. } = Monitor::new(Some(golden)).cases(&beta.key) else {
+            panic!("not ready");
+        };
+        assert_eq!(cases.len(), 2);
+        assert!(cases.iter().all(|c| !c.file.is_empty()));
     }
 
     /// The golden export of testing.nvim, if this machine has it next to the hub: the contract as it is written.

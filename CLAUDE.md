@@ -114,7 +114,13 @@ python tools/check-lock-age.py --min-days 7
   (entschieden 2026-11-01: die Größe fängt den halb geschriebenen Export, der Hub führt nichts aus dem Export aus;
   Wiedervorlage, falls er je etwas daraus öffnet oder ausführt).
 - Ampel: schlechteste Quelle gewinnt (lokal, lokale Pipeline, CI), nichts bekannt = "No result", nie grün.
-- Offen: Lauf starten über den Einstieg von testing-desktop (gibt es noch nicht), Fall-Details aus `repos/<key>.json`.
+- Fall-Details: `GET /api/hub/monitor/cases?key=<key>` (in `DATA_ROUTES`, Query über `RawQuery`, kein Query-Feature von
+  axum) liest `repos/<key>.json` nur, wenn der Key schlicht ist (`plain_key`, nie ein Pfad daraus) und das Manifest genau
+  diese Datei mit dieser Größe listet; `kind repo`, `form export`, `repo.key` gleich dem Key. Nur rote Status (fail, error,
+  timeout, crash, xpass), höchstens 200, nach Datei und Zeile; Texte ohne Steuerzeichen (Zeilenumbruch und Tab bleiben),
+  4 KiB; ohne `local_read` keine Fälle und unbekannte Zahlen. Die Seite zeigt sie nur als Text (`<pre>`), Knopf
+  "Red cases" nur an Zeilen mit rotem lokalem Ergebnis.
+- Offen: Lauf starten über den Einstieg von testing-desktop (gibt es noch nicht).
 
 ## Web-Hub (`hub.html`, M1W)
 

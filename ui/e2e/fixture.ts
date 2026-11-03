@@ -190,7 +190,27 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
         ],
       });
       writeFileSync(join(dir, 'fleet.json'), fleet);
-      const files = [{ path: 'fleet.json', sha256: '0'.repeat(64), bytes: Buffer.byteLength(fleet) }];
+      // The red cases of alpha: two files, out of order, one message with markup that must stay text.
+      const red = (file: string, line: number, status: string, message: string) => ({
+        id: `${file}::${line}`, file, line, status, name: `case at ${line}`, describe: ['reader'], duration_ms: 1, flaky: false,
+        message, expected: status === 'fail' ? 'one\ntwo' : null, actual: status === 'fail' ? 'one\nthree' : null,
+        fails: [], fails_total: null,
+      });
+      const alpha = JSON.stringify({
+        schema: 'testing-export/1', kind: 'repo', form: 'export', local_read: true,
+        repo: { key: 'alpha.nvim-0123456789ab', name: 'alpha.nvim' },
+        cases_red: 3, cases_omitted: 1,
+        cases: [
+          red('TESTS/z_spec.lua', 4, 'timeout', 'the case ran longer than 5000 ms'),
+          red('TESTS/a_spec.lua', 20, 'fail', '<img src=x onerror="window.pwned=1"> expected two'),
+        ],
+      });
+      mkdirSync(join(dir, 'repos'), { recursive: true });
+      writeFileSync(join(dir, 'repos', 'alpha.nvim-0123456789ab.json'), alpha);
+      const files = [
+        { path: 'fleet.json', sha256: '0'.repeat(64), bytes: Buffer.byteLength(fleet) },
+        { path: 'repos/alpha.nvim-0123456789ab.json', sha256: '0'.repeat(64), bytes: Buffer.byteLength(alpha) },
+      ];
       writeFileSync(join(dir, 'testing-export.json'), JSON.stringify({ schema: 'testing-export/1', kind: 'manifest', form: 'export', files }));
     }
     writeFileSync(at('cfg-hub/config.json'), JSON.stringify({ testing_export: dir }));

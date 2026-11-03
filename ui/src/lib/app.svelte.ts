@@ -3,7 +3,7 @@
 
 import type { ToastMessage } from 'appkit-ui/toast';
 import { ApiError, type Apps, type Hello, type HubApp, type HubApi, type LaunchAsk, type Mode } from './api';
-import { type MonitorReading, NOT_CONFIGURED } from './monitor';
+import { type CasesView, type MonitorReading, NOT_CONFIGURED } from './monitor';
 import { askable, differs, type UpdateChecker } from './updates';
 
 /** `starting`: the code is traded. `unpaired`: no session and no code (open the link of `hub-desktop open`). */
@@ -99,6 +99,9 @@ export class App {
   setupFor = $state<HubApp | null>(null);
   /** The testing export the hub reads, as it showed last. */
   monitor = $state<MonitorReading>(NOT_CONFIGURED);
+  /** The repository of the monitor whose red cases are shown (one at a time), and what was read for it. */
+  openCases = $state<string | null>(null);
+  cases = $state<CasesView>({ state: 'loading' });
   /** The build GitHub named at the last check, by app id; empty until a person pressed the button. */
   available = $state<Record<string, string | null>>({});
   /** A check for updates is under way. */
@@ -183,6 +186,24 @@ export class App {
     } catch {
       // A refused session already moved the phase (`onUnauthorized`); anything else keeps the rows.
     }
+  }
+
+  /** Show the red cases of a repository of the monitor, read now; the same one again hides them. */
+  async toggleCases(key: string): Promise<void> {
+    if (this.openCases === key) {
+      this.openCases = null;
+      return;
+    }
+    this.openCases = key;
+    this.cases = { state: 'loading' };
+    let read: CasesView;
+    try {
+      read = await this.hub.monitorCases(key);
+    } catch {
+      read = { state: 'failed' };
+    }
+    // Another row may have been opened while this one was read.
+    if (this.openCases === key) this.cases = read;
   }
 
   /** The web hub has no machine to look at again. */

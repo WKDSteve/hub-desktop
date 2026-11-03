@@ -14,7 +14,7 @@ use appkit_hub::{
     serve, Core, GuardRules, HubStatus, Limits, Pages, RunningServer, Runtime, ServeParts,
 };
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::extract::{DefaultBodyLimit, Path, RawQuery, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -115,7 +115,7 @@ pub const RELEASES_ORIGIN: &str = "https://api.github.com";
 /// The names (below `/api/hub/`) of the routes that need a session. The security matrix reads them
 /// from here: a route added to [`routes`] and left out of this list would be a route the matrix
 /// never tries (`tests/hub.rs` asks every name with a session).
-pub const DATA_ROUTES: [&str; 2] = ["apps", "monitor"];
+pub const DATA_ROUTES: [&str; 3] = ["apps", "monitor", "monitor/cases"];
 
 /// `GET /api/hub/apps`: the apps of the catalog and what the machine says about each. No path of the
 /// machine is in it.
@@ -136,6 +136,32 @@ async fn monitor(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
             problem: "the export cannot be read",
         });
     Json(serde_json::to_value(reading).unwrap_or(Value::Null))
+}
+
+/// `GET /api/hub/monitor/cases?key=<key>`: the red cases of the last run of one repository of the export
+/// (`repos/<key>.json`). A key that is not one of the export is a problem of the reading, not an error.
+async fn monitor_cases(
+    State(core): State<Arc<Core<HubRuntime>>>,
+    RawQuery(query): RawQuery,
+) -> Json<Value> {
+    let monitor = Arc::clone(core.rt().monitor());
+    let key = key_of(query.as_deref()).to_owned();
+    let reading = tokio::task::spawn_blocking(move || monitor.cases(&key))
+        .await
+        .unwrap_or(crate::monitor::CasesReading::Problem {
+            problem: "the export cannot be read",
+        });
+    Json(serde_json::to_value(reading).unwrap_or(Value::Null))
+}
+
+/// The value of `key=` in a query, as it is: a key of the export is letters, digits, `.`, `_` and `-` only, so
+/// it is never percent-encoded, and an encoded one is no key (`monitor::plain_key` refuses it).
+fn key_of(query: Option<&str>) -> &str {
+    query
+        .unwrap_or_default()
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("key="))
+        .unwrap_or_default()
 }
 
 /// The routes that change something (a `POST`, a session and a JSON body): `{id}` stands for an app. The
@@ -325,6 +351,7 @@ fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
     Router::new()
         .route(&IDENTITY.route("apps"), get(apps))
         .route(&IDENTITY.route("monitor"), get(monitor))
+        .route(&IDENTITY.route("monitor/cases"), get(monitor_cases))
         .route(
             &IDENTITY.route(MUTATION_ROUTES[0]),
             post(launch).layer(DefaultBodyLimit::max(small)),
@@ -390,4 +417,19 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
         routes,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::key_of;
+
+    #[test]
+    fn the_key_is_the_value_of_key_in_the_query_as_it_is() {
+        assert_eq!(key_of(Some("key=a-0123456789ab")), "a-0123456789ab");
+        assert_eq!(key_of(Some("x=1&key=b.nvim-ff")), "b.nvim-ff");
+        assert_eq!(key_of(Some("key=a%2Fb")), "a%2Fb");
+        assert_eq!(key_of(Some("keys=a")), "");
+        assert_eq!(key_of(Some("")), "");
+        assert_eq!(key_of(None), "");
+    }
 }

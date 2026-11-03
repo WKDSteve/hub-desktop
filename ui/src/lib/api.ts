@@ -2,7 +2,7 @@
 // kit's; this file is the routes of the hub.
 
 import { ApiError, HubClient, type Hello } from 'appkit-ui/client';
-import type { MonitorReading } from './monitor';
+import type { CasesReading, MonitorReading } from './monitor';
 
 export { ApiError, type Hello };
 
@@ -68,6 +68,8 @@ export interface HubApi {
   rescan(): Promise<void>;
   /** The light of each repository of the testing export (the web hub has none). */
   monitor(): Promise<MonitorReading>;
+  /** The red cases of the last run of one repository of the export. */
+  monitorCases(key: string): Promise<CasesReading>;
 }
 
 export class Hub extends HubClient implements HubApi {
@@ -106,6 +108,14 @@ export class Hub extends HubClient implements HubApi {
     const doc = await this.json<MonitorReading>(this.route('monitor'));
     if (doc.state === 'not_configured' || doc.state === 'problem') return doc;
     if (doc.state === 'ready' && Array.isArray(doc.repos)) return doc;
+    throw new ApiError(502, 'bad_reply', 'unexpected answer');
+  }
+
+  /** The red cases of one repository of the export, by file and line. */
+  async monitorCases(key: string): Promise<CasesReading> {
+    const doc = await this.json<CasesReading>(`${this.route('monitor/cases')}?key=${encodeURIComponent(key)}`);
+    if (doc.state === 'not_configured' || doc.state === 'problem') return doc;
+    if (doc.state === 'ready' && Array.isArray(doc.cases)) return doc;
     throw new ApiError(502, 'bad_reply', 'unexpected answer');
   }
 
