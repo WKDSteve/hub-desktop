@@ -204,9 +204,13 @@ export class App {
       const round = await this.checker.check(this.apps);
       this.available = { ...this.available, ...round.available };
       const newer = askedAbout.filter((a) => round.states[a.id] === 'available').length;
+      const unknown = askedAbout.filter((a) => round.states[a.id] === 'unknown').length;
       if (round.failed) this.say('error', 'GitHub did not answer. Try again later.');
       else if (newer > 0) this.say('ok', newer === 1 ? '1 update is available.' : `${newer} updates are available.`);
-      else this.say('ok', 'Everything that could be checked is up to date.');
+      else if (unknown > 0) {
+        const apps = unknown === 1 ? '1 app' : `${unknown} apps`;
+        this.say('ok', `GitHub names no build for ${apps}; the others are up to date.`);
+      } else this.say('ok', 'Everything that could be checked is up to date.');
     } finally {
       this.checking = false;
     }

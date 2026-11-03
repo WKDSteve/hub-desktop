@@ -101,6 +101,13 @@ describe('askable', () => {
     expect(askable(app({ href: '../tasks-web/tasks.html' }))).toBe(false);
   });
 
+  it('is not an app whose build is not a commit id: it could not be compared and would always look older', () => {
+    for (const build of ['dev', 'local1', '9f3b7b', 'g123456', 'a'.repeat(41)]) {
+      expect(askable(app({ build })), build).toBe(false);
+    }
+    expect(askable(app({ build: '9F3B7BA' }))).toBe(true);
+  });
+
   it('is not a repository named with anything but plain characters', () => {
     for (const name of ['../x', 'a/b', 'a b', '', 'a?x=1', 'a#b', '.hidden', 'a'.repeat(101)]) {
       expect(askable(app({ repo: { owner: 'WKDSteve', name, private: false } })), name).toBe(false);
@@ -210,6 +217,30 @@ describe('UpdateChecker', () => {
     expect(g.asked).toHaveLength(1);
     expect(round.states).toEqual({ tasks: 'unknown', rules: 'unknown' });
     expect(store.data).toEqual({});
+  });
+
+  it('takes a repository without a rolling release (404) as an answer: the other apps are still asked', async () => {
+    const store = memory();
+    const g = github((url) =>
+      url.includes('/tasks-desktop/') ? new Response('{}', { status: 404 }) : ok('Rolling build (1234567)'),
+    );
+    const round = await new UpdateChecker(g.fetchFn, store, () => 1000).check([
+      app(),
+      app({ id: 'rules', repo: { owner: 'WKDSteve', name: 'rules-desktop', private: false } }),
+    ]);
+    expect(round.failed).toBe(false);
+    expect(g.asked).toHaveLength(2);
+    expect(round.states).toEqual({ tasks: 'unknown', rules: 'available' });
+    expect(JSON.parse(store.data['hub-desktop.update.tasks'] ?? 'null')).toEqual({ at: 1000, available: null });
+  });
+
+  it('gives up a question GitHub does not answer in time, and says so', async () => {
+    const hanging = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+      })) as typeof fetch;
+    const round = await new UpdateChecker(hanging, memory(), () => 0, 20).check([app()]);
+    expect(round).toEqual({ states: { tasks: 'unknown' }, available: {}, failed: true });
   });
 
   it('does not ask when the network fails, and says so', async () => {
@@ -322,6 +353,16 @@ describe('App and the update check', () => {
     await state.start('code');
     await state.checkUpdates();
     expect(state.toast).toEqual({ kind: 'error', text: 'GitHub did not answer. Try again later.' });
+    expect(state.hasUpdate('tasks')).toBe(false);
+  });
+
+  it('does not call it up to date when GitHub names no build it can read', async () => {
+    const { Hub } = await import('./api');
+    const g = github(() => ok('v1.2.3'));
+    const state = new App(new Hub(hubWith([app()])), session, undefined, null, new UpdateChecker(g.fetchFn, memory()));
+    await state.start('code');
+    await state.checkUpdates();
+    expect(state.toast).toEqual({ kind: 'ok', text: 'GitHub names no build for 1 app; the others are up to date.' });
     expect(state.hasUpdate('tasks')).toBe(false);
   });
 

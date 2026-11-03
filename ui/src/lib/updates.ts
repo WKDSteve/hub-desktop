@@ -15,6 +15,12 @@ export const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_REPLY_CHARS = 512 * 1024;
 const MAX_TITLE_CHARS = 120;
 
+/** A question GitHub has not answered by then is given up (the button would stay disabled otherwise). */
+export const ASK_TIMEOUT_MS = 15_000;
+
+/** A build that is a commit id: only that can be compared with the commit id of a release title. */
+const COMMIT = /^[0-9a-f]{7,40}$/i;
+
 /** `Rolling build (<sha7>)`: the title the release kit gives the rolling release (`release-kit/README.md`). */
 const ROLLING_TITLE = /^Rolling build \(([0-9a-f]{7,40})\)$/;
 
@@ -45,14 +51,17 @@ export function stateOf(installed: string | null | undefined, available: string 
   return differs(installed, available) ? 'available' : 'current';
 }
 
-/** Whether the app may be asked about: installed, public, with a build it reports, and a repository named plainly. */
+/**
+ * Whether the app may be asked about: installed, public, with a build it reports that is a commit id (a build of
+ * another form, `dev` say, cannot be compared and would always look older), and a repository named plainly.
+ */
 export function askable(app: HubApp): boolean {
   return (
     app.installed &&
     !app.href &&
     !app.repo.private &&
     typeof app.build === 'string' &&
-    app.build !== '' &&
+    COMMIT.test(app.build) &&
     PLAIN.test(app.repo.owner) &&
     PLAIN.test(app.repo.name)
   );
@@ -106,6 +115,7 @@ export class UpdateChecker {
     private readonly fetchFn: typeof fetch,
     private readonly memory: Memory | null,
     private readonly now: () => number = () => Date.now(),
+    private readonly timeoutMs: number = ASK_TIMEOUT_MS,
   ) {}
 
   #read(id: string): Kept | null {
@@ -123,14 +133,19 @@ export class UpdateChecker {
     safely(() => this.memory?.setItem(KEY + id, JSON.stringify(kept)), undefined);
   }
 
-  /** Ask GitHub about one repository. `undefined`: no usable answer. */
+  /**
+   * Ask GitHub about one repository. `undefined`: no usable answer (refused, offline, too slow); `null`: GitHub
+   * answered and names no build we can read, also when the repository has no rolling release (404).
+   */
   async #ask(app: HubApp): Promise<string | null | undefined> {
     try {
       const res = await this.fetchFn(releaseUrl(app.repo), {
         credentials: 'omit',
         referrerPolicy: 'no-referrer',
         headers: { Accept: 'application/vnd.github+json' },
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
+      if (res.status === 404) return null;
       if (!res.ok) return undefined;
       const text = await res.text();
       if (text.length > MAX_REPLY_CHARS) return undefined;
@@ -148,7 +163,8 @@ export class UpdateChecker {
     for (const app of apps.filter(askable)) {
       let kept = this.#read(app.id);
       if (kept === null || due(kept.at, this.now())) {
-        // After one refusal (a rate limit holds for every repository) the other apps are not asked this round.
+        // After one refusal (a rate limit holds for every repository) the other apps are not asked this round; a
+        // repository without a rolling release is an answer, not a refusal.
         const found = failed ? undefined : await this.#ask(app);
         if (found === undefined) {
           failed = true;
