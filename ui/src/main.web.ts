@@ -5,10 +5,14 @@ import { mount } from 'svelte';
 import './app.css';
 import App from './App.svelte';
 import { App as AppState } from './lib/app.svelte';
+import { logo } from './lib/icons';
 import { installTooltips } from 'appkit-ui/tooltip';
 import { pickerSupport, pickFolder } from 'appkit-web/folder';
 import catalog from './web/catalog.json';
 import { type CatalogEntry, type FolderPicker, indexedDbMissing, WebHub } from './web/hub';
+
+// The shell may name no file, so the icon of the tab comes in here, as a data: URL.
+document.head.append(Object.assign(document.createElement('link'), { rel: 'icon', href: logo }));
 
 // The folder of the clones is looked at once, read only; a browser without the dialog (Firefox, Safari) keeps the marks
 // of the menu.

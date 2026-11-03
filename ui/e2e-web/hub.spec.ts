@@ -15,6 +15,12 @@ test('the page lists the apps, asks nothing of the network and breaks no rule of
   const rules = page.locator('[data-tile="rules"]');
   await expect(rules).toContainText('Native only');
   await expect(rules).toContainText('Not startable in the web hub');
+  // The icons are in the file: tiles, bar and tab name data: URLs, and the policy lets them through.
+  const drawn = (selector: string) =>
+    page.locator(selector).evaluateAll((all) => all.map((i) => (i as HTMLImageElement).naturalWidth > 0));
+  await expect.poll(() => drawn('[data-tile] img')).toEqual(Array(6).fill(true));
+  await expect.poll(() => drawn('.kit-brand img')).toEqual([true]);
+  await expect(page.locator('head link[rel="icon"]')).toHaveAttribute('href', /^data:image\/svg\+xml/);
   await expect(page.getByRole('button', { name: 'Look again' })).toHaveCount(0);
   // GitHub is out of reach for this file (connect-src 'none'): there is no button for the update badge.
   await expect(page.getByRole('button', { name: 'Check for updates' })).toHaveCount(0);

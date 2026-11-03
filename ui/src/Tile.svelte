@@ -4,6 +4,7 @@
   // machine: the same tile quieter, as a link to the page where the app is to be had, or a badge when there is none.
   import { contextTarget } from 'appkit-ui/contextmenu';
   import type { HubApp, UpdateJob } from './lib/api';
+  import { iconOf } from './lib/icons';
   import { autostartWord, getting, hasMenu, modeName, stateOf } from './lib/tiles';
   import { jobLabel } from './lib/updating';
 
@@ -43,7 +44,14 @@
   const get = $derived(getting(app));
   const login = $derived(autostartWord(app));
   const initial = $derived(app.name.slice(0, 1).toUpperCase());
+  const image = $derived(iconOf(app));
 </script>
+
+{#snippet icon()}
+  <span class="icon" class:letter={!image} aria-hidden="true">
+    {#if image}<img src={image} alt="" />{:else}{initial}{/if}
+  </span>
+{/snippet}
 
 {#snippet more(label: string)}
   <button type="button" class="more" tabindex="-1" aria-haspopup="menu" aria-label={label} onclick={onmore}>▾</button>
@@ -61,7 +69,7 @@
       tabindex={tab ? 0 : -1}
       onfocus={onfocus}
     >
-      <span class="icon" aria-hidden="true">{initial}</span>
+      {@render icon()}
       <span class="name">{app.name}</span>
       <span class="line">
         <span class="note">Not checked</span>
@@ -79,7 +87,7 @@
       onclick={onlaunch}
       onfocus={onfocus}
     >
-      <span class="icon" aria-hidden="true">{initial}</span>
+      {@render icon()}
       <span class="name">{app.name}</span>
       <span class="line">
         {#if state.kind !== 'none'}
@@ -118,7 +126,7 @@
       tabindex={tab ? 0 : -1}
       onfocus={onfocus}
     >
-      <span class="icon" aria-hidden="true">{initial}</span>
+      {@render icon()}
       <span class="name">{app.name}</span>
       <span class="line"><span class="badge">{get.badge}</span></span>
       {#if get.note}<span class="file">{get.note}</span>{/if}
@@ -129,7 +137,7 @@
     {/if}
   {:else}
     <button type="button" class="main" data-tile={app.id} tabindex={tab ? 0 : -1} aria-disabled="true" onfocus={onfocus}>
-      <span class="icon" aria-hidden="true">{initial}</span>
+      {@render icon()}
       <span class="name">{app.name}</span>
       <span class="line"><span class="badge">{get.badge}</span></span>
       {#if get.note}<span class="file">{get.note}</span>{/if}
@@ -178,6 +186,13 @@
     place-items: center;
     width: 2.25rem;
     height: 2.25rem;
+  }
+  .icon img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .letter {
     border-radius: var(--radius);
     background: var(--accent);
     color: var(--accent-text);

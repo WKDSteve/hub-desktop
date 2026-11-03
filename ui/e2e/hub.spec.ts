@@ -14,6 +14,11 @@ test('the hub shows what is on the machine as tiles and the rest, quieter, below
   ]) {
     await expect(installed.locator(`[data-tile="${id}"]`)).toContainText(name);
   }
+  // Every tile and the bar show their icon, really drawn: the policy of the page lets them through.
+  const drawn = (selector: string) =>
+    page.locator(selector).evaluateAll((all) => all.map((i) => (i as HTMLImageElement).naturalWidth > 0));
+  await expect.poll(() => drawn('[data-tile] img')).toEqual(Array(6).fill(true));
+  await expect.poll(() => drawn('.kit-brand img')).toEqual([true]);
   // A planned app is below, with its badge, and is no link; an app that is only not installed yet links to its release.
   await expect(other.getByRole('button', { name: /Testing/ })).toContainText('Planned');
   await expect(other.getByRole('link', { name: /streamtap/ })).toContainText('Download');

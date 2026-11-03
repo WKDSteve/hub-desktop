@@ -1,0 +1,47 @@
+{
+  "icons": {
+    "ai-desktop": {
+      "commit": "5e3daf07fc417533d26d175862cfe29313f3ae22",
+      "path": "assets/icons/ai-desktop/ai-desktop-small.svg",
+      "repo": "WKDSteve/ai-desktop",
+      "sha256": "31414a78fae894343518d4be48908f83452edf2df20650c22e416daf4fbab03f"
+    },
+    "docmap-desktop": {
+      "commit": "6f8480e7fe89bdf5f2417dba22f4a9e7784d249e",
+      "path": "assets/icons/docmap-desktop/docmap-desktop-small.svg",
+      "repo": "WKDSteve/docmap-desktop",
+      "sha256": "884558f4209931ab09cf9600164734884983061f94f7031d74806d4ce7e06559"
+    },
+    "rules-desktop": {
+      "commit": "b0bfc2c19c7552a824b22e32d32be170e37c5a3a",
+      "path": "assets/icons/rules-desktop/rules-desktop-small.svg",
+      "repo": "WKDSteve/rules-desktop",
+      "sha256": "6ef053991a8d128aa38cb0e209cc077b253b3a3e7b9ef52e58d16c17fc3379c1"
+    },
+    "streamtap": {
+      "commit": "333034b86de98c1c0d2472f6ad64511714c3605d",
+      "path": "assets/icons/streamtap/streamtap-small.svg",
+      "repo": "WKDSteve/streamtap",
+      "sha256": "67cda79248d631d060c184475b957cccbe95da0ee8648126658fc50b99c9139e"
+    },
+    "tasks-desktop": {
+      "commit": "c5a188767f3e65601e761f75eb771dec2dec1b1b",
+      "path": "assets/icons/tasks-desktop/tasks-desktop-small.svg",
+      "repo": "WKDSteve/tasks-desktop",
+      "sha256": "486e75025b31c613a6f67b3d4063b00b4705b1c5a91e2966eb55a007ad59926a"
+    },
+    "tasks-web": {
+      "commit": "c5a188767f3e65601e761f75eb771dec2dec1b1b",
+      "path": "assets/icons/tasks-web/tasks-web-small.svg",
+      "repo": "WKDSteve/tasks-desktop",
+      "sha256": "673547411af71fbabca63fe9e3c2f3a39566187ed77e162c4a5cedf63be32c1c"
+    },
+    "testing-web": {
+      "commit": "2db0779099bf2dedc72be9bfc66a99b5e93072a5",
+      "path": "assets/icons/testing-web/testing-web-small.svg",
+      "repo": "WKDSteve/testing-desktop",
+      "sha256": "8d983c4234c1ad0bfa096ce120f6385a4db5d3054187e422525971cdbd969220"
+    }
+  },
+  "schema": 1
+}

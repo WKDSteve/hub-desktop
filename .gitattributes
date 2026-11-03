@@ -13,3 +13,6 @@
 *.sh text eol=lf
 *.ps1 text eol=lf
 *.py text eol=lf
+
+# Pinned by their sum (tools/sync-app-icons.py): no line ending may change.
+assets/icons/_borrowed/*.svg -text

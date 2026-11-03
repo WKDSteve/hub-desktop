@@ -22,6 +22,7 @@ cd ui && pnpm web:test && pnpm web:build && pnpm web:e2e   # hub.html (Web-Hub),
 python tools/check-control-chars.py
 python tools/check-color-literals.py      # keine Farbe außerhalb der Tokens von appkit-ui
 python tools/check-appkit-pin.py
+python tools/sync-app-icons.py            # die Icons der anderen Apps sind, was gepinnt ist (offline)
 python tools/check-lock-age.py --min-days 7
 python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge selbst
 ```
@@ -83,6 +84,15 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 - Tests starten Programme nur über `crates/fake-app` (schreibt argv und cwd in `fake-app.log` neben sich); der Browser ist
   im Test eine Datei (`Browser::Log`, im Binary `HUB_DESKTOP_BROWSER_LOG`). `HUB_DESKTOP_WEB_PORT` setzt den Port des
   Web-Listeners (Tests nie auf 17611).
+
+## Icons (Regel APP-11)
+
+- Eigene Icons: `assets/icons/hub-*/`. Die Icons der Kacheln gehören den Repos der Apps: `assets/icons/_borrowed/` hält
+  gepinnte Kopien, `SOURCES.json` nennt Repo, Pfad, Commit und SHA-256. Nie von Hand ändern; `python tools/sync-app-icons.py
+  --update` holt alle vom `main` der Besitzer (braucht `gh`, streamtap ist privat), ohne Argument prüft es offline.
+- Neue App im Katalog: Eintrag in `SOURCES.json` (`repo`, `path`), `--update`. Ohne Icon zeigt die Kachel den Anfangsbuchstaben.
+- `ui/src/lib/icons.ts` wählt die Variante nach dem, was die Kachel öffnet. Vite macht daraus eine Datei (Hub, CSP
+  `img-src 'self'`) oder eine `data:`-URL (`hub.html`, CSP `img-src data:`).
 
 ## Overlay und Stop (M2, Teil 1)
 

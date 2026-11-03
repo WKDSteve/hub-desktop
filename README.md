@@ -1,3 +1,5 @@
+![hub-desktop](assets/icons/hub-desktop/png/hub-desktop-128.png)
+
 # hub-desktop
 
 One place to start every `*-desktop` and `*-web` app: a local hub that shows each app as a tile and

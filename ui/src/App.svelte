@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import Brand from 'appkit-ui/Brand.svelte';
+  import { logo } from './lib/icons';
   import ContextMenu from 'appkit-ui/ContextMenu.svelte';
   import Toast from 'appkit-ui/Toast.svelte';
   import { ContextRegistry } from 'appkit-ui/contextmenu';
@@ -174,7 +175,7 @@
 <svelte:window onkeydown={onWindowKey} />
 
 <header class="bar">
-  <Brand label="Hub" />
+  <Brand label="Hub"><span class="brand-mark"><img src={logo} alt="" width="20" height="20" />Hub</span></Brand>
   <h1 class="sr-only">Hub</h1>
   <label class="filter">
     <span class="sr-only">Filter the apps</span>
@@ -299,6 +300,11 @@
 </dialog>
 
 <style>
+  .brand-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
   .bar {
     display: flex;
     align-items: center;

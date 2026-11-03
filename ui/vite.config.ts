@@ -9,7 +9,7 @@ const test = {
 
 // `vite build --mode web` builds the page of the web variant: one module with everything in it, out of `dist-web/`.
 // `web/pack.mjs` turns that into the single `hub.html` (script and style inline, the policy). Nothing in it may fetch:
-// no preload, no split chunk, no file next to the page.
+// no preload, no split chunk, no file next to the page, so an icon is a data: URL.
 const web = defineConfig({
   plugins: [svelte()],
   base: './',
@@ -19,7 +19,7 @@ const web = defineConfig({
   build: {
     outDir: 'dist-web',
     target: 'es2022',
-    assetsInlineLimit: 0,
+    assetsInlineLimit: (file) => file.endsWith('.svg'),
     modulePreload: false,
     cssCodeSplit: false,
     sourcemap: false,
