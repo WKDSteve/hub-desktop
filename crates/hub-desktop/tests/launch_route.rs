@@ -144,7 +144,7 @@ async fn an_unknown_app_a_missing_one_and_a_foreign_program_on_a_port_are_answer
         ("..%2Ftasks", 404, "not_found"),
         ("hub", 404, "not_found"),
         ("tasks", 409, "not_installed"),
-        ("streamtap", 409, "not_available"),
+        ("streamtap", 409, "not_installed"),
         ("ai", 409, "port_busy"),
     ] {
         let reply = hub.launch(id, "{}").await;
@@ -328,7 +328,7 @@ async fn a_mode_the_app_has_not_or_a_word_that_is_none_is_refused_and_nothing_is
     std::fs::create_dir_all(hub.machine.path("cfg-hub")).unwrap();
     for (path, body, status) in [
         ("/api/hub/apps/rules/mode", r#"{"mode":"web"}"#, 409),
-        ("/api/hub/apps/streamtap/mode", r#"{"mode":"native"}"#, 409),
+        ("/api/hub/apps/testing/mode", r#"{"mode":"native"}"#, 409),
         ("/api/hub/apps/nope/mode", r#"{"mode":"web"}"#, 404),
         ("/api/hub/apps/tasks/mode", r#"{"mode":"fly"}"#, 400),
         (

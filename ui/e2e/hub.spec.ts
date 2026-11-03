@@ -14,10 +14,10 @@ test('the hub shows what is on the machine as tiles and the rest, quieter, below
   ]) {
     await expect(installed.locator(`[data-tile="${id}"]`)).toContainText(name);
   }
-  // Planned and build-it-yourself apps are below, with their badge, and are not links.
+  // A planned app is below, with its badge, and is no link; an app that is only not installed yet links to its release.
   await expect(other.getByRole('button', { name: /Testing/ })).toContainText('Planned');
-  await expect(other.getByRole('button', { name: /streamtap/ })).toContainText('Build it yourself');
-  await expect(other.getByRole('link')).toHaveCount(0);
+  await expect(other.getByRole('link', { name: /streamtap/ })).toContainText('Download');
+  await expect(other.getByRole('link')).toHaveCount(1);
   // Quieter: the surface and the text colour are not those of an installed tile.
   const look = (id: string) =>
     tile(page, id).evaluate((el) => {

@@ -43,7 +43,7 @@ describe('view', () => {
   it('keeps what the catalog says of an app that is planned or built by hand', () => {
     expect(view(entry('testing'), new Set()).installed).toBe(false);
     expect(view(entry('testing'), new Set()).install.hint).toBe('planned');
-    expect(view(entry('streamtap'), new Set()).install.hint).toBe('build_yourself');
+    expect(view(entry('streamtap'), new Set()).install.hint).toBe('native_only');
   });
 
   it('never makes a link from anything but the catalog', () => {

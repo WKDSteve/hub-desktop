@@ -99,12 +99,12 @@
     "id": "streamtap",
     "name": "streamtap",
     "summary": "Taps a stream into a file",
-    "status": "build_only",
-    "native": false,
+    "status": "available",
+    "native": true,
     "web": null,
     "install": {
-      "hint": "build_yourself",
-      "page": null,
+      "hint": "release",
+      "page": "https://github.com/WKDSteve/streamtap/releases/latest",
       "file": null
     },
     "repo": {

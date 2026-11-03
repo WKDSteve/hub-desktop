@@ -350,7 +350,7 @@ async fn what_is_not_installed_or_has_no_program_or_is_unknown_is_refused() {
         ("rules", LaunchError::NotInstalled),
         ("docmap", LaunchError::NotInstalled),
         ("ai", LaunchError::NotInstalled),
-        ("streamtap", LaunchError::NotAvailable("native")),
+        ("streamtap", LaunchError::NotInstalled),
         ("testing", LaunchError::NotInstalled),
         ("nope", LaunchError::UnknownApp),
         ("hub", LaunchError::UnknownApp),

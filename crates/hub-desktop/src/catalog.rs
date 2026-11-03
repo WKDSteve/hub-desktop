@@ -264,13 +264,18 @@ pub const CATALOG: &[Entry] = &[
             name: "streamtap",
             visibility: Visibility::Private,
         },
-        status: Status::BuildOnly,
-        native: None,
+        status: Status::Available,
+        // `install.ps1` of the release puts it here, per user (never a MSIX container: the hub that starts it
+        // is a plain process).
+        native: Some(Native::GuiExe {
+            candidates: &[r"{LOCALAPPDATA}\streamtap\bin\streamtap-app.exe"],
+        }),
         web: None,
         default_mode: Mode::Native,
+        // The file of the release carries its version in its name: only the page is named.
         install: Install {
-            hint: Hint::BuildYourself,
-            page: None,
+            hint: Hint::Release,
+            page: Some("https://github.com/WKDSteve/streamtap/releases/latest"),
             file: None,
         },
     },
@@ -311,7 +316,6 @@ mod tests {
                 assert!(entry.native.is_none(), "{}", entry.id);
             }
         }
-        assert!(find("streamtap").unwrap().native.is_none());
         assert!(find("testing").unwrap().native.is_none());
     }
 
