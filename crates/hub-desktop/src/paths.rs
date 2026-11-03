@@ -1,7 +1,9 @@
 //! Where an app may be looked for, and what counts as found (concept 4.2, 5.1).
 //!
 //! A path of the catalog is a template: one of the placeholders below at its start and plain folder
-//! names after it. The result must be an absolute path to a file that, once every link on the way is
+//! names after it. Besides the fixed placeholders, `{$<APP>_INSTALL_DIR}` names the install folder an app's
+//! own install script takes from that variable (streamtap's `STREAMTAP_INSTALL_DIR`); only a variable of
+//! that shape, so the catalog cannot make any other variable a root. The result must be an absolute path to a file that, once every link on the way is
 //! resolved, still lies below its root. Whatever a junction, a symbolic link, a `..` or a network share
 //! points at beyond the root is not found. Nothing here starts a process or reads the registry.
 
@@ -45,6 +47,27 @@ fn root_of(name: &str, env: &Env) -> Option<PathBuf> {
     value.and_then(usable_root)
 }
 
+/// A variable that may be a root: upper-case letters, digits and `_`, ending in `_INSTALL_DIR` (with a
+/// name before it).
+fn install_var(name: &str) -> bool {
+    name.strip_suffix("_INSTALL_DIR").is_some_and(|app| {
+        !app.is_empty()
+            && app
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+    })
+}
+
+/// The root a placeholder of a template names: a fixed one, or `$<APP>_INSTALL_DIR`.
+fn placeholder_root(name: &str, env: &Env) -> Option<PathBuf> {
+    match name.strip_prefix('$') {
+        Some(var) if install_var(var) => env.path(var).and_then(usable_root),
+        Some(_) => None,
+        None if PLACEHOLDERS.contains(&name) => root_of(name, env),
+        None => None,
+    }
+}
+
 /// The home folder of the person.
 pub(crate) fn home(env: &Env) -> Option<PathBuf> {
     root_of("HOME", env)
@@ -68,11 +91,8 @@ fn plain_part(part: &str) -> bool {
 pub fn expand(template: &str, env: &Env) -> Option<Candidate> {
     let rest = template.strip_prefix('{')?;
     let (name, below) = rest.split_once('}')?;
-    if !PLACEHOLDERS.contains(&name) {
-        return None;
-    }
     let below = below.strip_prefix(['\\', '/'])?;
-    let root = root_of(name, env)?;
+    let root = placeholder_root(name, env)?;
     let mut file = root.clone();
     for part in below.split(['\\', '/']) {
         if !plain_part(part) {
@@ -174,6 +194,46 @@ mod tests {
             "{LOCALAPPDATA}\\a\nb.exe",
         ] {
             assert!(expand(bad, &env).is_none(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn an_install_variable_is_a_root_only_by_its_shape_and_only_when_usable() {
+        let scratch = Scratch::new("hub-paths-var");
+        let dir = scratch.path().join("Elsewhere");
+        let env = Env::from_pairs([
+            ("STREAMTAP_INSTALL_DIR", dir.clone()),
+            ("A1_B_INSTALL_DIR", dir.clone()),
+            ("PATH", dir.clone()),
+            ("streamtap_INSTALL_DIR", dir.clone()),
+            ("_INSTALL_DIR", dir.clone()),
+            ("X_INSTALL_DIRS", dir.clone()),
+        ]);
+        let got = expand(r"{$STREAMTAP_INSTALL_DIR}\bin\streamtap-app.exe", &env).unwrap();
+        assert_eq!(got.root, dir);
+        assert_eq!(got.file, dir.join("bin").join("streamtap-app.exe"));
+        assert!(expand(r"{$A1_B_INSTALL_DIR}\x.exe", &env).is_some());
+        // Any other variable, or the right one in another case, is no root.
+        for bad in [
+            r"{$PATH}\x.exe",
+            r"{$streamtap_INSTALL_DIR}\x.exe",
+            r"{$_INSTALL_DIR}\x.exe",
+            r"{$X_INSTALL_DIRS}\x.exe",
+            r"{$}\x.exe",
+            r"{$$STREAMTAP_INSTALL_DIR}\x.exe",
+            r"{STREAMTAP_INSTALL_DIR}\x.exe",
+            r"{$STREAMTAP_INSTALL_DIR}\..\x.exe",
+        ] {
+            assert!(expand(bad, &env).is_none(), "{bad:?}");
+        }
+        // Not set, relative, a share or climbing: the same rules as for every root.
+        assert!(expand(r"{$STREAMTAP_INSTALL_DIR}\x.exe", &Env::default()).is_none());
+        for value in ["relative/dir", r"\\server\share", "C:/a/../b"] {
+            let env = Env::from_pairs([("STREAMTAP_INSTALL_DIR", value)]);
+            assert!(
+                expand(r"{$STREAMTAP_INSTALL_DIR}\x.exe", &env).is_none(),
+                "{value:?}"
+            );
         }
     }
 

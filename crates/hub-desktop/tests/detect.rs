@@ -68,6 +68,37 @@ async fn a_program_in_the_install_folder_is_installed_and_one_at_the_override_to
     assert!(app(&look(env, None).await, "tasks").installed());
 }
 
+/// streamtap's own install script takes `STREAMTAP_INSTALL_DIR` for another folder: the program below it
+/// is found, before one in the default folder, and without the variable only the default one is.
+#[tokio::test]
+async fn streamtap_is_found_below_its_install_variable_and_in_its_default_folder() {
+    let machine = Machine::new("hub-detect-streamtap");
+    let elsewhere = machine.path("Elsewhere");
+    let env = machine.env(&[("STREAMTAP_INSTALL_DIR", elsewhere.display().to_string())]);
+    assert!(!app(&look(env.clone(), None).await, "streamtap").installed());
+    machine.touch("Elsewhere/bin/streamtap-app.exe");
+    let found = look(env.clone(), None).await;
+    let streamtap = app(&found, "streamtap");
+    assert!(streamtap.installed() && streamtap.run.is_none());
+    let named = std::fs::canonicalize(elsewhere.join("bin").join("streamtap-app.exe")).unwrap();
+    assert_eq!(streamtap.native.as_deref(), Some(named.as_path()));
+    // Both there: the folder the variable names wins.
+    machine.touch("Local/streamtap/bin/streamtap-app.exe");
+    assert_eq!(
+        app(&look(env, None).await, "streamtap").native.as_deref(),
+        Some(named.as_path())
+    );
+    // Without the variable the default folder is looked at.
+    let default =
+        std::fs::canonicalize(machine.path("Local/streamtap/bin/streamtap-app.exe")).unwrap();
+    assert_eq!(
+        app(&look(machine.env(&[]), None).await, "streamtap")
+            .native
+            .as_deref(),
+        Some(default.as_path())
+    );
+}
+
 #[tokio::test]
 async fn docmap_is_found_in_either_place_and_has_no_state() {
     let machine = Machine::new("hub-detect-docmap");

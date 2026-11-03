@@ -266,9 +266,12 @@ pub const CATALOG: &[Entry] = &[
         },
         status: Status::Available,
         // `install.ps1` of the release puts it here, per user (never a MSIX container: the hub that starts it
-        // is a plain process).
+        // is a plain process), or below `STREAMTAP_INSTALL_DIR` when that names another folder.
         native: Some(Native::GuiExe {
-            candidates: &[r"{LOCALAPPDATA}\streamtap\bin\streamtap-app.exe"],
+            candidates: &[
+                r"{$STREAMTAP_INSTALL_DIR}\bin\streamtap-app.exe",
+                r"{LOCALAPPDATA}\streamtap\bin\streamtap-app.exe",
+            ],
         }),
         web: None,
         default_mode: Mode::Native,

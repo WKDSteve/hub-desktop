@@ -71,7 +71,8 @@ python tools/check-lock-age.py --min-days 7
 - Der Start anderer Apps nur per argv über `appkit_hub::launch::spawn`, Programmpfade nur aus der Erkennung, nie aus
   einem Request oder aus `config.json`; Single-Flight je App (Konzept §6, §8).
 - Ports: 17610 Hub, 17611 Web-Listener, 17618 testing-hub; die Liste steht in `appkit-testkit/src/ports.rs`.
-- Katalog, Erkennung, Start: `catalog.rs` (feste Tabelle), `paths.rs` (Platzhalter + Wurzelprüfung), `probe.rs`
+- Katalog, Erkennung, Start: `catalog.rs` (feste Tabelle), `paths.rs` (Platzhalter + Wurzelprüfung; neben den festen
+  Wurzeln nur `{$<APP>_INSTALL_DIR}`, z. B. `STREAMTAP_INSTALL_DIR`, vor dem Standardort), `probe.rs`
   (Loopback, 300 ms), `detect.rs`, `launch.rs` (argv je Startart, Single-Flight), `webserve.rs` (Listener 17611: nur der
   exakte Pfad `/<repo>/<datei>` eines Katalog-Eintrags, Host-Prüfung, CSP als Header). Neue Startart = neue Variante in
   `catalog::Native` plus ein Zweig in `launch.rs` mit Test, dass nur die dort geschriebenen argv-Listen vorkommen.
