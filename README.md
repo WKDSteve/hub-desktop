@@ -12,11 +12,13 @@ opens it as a native app or as a web app with a single click.
 In your own PowerShell (not elevated; no administrator rights, no SmartScreen stop):
 
 ```
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "& ([scriptblock]::Create((irm https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.ps1))) -InstallArgs '--shortcut'"
 ```
 
-Add `-InstallArgs '--shortcut'` (run the script as a script block) for a link on the desktop. `hub-desktop uninstall`
-and `uninstall.ps1` take it away again. The hub needs none of the other apps to run.
+This puts a link **Hub** on the desktop and in the Start menu (one click starts the hub and opens its page). Without
+`-InstallArgs '--shortcut'` there is no link: start `%LOCALAPPDATA%\hub-desktop\bin\hub-desktop.exe`, or run
+`hub-desktop install --shortcut` later. `hub-desktop uninstall` and `uninstall.ps1` take the links away again. The hub
+needs none of the other apps to run.
 
 ## What it does
 
