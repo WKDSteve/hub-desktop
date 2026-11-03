@@ -29,6 +29,8 @@ export interface HubApp {
   stoppable: boolean;
   /** The native app starts with the login (an app of the kit on Windows); `null` or missing: not known. */
   autostart?: boolean | null;
+  /** The build the running app reports (a short commit id); `null` or missing: not known. */
+  build?: string | null;
   install: {
     hint: 'release' | 'clone' | 'planned' | 'build_yourself' | 'native_only';
     page: string | null;

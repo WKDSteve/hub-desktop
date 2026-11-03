@@ -217,3 +217,22 @@ async fn the_monitor_route_reads_the_export_folder_of_the_hub() {
         server.shutdown().await;
     }
 }
+
+/// The page may fetch from this origin and from GitHub (the update badge), and from nothing else.
+#[tokio::test]
+async fn the_page_may_reach_github_and_nobody_else() {
+    let server = start().await;
+    let host = format!("127.0.0.1:{}", server.addr().port());
+    let reply = send(
+        server.addr(),
+        request("GET", "/", &[("Host", host.as_str())], b""),
+    )
+    .await;
+    let policy = reply.header("content-security-policy").unwrap().to_owned();
+    assert!(
+        policy.contains("connect-src 'self' https://api.github.com;"),
+        "{policy}"
+    );
+    assert_eq!(policy.matches("https://").count(), 1, "{policy}");
+    server.shutdown().await;
+}

@@ -169,6 +169,11 @@
   {#if app.canRescan}
     <button type="button" class="tool" aria-keyshortcuts="r" onclick={() => void app.rescan()}>Look again</button>
   {/if}
+  {#if app.canCheckUpdates}
+    <button type="button" class="tool" disabled={app.checking} onclick={() => void app.checkUpdates()}>
+      Check for updates
+    </button>
+  {/if}
   {#if app.version}<span class="version">{app.version}</span>{/if}
 </header>
 
@@ -197,6 +202,7 @@
                 starting={app.starting[tile.id] !== undefined}
                 failed={app.failed[tile.id]}
                 tab={tabId === tile.id}
+                update={app.hasUpdate(tile.id)}
                 onlaunch={() => void app.launch(tile)}
                 onmore={() => openMenu(tile.id)}
                 onfocus={() => (focused = tile.id)}

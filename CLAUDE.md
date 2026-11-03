@@ -93,8 +93,11 @@ python tools/check-lock-age.py --min-days 7
   Detector nichts (`None`) und liest nie die Registry. Die Kachel sagt „Starts at login“ / „No autostart“, bei `None`
   nichts. Unter Linux/macOS gibt es keine Anzeige.
 - Build: `GET /api/hub/apps` nennt je laufender Kit-App `build` (aus `hello.build`, appkit ab v0.29.0; nur 1 bis 40 Buchstaben/Ziffern, sonst `null`).
-- Offen in M2: das Update-Badge. Die Seite müsste `api.github.com` fragen, aber die CSP der Hub-Seite (`connect-src 'self'`) liegt fest in
-  appkit (`guard.rs`); zuerst braucht appkit eine Möglichkeit für eine zusätzliche `connect-src`-Quelle (Task `appkit/page-csp-...`).
+- Update-Badge: Die Seite fragt `api.github.com` (`ui/src/lib/updates.ts`), der Hub nie. Nur auf Knopfdruck ("Check for updates"), höchstens
+  einmal am Tag je App (`localStorage`, mit try/catch), nur öffentliche Repos, ohne Token und Cookies, nur Apps mit bekanntem `build`.
+  Gelesen wird aus `releases/tags/latest` allein der Titel `Rolling build (<sha>)`; jede andere Form heißt "nicht bekannt", nie ein Badge.
+  Erlaubt ist das durch `GuardRules::with_connect_src(RELEASES_ORIGIN)` in `server.rs` (appkit ab v0.30.0, die CSP bleibt sonst
+  `connect-src 'self'`); `hub.html` hat `connect-src 'none'` und keinen Knopf.
 
 ## Monitor (M3, Teil 1)
 

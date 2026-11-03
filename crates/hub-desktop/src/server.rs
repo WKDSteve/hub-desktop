@@ -109,6 +109,9 @@ pub struct ServerConfig {
     pub monitor: Arc<Monitor>,
 }
 
+/// The one other address the page may fetch from: GitHub, for the update badge (`ui/src/lib/updates.ts`).
+pub const RELEASES_ORIGIN: &str = "https://api.github.com";
+
 /// The names (below `/api/hub/`) of the routes that need a session. The security matrix reads them
 /// from here: a route added to [`routes`] and left out of this list would be a route the matrix
 /// never tries (`tests/hub.rs` asks every name with a session).
@@ -367,8 +370,10 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
             app: IDENTITY.app,
             version: crate::VERSION,
             build_id: crate::BUILD,
-            // `hello` needs no session; no route of the hub is coarse (rate limited on its own) yet.
-            guard_rules: GuardRules::new(IDENTITY.route("hello"), Vec::<String>::new()),
+            // `hello` needs no session; no route of the hub is coarse (rate limited on its own) yet. The page
+            // may ask GitHub, and nobody else, for the update badge (public release data, no token).
+            guard_rules: GuardRules::new(IDENTITY.route("hello"), Vec::<String>::new())
+                .with_connect_src(RELEASES_ORIGIN),
             ui: cfg.ui,
             runtime: HubRuntime::new(detector, launcher, prefs, monitor),
             // There is no vault to choose, so no runtime is ever made again.

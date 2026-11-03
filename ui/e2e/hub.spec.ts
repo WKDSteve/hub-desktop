@@ -53,6 +53,50 @@ test('a tile says whether the app starts with the login, and says nothing when t
   await expect(tile(page, 'docmap')).not.toContainText(/login|autostart/i);
 });
 
+test('the update badge: nothing is asked at load, the button asks GitHub once, only about public apps with a build', async ({
+  page,
+  hub,
+}) => {
+  const asked: { url: string; headers: Record<string, string> }[] = [];
+  await page.route('**/api/hub/apps', async (route) => {
+    const doc = await (await route.fetch()).json();
+    // tasks and rules are public, ai is private; only tasks and ai report a build.
+    for (const a of doc.apps) a.build = { tasks: '9f3b7ba', ai: '9f3b7ba' }[a.id as string] ?? null;
+    await route.fulfill({ json: doc });
+  });
+  await page.route('https://api.github.com/**', async (route) => {
+    asked.push({ url: route.request().url(), headers: route.request().headers() });
+    await route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Rolling build (1234567)', tag_name: 'latest' }),
+    });
+  });
+  await hub.open(page);
+  expect(asked).toHaveLength(0);
+  await expect(tile(page, 'tasks')).not.toContainText('Update available');
+
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(tile(page, 'tasks')).toContainText('Update available');
+  await expect(page.getByRole('status')).toContainText('1 update is available.');
+  await expect(tile(page, 'rules')).not.toContainText('Update available');
+  await expect(tile(page, 'ai')).not.toContainText('Update available');
+  expect(asked.map((a) => a.url)).toEqual([
+    'https://api.github.com/repos/WKDSteve/tasks-desktop/releases/tags/latest',
+  ]);
+  expect(Object.keys(asked[0]?.headers ?? {})).not.toContain('authorization');
+  expect(Object.keys(asked[0]?.headers ?? {})).not.toContain('cookie');
+
+  // The same day, the same answer without a second question.
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(tile(page, 'tasks')).toContainText('Update available');
+  expect(asked).toHaveLength(1);
+
+  // The policy of the page lets it reach GitHub and nobody else.
+  const elsewhere = await page.evaluate(() => fetch('https://example.org/', { mode: 'no-cors' }).then(() => 'reached', () => 'blocked'));
+  expect(elsewhere).toBe('blocked');
+});
+
 test('an app that is not installed is a link to the page where it is had, opened safely', async ({ page, hubOn }) => {
   const hub = await hubOn({ ...FULL, docmap: false, ai: 'none' });
   await hub.open(page);

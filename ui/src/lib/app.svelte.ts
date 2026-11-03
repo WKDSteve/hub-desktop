@@ -4,6 +4,7 @@
 import type { ToastMessage } from 'appkit-ui/toast';
 import { ApiError, type Apps, type Hello, type HubApp, type HubApi, type LaunchAsk, type Mode } from './api';
 import { type MonitorReading, NOT_CONFIGURED } from './monitor';
+import { askable, type UpdateChecker, type UpdateState } from './updates';
 
 /** `starting`: the code is traded. `unpaired`: no session and no code (open the link of `hub-desktop open`). */
 export type Phase = 'starting' | 'ready' | 'unpaired' | 'error';
@@ -88,6 +89,10 @@ export class App {
   setupFor = $state<HubApp | null>(null);
   /** The testing export the hub reads, as it showed last. */
   monitor = $state<MonitorReading>(NOT_CONFIGURED);
+  /** What the last check for updates found, by app id; empty until a person pressed the button. */
+  updates = $state<Record<string, UpdateState>>({});
+  /** A check for updates is under way. */
+  checking = $state(false);
 
   #asked = new Map<string, number>();
   #cancelToast: (() => void) | null = null;
@@ -98,6 +103,8 @@ export class App {
     private readonly clock: Clock = realClock,
     /** What only the web hub can do: keep the word of the viewer that an app is not on this machine. */
     readonly presence: Presence | null = null,
+    /** What only the page of the real hub can do: ask GitHub whether an app has a newer build. */
+    private readonly checker: UpdateChecker | null = null,
   ) {
     // The session that was refused is gone: the page asks for a new link instead of showing stale data.
     hub.onUnauthorized = () => {
@@ -171,6 +178,37 @@ export class App {
   /** The web hub has no machine to look at again. */
   get canRescan(): boolean {
     return this.presence === null;
+  }
+
+  /** Only the page of the real hub may reach GitHub (the web hub has no such source in its policy). */
+  get canCheckUpdates(): boolean {
+    return this.checker !== null && this.presence === null;
+  }
+
+  /** Whether the badge "Update available" belongs on this app. */
+  hasUpdate(id: string): boolean {
+    return this.updates[id] === 'available';
+  }
+
+  /** Ask GitHub about the apps that may be asked about (a person pressed the button), and say what came of it. */
+  async checkUpdates(): Promise<void> {
+    if (!this.checker || !this.canCheckUpdates || this.checking || this.phase !== 'ready') return;
+    this.checking = true;
+    try {
+      const askedAbout = this.apps.filter(askable);
+      if (askedAbout.length === 0) {
+        this.say('ok', 'No app can be checked: only running apps of public repositories report their build.');
+        return;
+      }
+      const round = await this.checker.check(this.apps);
+      this.updates = { ...this.updates, ...round.states };
+      const newer = askedAbout.filter((a) => round.states[a.id] === 'available').length;
+      if (round.failed) this.say('error', 'GitHub did not answer. Try again later.');
+      else if (newer > 0) this.say('ok', newer === 1 ? '1 update is available.' : `${newer} updates are available.`);
+      else this.say('ok', 'Everything that could be checked is up to date.');
+    } finally {
+      this.checking = false;
+    }
   }
 
   /** Say an app is (not) on this machine; the list is read again. */

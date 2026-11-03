@@ -34,6 +34,26 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
     });
 
+    test('with the update badge shown', async ({ page, hub }) => {
+      await page.route('**/api/hub/apps', async (route) => {
+        const doc = await (await route.fetch()).json();
+        for (const a of doc.apps) a.build = a.id === 'tasks' ? '9f3b7ba' : null;
+        await route.fulfill({ json: doc });
+      });
+      await page.route('https://api.github.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' },
+          body: JSON.stringify({ name: 'Rolling build (1234567)' }),
+        }),
+      );
+      await hub.open(page);
+      await page.getByRole('button', { name: 'Check for updates' }).click();
+      await expect(page.locator('[data-tile="tasks"]')).toContainText('Update available');
+      const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
+    });
+
     test('with the dialog of the setup open', async ({ page, hub }) => {
       await hub.open(page);
       await page.locator('[data-tile="rules"]').click();

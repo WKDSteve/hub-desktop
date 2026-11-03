@@ -14,6 +14,7 @@
     onlaunch,
     onmore,
     onfocus,
+    update = false,
   }: {
     app: HubApp;
     starting: boolean;
@@ -23,6 +24,8 @@
     onlaunch: () => void;
     onmore: () => void;
     onfocus: () => void;
+    /** GitHub names a newer build than the one that runs (the check found it; never a guess). */
+    update?: boolean;
   } = $props();
 
   const state = $derived(stateOf(app, starting, failed));
@@ -74,6 +77,7 @@
           >
         {/if}
         <span class="chip">{modeName(app.default_mode)}</span>
+        {#if update}<span class="update"><span aria-hidden="true">↑</span> Update available</span>{/if}
         {#if login}<span class="note">{login}</span>{/if}
       </span>
     </button>
@@ -210,6 +214,10 @@
   }
   .note {
     color: var(--muted);
+  }
+  .update {
+    color: var(--text);
+    font-weight: 600;
   }
   .chip,
   .badge {
