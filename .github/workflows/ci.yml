@@ -71,6 +71,13 @@ jobs:
       # The browser tests: the binary and the fake program (`cargo build --workspace`), the system's Chrome, a hub of
       # its own for every test against a machine that exists only for it (ui/e2e/fixture.ts), axe in light and dark.
       - run: cargo build --workspace --locked
+      # The install script of the release-kit (the one the pinned appkit holds) and scripts/uninstall.* against this
+      # build (NREL-12, as tasks-desktop does): in a folder of their own in the temp dir, the login entry and the link
+      # of the runner are left alone, nothing is downloaded. Each script removes its folder and fails when it cannot.
+      - name: Install and uninstall scripts (PowerShell and sh)
+        run: |
+          pwsh -NoProfile -File scripts/test-install.ps1 target/debug/hub-desktop.exe
+          sh scripts/test-install.sh target/debug/hub-desktop.exe
       - name: Browser tests (Playwright, axe)
         working-directory: ui
         run: pnpm e2e
