@@ -94,7 +94,9 @@ python tools/check-lock-age.py --min-days 7
   nichts. Unter Linux/macOS gibt es keine Anzeige.
 - Build: `GET /api/hub/apps` nennt je laufender Kit-App `build` (aus `hello.build`, appkit ab v0.29.0; nur 1 bis 40 Buchstaben/Ziffern, sonst `null`).
 - Update-Badge: Die Seite fragt `api.github.com` (`ui/src/lib/updates.ts`), der Hub nie. Nur auf Knopfdruck ("Check for updates"), höchstens
-  einmal am Tag je App (`localStorage`, mit try/catch), nur öffentliche Repos, ohne Token und Cookies, nur Apps mit bekanntem `build`.
+  einmal am Tag je App (`localStorage`, mit try/catch), nur öffentliche Repos, ohne Token und Cookies, nur Apps, deren `build` eine
+  Commit-ID ist (7 bis 40 Hex-Zeichen; `dev` o. ä. wäre nie vergleichbar). 404 heißt "kein Rolling-Release" (kein Badge, die anderen Apps werden
+  weiter gefragt), 403/Netz/Timeout (`ASK_TIMEOUT_MS`, 15 s) heißt "GitHub antwortet nicht" und beendet die Runde.
   Gelesen wird aus `releases/tags/latest` allein der Titel `Rolling build (<sha>)`; jede andere Form heißt "nicht bekannt", nie ein Badge.
   Erlaubt ist das durch `GuardRules::with_connect_src(RELEASES_ORIGIN)` in `server.rs` (appkit ab v0.30.0, die CSP bleibt sonst
   `connect-src 'self'`); `hub.html` hat `connect-src 'none'` und keinen Knopf.
