@@ -62,14 +62,25 @@ impl Step {
         }
     }
 
-    /// The line a job shows for the step: the name of the program and its arguments.
+    /// The line a job shows for the step: the name of the program and its arguments, a path of the machine as
+    /// the name of its file (the page gets no folder of the machine).
     fn shown(&self) -> String {
         let name = self
             .program
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let args: Vec<_> = self.args.iter().map(|a| a.to_string_lossy()).collect();
+        let args: Vec<_> = self
+            .args
+            .iter()
+            .map(|a| {
+                let path = Path::new(a);
+                match path.file_name() {
+                    Some(file) if path.is_absolute() => file.to_string_lossy(),
+                    _ => a.to_string_lossy(),
+                }
+            })
+            .collect();
         clean_line(format!("$ {name} {}", args.join(" ")).as_bytes())
     }
 }

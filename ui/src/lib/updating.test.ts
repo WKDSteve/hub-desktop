@@ -159,6 +159,24 @@ describe('App and updates', () => {
     expect(app.updating).toBe(false);
   });
 
+  it('says what came of an update that was over before the page looked again', async () => {
+    // A job with no step (an app that must be closed first) is done by the first read after the request.
+    const over: UpdateInfo[] = [
+      {
+        id: 'tasks',
+        native: 'ready',
+        web: null,
+        job: job({ state: 'failed', parts: [{ part: 'native', outcome: 'failed', result: 'close_first' }] }),
+      },
+    ];
+    const { hub, token } = updatingHub({ after: [over] });
+    const app = new App(hub, store(token), instant);
+    await app.start(null);
+    await app.update(app.apps[0] as HubApp);
+    await until(() => app.toast?.kind === 'error');
+    expect(app.toast?.text).toBe('Tasks: Update failed: it is running: close it first.');
+  });
+
   it('updates all apps and says which one failed', async () => {
     const both = (a: UpdateJob, b: UpdateJob): UpdateInfo[] => [
       { id: 'tasks', native: 'workstation', web: 'ready', job: a },

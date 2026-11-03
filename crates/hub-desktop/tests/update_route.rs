@@ -527,6 +527,17 @@ async fn the_native_build_is_downloaded_checked_and_installed_by_the_script_of_i
         seen[1].contains(r"\tasks-hub-windows-x86_64.exe -Sums "),
         "{seen:?}"
     );
+    // The page is shown the steps by the names of their files, not by the folders of the machine.
+    let shown = job["lines"].to_string();
+    let folder = hub.machine.path("").display().to_string();
+    assert!(
+        !shown.contains(&folder) && !shown.contains(&folder.replace('\\', "\\\\")),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("-File install.ps1 -File tasks-hub-windows-x86_64.exe -Sums SHA256SUMS"),
+        "{shown}"
+    );
     // The download folder is gone with the run.
     let work = hub.machine.path("cfg-hub/updates");
     assert_eq!(std::fs::read_dir(&work).map(|d| d.count()).unwrap_or(0), 0);

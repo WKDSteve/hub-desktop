@@ -122,6 +122,8 @@ export class App {
 
   #asked = new Map<string, number>();
   #watchingUpdates = false;
+  /** The apps whose updates the running watch reports on when it ends. */
+  #round = new Set<string>();
   #cancelToast: (() => void) | null = null;
 
   constructor(
@@ -231,6 +233,8 @@ export class App {
     try {
       const result = await this.hub.update(app.id);
       this.say('ok', result === 'already' ? `${app.name} is being updated already.` : `Updating ${app.name}…`);
+      // In the round from the start: a job that is over before the next read is still reported.
+      this.#round.add(app.id);
       await this.#readUpdates();
       void this.watchUpdates();
     } catch (e) {
@@ -249,6 +253,8 @@ export class App {
         return;
       }
       this.say('ok', queued === 1 ? 'Updating 1 app…' : `Updating ${queued} apps…`);
+      // The hub queued what it can update here: the same apps the page was told can be updated.
+      for (const u of Object.values(this.updates)) if (updatable(u)) this.#round.add(u.id);
       await this.#readUpdates();
       void this.watchUpdates();
     } catch {
@@ -260,7 +266,8 @@ export class App {
   async watchUpdates(): Promise<void> {
     if (this.#watchingUpdates) return;
     this.#watchingUpdates = true;
-    const round = new Set(Object.values(this.updates).filter((u) => active(u.job)).map((u) => u.id));
+    const round = this.#round;
+    for (const u of Object.values(this.updates)) if (active(u.job)) round.add(u.id);
     try {
       while (this.phase === 'ready') {
         await this.clock.sleep(1000);
@@ -271,6 +278,7 @@ export class App {
       }
     } finally {
       this.#watchingUpdates = false;
+      this.#round = new Set();
     }
     if (this.phase !== 'ready' || round.size === 0) return;
     await this.reload(false);
