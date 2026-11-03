@@ -399,7 +399,7 @@ async fn detect(
         (
             Some(Native::AppKitHub {
                 identity,
-                vault_var,
+                vault_vars,
             }),
             Some(_),
         ) => {
@@ -408,7 +408,7 @@ async fn detect(
                 .await
                 .ok()
                 .flatten();
-            let (run, setup, seen) = appkit_state(identity, vault_var, env).await;
+            let (run, setup, seen) = appkit_state(identity, vault_vars, env).await;
             build = seen;
             (run, setup)
         }
@@ -489,7 +489,7 @@ fn build_of(value: &Value) -> Option<String> {
 /// `hello` when it runs, from its settings when it does not.
 async fn appkit_state(
     identity: &'static appkit_core::identity::AppIdentity,
-    vault_var: &str,
+    vault_vars: &[&str],
     env: &Env,
 ) -> (Option<Run>, Option<String>, Option<String>) {
     let dir = appkit_hub::instance::config_folder(env, identity).ok();
@@ -505,7 +505,7 @@ async fn appkit_state(
     }
     (
         Some(Run::Stopped),
-        dir.and_then(|d| vault_problem(&d, vault_var, env)),
+        dir.and_then(|d| vault_problem(&d, vault_vars, env)),
         None,
     )
 }
@@ -529,8 +529,8 @@ async fn running_hello(dir: &Path, identity: &appkit_core::identity::AppIdentity
 }
 
 /// Why a hub that does not run cannot be used once it does: its settings name no vault, or one that is
-/// not a folder. Only the settings file and the variable are read; the folder is looked at, not entered.
-fn vault_problem(dir: &Path, vault_var: &str, env: &Env) -> Option<String> {
+/// not a folder. Only the settings file and the variables are read; the folder is looked at, not entered.
+fn vault_problem(dir: &Path, vault_vars: &[&str], env: &Env) -> Option<String> {
     let settings = read_foreign_config(&dir.join("config.json"));
     let from_file = settings
         .as_ref()
@@ -541,7 +541,7 @@ fn vault_problem(dir: &Path, vault_var: &str, env: &Env) -> Option<String> {
         .as_ref()
         .and_then(|doc| doc["vaults"].as_array())
         .is_some_and(|list| !list.is_empty());
-    match from_file.or_else(|| env.path(vault_var)) {
+    match from_file.or_else(|| vault_vars.iter().find_map(|var| env.path(var))) {
         Some(vault) if vault.is_dir() => None,
         Some(_) => Some("vault_not_a_directory".to_owned()),
         None if several => None,

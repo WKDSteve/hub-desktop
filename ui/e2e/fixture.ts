@@ -212,6 +212,7 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
     HUB_DESKTOP_CONFIG_DIR: at('cfg-hub'),
     TASKS_DESKTOP_CONFIG_DIR: at('cfg-tasks'),
     RULES_DESKTOP_CONFIG_DIR: at('cfg-rules'),
+    TESTING_DESKTOP_CONFIG_DIR: at('cfg-testing'),
     HUB_DESKTOP_PORT: String(port),
     HUB_DESKTOP_WEB_PORT: String(webPort),
     AI_DESKTOP_PORT: String(aiPort),

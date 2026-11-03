@@ -48,9 +48,9 @@ pub enum Native {
     /// folder of that app (`<PREFIX>_INSTALL_DIR`, else `{LOCALAPPDATA}\<app>\bin\<binary>.exe`).
     AppKitHub {
         identity: &'static AppIdentity,
-        /// The variable that names the vault of the app: without it and without a `vault` in its
-        /// settings the app cannot be used yet.
-        vault_var: &'static str,
+        /// The variables that name the vault of the app, as the app reads them, first one first: without
+        /// any of them and without a `vault` in its settings the app cannot be used yet.
+        vault_vars: &'static [&'static str],
     },
     /// A program with a window of its own and no hub: started with no argument.
     GuiExe { candidates: &'static [&'static str] },
@@ -108,7 +108,7 @@ pub struct Entry {
     pub install: Install,
 }
 
-/// The names of the two apps that are built on `appkit-hub`, as the apps give them to themselves. They
+/// The names of the apps that are built on `appkit-hub`, as the apps give them to themselves. They
 /// are on disk (the config folder, `hub.json`) and in the environment of the person: a rename on their
 /// side is a migration, and `tests/catalog.rs` holds these copies to what they say.
 pub const TASKS: AppIdentity = AppIdentity {
@@ -127,6 +127,15 @@ pub const RULES: AppIdentity = AppIdentity {
     title: "Rules",
     default_port: 17616,
     route_ns: "rules",
+};
+
+pub const TESTING: AppIdentity = AppIdentity {
+    app: "testing-desktop",
+    binary: "testing-hub",
+    env_prefix: "TESTING_DESKTOP",
+    title: "Testing",
+    default_port: 17618,
+    route_ns: "testing",
 };
 
 /// The port of ai-desktop when `AI_DESKTOP_PORT` does not name one.
@@ -148,7 +157,7 @@ pub const CATALOG: &[Entry] = &[
         status: Status::Available,
         native: Some(Native::AppKitHub {
             identity: &TASKS,
-            vault_var: "TASKS_VAULT",
+            vault_vars: &["TASKS_VAULT"],
         }),
         web: Some(Web {
             repo_dir: "tasks-web",
@@ -173,7 +182,7 @@ pub const CATALOG: &[Entry] = &[
         status: Status::Available,
         native: Some(Native::AppKitHub {
             identity: &RULES,
-            vault_var: "RULES_VAULT",
+            vault_vars: &["RULES_VAULT"],
         }),
         web: None,
         default_mode: Mode::Native,
@@ -239,20 +248,23 @@ pub const CATALOG: &[Entry] = &[
         summary: "The test runs of testing.nvim",
         repo: Repo {
             owner: OWNER,
-            name: "testing-web",
+            name: "testing-desktop",
             visibility: Visibility::Public,
         },
-        status: Status::Planned,
-        native: None,
-        web: Some(Web {
-            repo_dir: "testing-web",
-            entry: "testing.html",
+        status: Status::Available,
+        // Its "vault" is the root of the repositories, and without one it takes `REPOS_DIR`.
+        native: Some(Native::AppKitHub {
+            identity: &TESTING,
+            vault_vars: &["TESTING_REPOS_ROOT", "REPOS_DIR"],
         }),
-        default_mode: Mode::Web,
+        // `testing-web/testing.html` comes with the web phase of testing-desktop: until the page is published the web
+        // hub would show a tile that leads nowhere.
+        web: None,
+        default_mode: Mode::Native,
         install: Install {
-            hint: Hint::Planned,
-            page: None,
-            file: None,
+            hint: Hint::Release,
+            page: Some("https://github.com/WKDSteve/testing-desktop/releases/tag/latest"),
+            file: Some("testing-hub-windows-x86_64.exe"),
         },
     },
     Entry {
@@ -366,7 +378,6 @@ mod tests {
                 assert!(entry.native.is_none(), "{}", entry.id);
             }
         }
-        assert!(find("testing").unwrap().native.is_none());
         assert!(find("takt").unwrap().native.is_none());
     }
 

@@ -13,13 +13,13 @@
       "sha256": "884558f4209931ab09cf9600164734884983061f94f7031d74806d4ce7e06559"
     },
     "pult": {
-      "commit": "5311b193f30952ed008ac306704738feed19f96a",
+      "commit": "553123783e3f5fac424cebac855d868da5609251",
       "path": "assets/icons/pult/pult-small.svg",
       "repo": "WKDSteve/pult",
       "sha256": "eac5f5aa1339a43240c835ad0176bf579376e11c79b00494c11c12b8be607a75"
     },
     "rules-desktop": {
-      "commit": "85aa60262c44679ba355074f873218a1c91b748b",
+      "commit": "37e6e0de58291ef3db165af5fccaca798637cbb1",
       "path": "assets/icons/rules-desktop/rules-desktop-small.svg",
       "repo": "WKDSteve/rules-desktop",
       "sha256": "6ef053991a8d128aa38cb0e209cc077b253b3a3e7b9ef52e58d16c17fc3379c1"
@@ -31,25 +31,31 @@
       "sha256": "67cda79248d631d060c184475b957cccbe95da0ee8648126658fc50b99c9139e"
     },
     "takt": {
-      "commit": "be9e7d0b33ae0b8a49d6f74835fbc973734a8e60",
+      "commit": "055cb7c9a6f7753b21d0ba90b0800b4e9500ad4e",
       "path": "assets/icons/takt/takt-small.svg",
       "repo": "WKDSteve/takt",
       "sha256": "d3f6025545ab736f8837a0ba3fcfb0cf18c6a542e4fbb111c67f01fc8a838fc4"
     },
     "tasks-desktop": {
-      "commit": "c5a188767f3e65601e761f75eb771dec2dec1b1b",
+      "commit": "739041561c29fb36aa3e4141c601919061f375b9",
       "path": "assets/icons/tasks-desktop/tasks-desktop-small.svg",
       "repo": "WKDSteve/tasks-desktop",
       "sha256": "486e75025b31c613a6f67b3d4063b00b4705b1c5a91e2966eb55a007ad59926a"
     },
     "tasks-web": {
-      "commit": "c5a188767f3e65601e761f75eb771dec2dec1b1b",
+      "commit": "739041561c29fb36aa3e4141c601919061f375b9",
       "path": "assets/icons/tasks-web/tasks-web-small.svg",
       "repo": "WKDSteve/tasks-desktop",
       "sha256": "673547411af71fbabca63fe9e3c2f3a39566187ed77e162c4a5cedf63be32c1c"
     },
+    "testing-desktop": {
+      "commit": "376c4e0a732426c18e93fdf0861d07f5e3400899",
+      "path": "assets/icons/testing-desktop/testing-desktop-small.svg",
+      "repo": "WKDSteve/testing-desktop",
+      "sha256": "ff13dc9c8585cca639fda3c2f18d6a73174c6f21f9d5232833440d8e244bdd98"
+    },
     "testing-web": {
-      "commit": "2db0779099bf2dedc72be9bfc66a99b5e93072a5",
+      "commit": "376c4e0a732426c18e93fdf0861d07f5e3400899",
       "path": "assets/icons/testing-web/testing-web-small.svg",
       "repo": "WKDSteve/testing-desktop",
       "sha256": "8d983c4234c1ad0bfa096ce120f6385a4db5d3054187e422525971cdbd969220"

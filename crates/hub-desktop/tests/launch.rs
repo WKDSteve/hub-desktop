@@ -296,8 +296,10 @@ async fn a_web_variant_is_opened_from_the_listener_of_the_hub_and_never_as_a_fil
         launcher.launch("rules", Request::Web).await,
         Err(LaunchError::NotAvailable("web"))
     );
+    let empty = machine.path("Empty");
+    let (launcher, _) = self::launcher(&machine, machine.env(&[]), Some(empty), Some(17611));
     assert_eq!(
-        launcher.launch("testing", Request::Web).await,
+        launcher.launch("tasks", Request::Web).await,
         Err(LaunchError::NotInstalled)
     );
 

@@ -340,13 +340,44 @@ async fn a_web_variant_below_the_web_root_counts_as_installed_and_opens_as_web()
     let all = look(machine.env(&[]), Some(root)).await;
     assert_eq!(app(&all, "tasks").mode(), catalog::Mode::Native);
 
-    // Testing is planned, and counts as installed as soon as its page is there.
-    assert!(!app(&all, "testing").installed());
+    // Testing has no web variant yet: a page of that name is no install.
     machine.touch("Web/testing-web/testing.html");
     let all = look(machine.env(&[]), Some(machine.path("Web"))).await;
-    let testing = app(&all, "testing");
-    assert!(testing.installed());
-    assert_eq!(testing.view().status, "planned");
+    assert!(!app(&all, "testing").installed());
+}
+
+/// testing-desktop falls back to `REPOS_DIR` when nothing else names its root: a tile that says "no vault is
+/// set" then would be wrong.
+#[tokio::test]
+async fn the_testing_hub_takes_the_root_of_all_repositories_as_its_vault() {
+    let machine = Machine::new("hub-detect-testing-vault");
+    machine.touch(&format!(
+        "Local/testing-desktop/bin/{}",
+        catalog::TESTING.program_file()
+    ));
+    let repos = machine.path("repos");
+    std::fs::create_dir_all(&repos).unwrap();
+    let other = machine.path("other");
+    std::fs::create_dir_all(&other).unwrap();
+    let file = machine.touch("not-a-folder.txt");
+    let setup = |env| async move { app(&look(env, None).await, "testing").setup.clone() };
+
+    let all = look(machine.env(&[]), None).await;
+    assert!(app(&all, "testing").installed());
+    assert_eq!(setup(machine.env(&[])).await.as_deref(), Some("no_vault"));
+    let env = machine.env(&[("REPOS_DIR", repos.display().to_string())]);
+    assert_eq!(setup(env).await, None);
+    // The app's own variable comes first, as the app reads it.
+    let env = machine.env(&[
+        ("TESTING_REPOS_ROOT", file.display().to_string()),
+        ("REPOS_DIR", repos.display().to_string()),
+    ]);
+    assert_eq!(setup(env).await.as_deref(), Some("vault_not_a_directory"));
+    let env = machine.env(&[
+        ("TESTING_REPOS_ROOT", other.display().to_string()),
+        ("REPOS_DIR", file.display().to_string()),
+    ]);
+    assert_eq!(setup(env).await, None);
 }
 
 #[tokio::test]

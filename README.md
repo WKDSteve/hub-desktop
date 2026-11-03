@@ -24,8 +24,8 @@ needs none of the other apps to run.
 
 ## What it does
 
-- **Installed apps** appear as tiles: `tasks-desktop`, `rules-desktop`, `docmap-desktop`, `ai-desktop`
-  and the apps that follow. One click starts the app (its own hub first, if it is not running) and
+- **Installed apps** appear as tiles: `tasks-desktop`, `rules-desktop`, `testing-desktop`, `docmap-desktop`,
+  `ai-desktop` and the apps that follow. One click starts the app (its own hub first, if it is not running) and
   opens it, natively or as its web variant. Nothing else needs to be clicked.
 - **Apps that are not installed** appear darkened in a separate area, *Install or download*, with a
   link to the release page and its checksums. An app without a release (`pult`) says to build it from its

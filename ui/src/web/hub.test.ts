@@ -43,8 +43,8 @@ describe('view', () => {
   });
 
   it('keeps what the catalog says of an app that is planned or built by hand', () => {
-    expect(view(entry('testing'), new Set()).installed).toBe(false);
-    expect(view(entry('testing'), new Set()).install.hint).toBe('planned');
+    expect(view(entry('takt'), new Set()).installed).toBe(false);
+    expect(view(entry('takt'), new Set()).install.hint).toBe('planned');
     expect(view(entry('streamtap'), new Set()).install.hint).toBe('native_only');
   });
 
@@ -88,8 +88,10 @@ describe('WebHub', () => {
 
   it('starts from what another tab kept, not from what this one read first', async () => {
     const store = memory();
-    const mine = new WebHub(entries, store, '1');
-    const other = new WebHub(entries, store, '1');
+    // Two apps with a web variant, whatever the catalog has at the moment.
+    const both = entries.map((e) => (e.id === 'testing' ? { ...e, web: { dir: 'testing-web', entry: 'testing.html' } } : e));
+    const mine = new WebHub(both, store, '1');
+    const other = new WebHub(both, store, '1');
     await mine.apps();
     await other.mark('tasks', true);
     await mine.mark('testing', true);
@@ -142,11 +144,18 @@ describe('the folder of the clones', () => {
       { 'tasks-web': { 'tasks.html': {} } },
       { 'tasks-web': 'file' },
       { 'Tasks-Web': { 'tasks.html': 'file' } },
-      // A planned app is not looked for, even when its folder is there.
+      // An app without a web variant is not looked for, even when a folder of that name is there.
       { 'testing-web': { 'testing.html': 'file' } },
     ] as Tree[]) {
       expect(await presentIn(folder('repos', tree), entries), JSON.stringify(tree)).toEqual(new Set());
     }
+  });
+
+  it('does not look for a planned app, even when its folder is there', async () => {
+    const tree: Tree = { 'tasks-web': { 'tasks.html': 'file' } };
+    expect(await presentIn(folder('repos', tree), entries)).toEqual(new Set(['tasks']));
+    const planned = entries.map((e) => (e.id === 'tasks' ? { ...e, status: 'planned' as const } : e));
+    expect(await presentIn(folder('repos', tree), planned)).toEqual(new Set());
   });
 
   it('looks at a bounded number of entries of a folder', async () => {

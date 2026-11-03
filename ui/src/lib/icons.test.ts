@@ -10,6 +10,7 @@ describe('iconOf', () => {
     expect(named(iconOf(app('rules')))).toBe('rules-desktop.svg');
     expect(named(iconOf(app('docmap')))).toBe('docmap-desktop.svg');
     expect(named(iconOf(app('ai')))).toBe('ai-desktop.svg');
+    expect(named(iconOf(app('testing')))).toBe('testing-desktop.svg');
     expect(named(iconOf(app('testing', 'web')))).toBe('testing-web.svg');
     expect(named(iconOf(app('streamtap')))).toBe('streamtap.svg');
   });

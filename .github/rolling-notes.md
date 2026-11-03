@@ -14,4 +14,4 @@ Run it again to update to the newest rolling build.
 
 Or take the file yourself: `hub-desktop-windows-x86_64.exe`. A double click runs the hub in its window and opens the browser (a second click finds the running hub). Windows SmartScreen warns about an unsigned program: "More info", then "Run anyway". `uninstall.ps1` removes it again; `SHA256SUMS` holds the checksums of all files.
 
-The hub lists the other apps (`tasks-desktop`, `rules-desktop`, `docmap-desktop`, `ai-desktop`) and starts the ones that are installed; it needs none of them to run. `hub-desktop --version` names the commit this file was built from; `hub-desktop stop` ends the hub.
+The hub lists the other apps (`tasks-desktop`, `rules-desktop`, `testing-desktop`, `docmap-desktop`, `ai-desktop`) and starts the ones that are installed; it needs none of them to run. `hub-desktop --version` names the commit this file was built from; `hub-desktop stop` ends the hub.

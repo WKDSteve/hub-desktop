@@ -334,7 +334,7 @@ async fn a_mode_the_app_has_not_or_a_word_that_is_none_is_refused_and_nothing_is
     std::fs::create_dir_all(hub.machine.path("cfg-hub")).unwrap();
     for (path, body, status) in [
         ("/api/hub/apps/rules/mode", r#"{"mode":"web"}"#, 409),
-        ("/api/hub/apps/testing/mode", r#"{"mode":"native"}"#, 409),
+        ("/api/hub/apps/docmap/mode", r#"{"mode":"web"}"#, 409),
         ("/api/hub/apps/nope/mode", r#"{"mode":"web"}"#, 404),
         ("/api/hub/apps/tasks/mode", r#"{"mode":"fly"}"#, 400),
         (
