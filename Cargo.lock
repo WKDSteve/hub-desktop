@@ -5,18 +5,19 @@ version = 4
 [[package]]
 name = "appkit-core"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.29.0#9f3b7ba539abf6fd92984087fe24e7e4c3bb178f"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.30.0#cd10452a4f803a963eddde950e790d7ab7ce6c12"
 dependencies = [
  "getrandom",
  "serde",
  "serde_json",
  "tokio",
+ "windows-sys",
 ]
 
 [[package]]
 name = "appkit-hub"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.29.0#9f3b7ba539abf6fd92984087fe24e7e4c3bb178f"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.30.0#cd10452a4f803a963eddde950e790d7ab7ce6c12"
 dependencies = [
  "appkit-core",
  "axum",
@@ -32,7 +33,7 @@ dependencies = [
 [[package]]
 name = "appkit-scratch"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.29.0#9f3b7ba539abf6fd92984087fe24e7e4c3bb178f"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.30.0#cd10452a4f803a963eddde950e790d7ab7ce6c12"
 dependencies = [
  "tempfile",
 ]
@@ -40,7 +41,7 @@ dependencies = [
 [[package]]
 name = "appkit-testkit"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.29.0#9f3b7ba539abf6fd92984087fe24e7e4c3bb178f"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.30.0#cd10452a4f803a963eddde950e790d7ab7ce6c12"
 dependencies = [
  "appkit-core",
  "appkit-hub",
@@ -380,6 +381,8 @@ dependencies = [
  "log",
  "mio",
  "notify-types",
+ "objc2-core-foundation",
+ "objc2-core-services",
  "walkdir",
  "windows-sys",
 ]
@@ -391,6 +394,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "objc2-core-foundation"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
+name = "objc2-core-services"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "583300ad934cba24ff5292aee751ecc070f7ca6b39a574cc21b7b5e588e06a0b"
+dependencies = [
+ "libc",
+ "objc2-core-foundation",
 ]
 
 [[package]]
