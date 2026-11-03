@@ -69,6 +69,9 @@ pub struct AppState {
     /// Whether the installed native app starts with the login; `None`: not an app of the kit, not
     /// installed, or it cannot be told.
     pub autostart: Option<bool>,
+    /// The build the running app says it is (`hello.build`, a short commit id); `None`: not running,
+    /// an app that does not say it, or an answer of a shape we do not take.
+    pub build: Option<String>,
 }
 
 impl AppState {
@@ -109,6 +112,8 @@ pub struct AppView {
     pub stoppable: bool,
     /// The app starts with the login (an app of the kit only; `null` when it cannot be told).
     pub autostart: Option<bool>,
+    /// The build of the running app, for the update badge of the page (`null` when it cannot be told).
+    pub build: Option<String>,
     pub install: InstallView,
     pub repo: RepoView,
 }
@@ -188,6 +193,7 @@ impl AppState {
                 && self.native.is_some()
                 && matches!(e.native, Some(Native::AppKitHub { .. })),
             autostart: self.autostart,
+            build: self.build.clone(),
             install: install_view(e),
             repo: repo_view(e),
         }
@@ -388,6 +394,7 @@ async fn detect(
     let web = find_web(entry, web_roots);
     let mut port = None;
     let mut login = None;
+    let mut build = None;
     let (run, setup) = match (&entry.native, &native) {
         (
             Some(Native::AppKitHub {
@@ -401,7 +408,9 @@ async fn detect(
                 .await
                 .ok()
                 .flatten();
-            appkit_state(identity, vault_var, env).await
+            let (run, setup, seen) = appkit_state(identity, vault_var, env).await;
+            build = seen;
+            (run, setup)
         }
         (
             Some(Native::LoopbackServer {
@@ -426,6 +435,7 @@ async fn detect(
         port,
         chosen: None,
         autostart: login,
+        build,
     }
 }
 
@@ -467,13 +477,21 @@ fn code_of(value: &Value) -> Option<String> {
     .then(|| code.to_owned())
 }
 
+/// The build an app reports in `hello`: one to forty ASCII letters or digits (a short commit id), else
+/// nothing. The page compares it with a release title, so it is held to the shape it is compared in.
+fn build_of(value: &Value) -> Option<String> {
+    let build = value.as_str()?;
+    (!build.is_empty() && build.len() <= 40 && build.bytes().all(|b| b.is_ascii_alphanumeric()))
+        .then(|| build.to_owned())
+}
+
 /// Whether an app built on `appkit-hub` runs, and whether it can be used: from its `hub.json` and its
 /// `hello` when it runs, from its settings when it does not.
 async fn appkit_state(
     identity: &'static appkit_core::identity::AppIdentity,
     vault_var: &str,
     env: &Env,
-) -> (Option<Run>, Option<String>) {
+) -> (Option<Run>, Option<String>, Option<String>) {
     let dir = appkit_hub::instance::config_folder(env, identity).ok();
     if let Some(dir) = &dir
         && let Some(hello) = running_hello(dir, identity).await
@@ -483,11 +501,12 @@ async fn appkit_state(
         } else {
             None
         };
-        return (Some(Run::Running), setup);
+        return (Some(Run::Running), setup, build_of(&hello["build"]));
     }
     (
         Some(Run::Stopped),
         dir.and_then(|d| vault_problem(&d, vault_var, env)),
+        None,
     )
 }
 
@@ -557,6 +576,25 @@ mod tests {
             "[]",
         ] {
             assert!(!is_ai_health(no), "{no:?}");
+        }
+    }
+
+    #[test]
+    fn a_build_is_a_short_commit_id_or_nothing() {
+        assert_eq!(
+            build_of(&serde_json::json!("9f3b7ba")).as_deref(),
+            Some("9f3b7ba")
+        );
+        for no in [
+            serde_json::json!(null),
+            serde_json::json!(""),
+            serde_json::json!("9f3b 7ba"),
+            serde_json::json!("v1.2"),
+            serde_json::json!("<b>x</b>"),
+            serde_json::json!("a".repeat(41)),
+            serde_json::json!(7),
+        ] {
+            assert_eq!(build_of(&no), None, "{no}");
         }
     }
 

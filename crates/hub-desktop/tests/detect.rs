@@ -431,3 +431,40 @@ async fn the_login_entry_is_read_for_an_installed_app_of_the_kit_only() {
     let detector = Detector::with_ttl(machine.env(&[]), None, Duration::ZERO);
     assert_eq!(app(&detector.apps().await, "tasks").autostart, None);
 }
+
+#[tokio::test]
+async fn the_build_of_a_running_app_is_taken_from_hello_in_its_short_form_only() {
+    let machine = Machine::new("hub-detect-build");
+    machine.tasks_program();
+    for (build, want) in [
+        (serde_json::json!("9f3b7ba"), Some("9f3b7ba")),
+        (serde_json::json!(null), None),
+        (serde_json::json!("not a build"), None),
+        (serde_json::json!("<script>"), None),
+        (serde_json::json!("a".repeat(41)), None),
+    ] {
+        let port = fake_server(
+            200,
+            serde_json::json!({"app":"tasks-desktop","instance":"abc123","build":build})
+                .to_string(),
+        )
+        .await;
+        write_hub_json(&machine.path("cfg-tasks"), port, "abc123");
+        let all = look(machine.env(&[]), None).await;
+        let tasks = app(&all, "tasks");
+        assert_eq!(tasks.build.as_deref(), want, "{build}");
+        assert_eq!(tasks.view().build.as_deref(), want, "{build}");
+    }
+    // An app that does not run, or one that does not say it, has none.
+    let port = fake_server(200, hello(None)).await;
+    write_hub_json(&machine.path("cfg-tasks"), port, "abc123");
+    assert_eq!(
+        app(&look(machine.env(&[]), None).await, "tasks").build,
+        None
+    );
+    write_hub_json(&machine.path("cfg-tasks"), port, "stale");
+    assert_eq!(
+        app(&look(machine.env(&[]), None).await, "tasks").build,
+        None
+    );
+}

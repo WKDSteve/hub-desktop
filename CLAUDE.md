@@ -92,7 +92,9 @@ python tools/check-lock-age.py --min-days 7
   lesend) wird nur in `app.rs` an den `Detector` gehängt (`with_autostart`); ohne sie, also in allen Tests, weiß der
   Detector nichts (`None`) und liest nie die Registry. Die Kachel sagt „Starts at login“ / „No autostart“, bei `None`
   nichts. Unter Linux/macOS gibt es keine Anzeige.
-- Offen in M2: das Update-Badge (braucht `version.json` im Rolling-Build, Task `appkit/release-kit-version-json-...`).
+- Build: `GET /api/hub/apps` nennt je laufender Kit-App `build` (aus `hello.build`, appkit ab v0.29.0; nur 1 bis 40 Buchstaben/Ziffern, sonst `null`).
+- Offen in M2: das Update-Badge. Die Seite müsste `api.github.com` fragen, aber die CSP der Hub-Seite (`connect-src 'self'`) liegt fest in
+  appkit (`guard.rs`); zuerst braucht appkit eine Möglichkeit für eine zusätzliche `connect-src`-Quelle (Task `appkit/page-csp-...`).
 
 ## Monitor (M3, Teil 1)
 
