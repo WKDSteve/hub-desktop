@@ -4,6 +4,7 @@
 // and the environment are the test's, and the environment of the hub holds nothing else.
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer as createHttp, type Server } from 'node:http';
 import { createServer as createNet } from 'node:net';
@@ -34,6 +35,51 @@ export interface Machine {
   overlay?: string;
   /** The export folder of testing.nvim that `config.json` names: a fleet of four repositories, or one that cannot be read. */
   testingExport?: 'fleet' | 'broken';
+  /**
+   * tasks-web as a real git clone (instead of a bare page) of an origin in the test folder: one commit behind it, or
+   * behind it and with a local change.
+   */
+  tasksWebClone?: 'behind' | 'dirty';
+}
+
+/** The page of tasks-web before and after the commit the clone does not have yet. */
+export const PAGE_BEFORE = '<!doctype html><title>tasks</title><p>before</p>\n';
+export const PAGE_AFTER = '<!doctype html><title>tasks</title><p>after</p>\n';
+
+const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex');
+
+/** git in `cwd`, as the person of the test (no global config of the machine is needed). */
+function git(cwd: string, ...args: string[]): void {
+  const run = spawnSync('git', ['-c', 'user.name=e2e', '-c', 'user.email=e2e@example.invalid', '-c', 'core.autocrlf=false', ...args], {
+    cwd,
+    encoding: 'utf8',
+  });
+  if (run.status !== 0) throw new Error(`git ${args.join(' ')}: ${run.stderr}`);
+}
+
+/** An origin with two commits of tasks-web, and a clone at `dir` that has only the first. */
+function cloneBehind(root: string, dir: string, dirty: boolean): void {
+  const origin = join(root, 'origin', 'tasks-web.git');
+  const work = join(root, 'origin', 'work');
+  mkdirSync(origin, { recursive: true });
+  mkdirSync(work, { recursive: true });
+  git(origin, 'init', '--bare', '-b', 'main');
+  git(work, 'init', '-b', 'main');
+  // As in tasks-web: the page and its sums are bytes, never turned into CRLF by a checkout (`core.autocrlf` of
+  // Git for Windows), or the page would no longer match its line.
+  writeFileSync(join(work, '.gitattributes'), '*.html -text\nSHA256SUMS -text\n');
+  git(work, 'add', '.gitattributes');
+  const commit = (page: string, message: string) => {
+    writeFileSync(join(work, 'tasks.html'), page);
+    writeFileSync(join(work, 'SHA256SUMS'), `${sha256(page)}  tasks.html\n`);
+    git(work, 'add', 'tasks.html', 'SHA256SUMS');
+    git(work, 'commit', '-q', '-m', message);
+    git(work, 'push', '-q', origin, 'main');
+  };
+  commit(PAGE_BEFORE, 'before');
+  git(dirname(dir), 'clone', '-q', origin, dir);
+  commit(PAGE_AFTER, 'after');
+  if (dirty) writeFileSync(join(dir, 'tasks.html'), PAGE_BEFORE + '<!-- a change of the person -->\n');
 }
 
 export const FULL: Machine = {
@@ -56,6 +102,8 @@ export interface Hub {
   opened(): string[];
   /** `config.json` of the hub. */
   settings(): Record<string, unknown>;
+  /** A file of the machine of the test, as text (`Repos/tasks-web/tasks.html`). */
+  file(below: string): string;
   /** Open the page, paired. */
   open(page: Page): Promise<void>;
 }
@@ -104,7 +152,10 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
   };
 
   if (machine.tasks.native) install(PROGRAMS.tasks);
-  if (machine.tasks.web) page('Repos/tasks-web/tasks.html');
+  if (machine.tasksWebClone) {
+    mkdirSync(at('Repos'), { recursive: true });
+    cloneBehind(root, at('Repos/tasks-web'), machine.tasksWebClone === 'dirty');
+  } else if (machine.tasks.web) page('Repos/tasks-web/tasks.html');
   if (machine.testingWeb) page('Repos/testing-web/testing.html');
   if (machine.rules) install(PROGRAMS.rules);
   if (machine.docmap) install(PROGRAMS.docmap);
@@ -166,6 +217,9 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
     AI_DESKTOP_PORT: String(aiPort),
     HUB_DESKTOP_BROWSER_LOG: at('browser.log'),
     HUB_DESKTOP_NO_LAUNCH: '1',
+    // Never the private machine: there the hub would install real releases with the gh and PowerShell of the PATH.
+    // On the workstation it only pulls clones, which the tests make in their own folder.
+    NVIM_MACHINE_ROLE: 'workstation',
   };
   if (machine.tasks.vault) env['TASKS_VAULT'] = at('vault');
 
@@ -256,6 +310,7 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
       const file = at('cfg-hub/config.json');
       return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>) : {};
     },
+    file: (below) => readFileSync(at(below), 'utf8'),
     open: async (p) => {
       await p.goto(link());
       await expect(p.getByRole('heading', { name: 'Installed' })).toBeVisible();

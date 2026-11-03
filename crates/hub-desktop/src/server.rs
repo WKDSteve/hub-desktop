@@ -26,6 +26,7 @@ use crate::detect::Detector;
 use crate::launch::{LaunchError, Launcher, Outcome, Request};
 use crate::monitor::Monitor;
 use crate::prefs::{Prefs, PrefsError};
+use crate::update::{Queued, UpdateError, Updater};
 use crate::IDENTITY;
 
 /// What the hub keeps: the status `hello` reports (it has no engine) and the way to look at the machine.
@@ -36,6 +37,7 @@ pub struct HubRuntime {
     launcher: Arc<Launcher>,
     prefs: Arc<Prefs>,
     monitor: Arc<Monitor>,
+    updater: Arc<Updater>,
 }
 
 impl HubRuntime {
@@ -46,6 +48,7 @@ impl HubRuntime {
         launcher: Arc<Launcher>,
         prefs: Arc<Prefs>,
         monitor: Arc<Monitor>,
+        updater: Arc<Updater>,
     ) -> Self {
         Self {
             status: HubStatus {
@@ -57,6 +60,7 @@ impl HubRuntime {
             launcher,
             prefs,
             monitor,
+            updater,
         }
     }
 
@@ -78,6 +82,11 @@ impl HubRuntime {
     #[must_use]
     pub fn detector(&self) -> &Arc<Detector> {
         &self.detector
+    }
+
+    #[must_use]
+    pub fn updater(&self) -> &Arc<Updater> {
+        &self.updater
     }
 }
 
@@ -107,6 +116,8 @@ pub struct ServerConfig {
     pub prefs: Arc<Prefs>,
     /// The export folder of testing.nvim the monitor reads (none: the page shows no monitor).
     pub monitor: Arc<Monitor>,
+    /// What updates the apps ([`Updater::disabled`] where nothing may be updated).
+    pub updater: Arc<Updater>,
 }
 
 /// The one other address the page may fetch from: GitHub, for the update badge (`ui/src/lib/updates.ts`).
@@ -115,7 +126,7 @@ pub const RELEASES_ORIGIN: &str = "https://api.github.com";
 /// The names (below `/api/hub/`) of the routes that need a session. The security matrix reads them
 /// from here: a route added to [`routes`] and left out of this list would be a route the matrix
 /// never tries (`tests/hub.rs` asks every name with a session).
-pub const DATA_ROUTES: [&str; 3] = ["apps", "monitor", "monitor/cases"];
+pub const DATA_ROUTES: [&str; 4] = ["apps", "monitor", "monitor/cases", "updates"];
 
 /// `GET /api/hub/apps`: the apps of the catalog and what the machine says about each. No path of the
 /// machine is in it.
@@ -166,11 +177,13 @@ fn key_of(query: Option<&str>) -> &str {
 
 /// The routes that change something (a `POST`, a session and a JSON body): `{id}` stands for an app. The
 /// tests ask each of them without a session, with a wrong content type and with a body that is not one.
-pub const MUTATION_ROUTES: [&str; 4] = [
+pub const MUTATION_ROUTES: [&str; 6] = [
     "apps/{id}/launch",
     "apps/{id}/mode",
     "rescan",
     "apps/{id}/stop",
+    "apps/{id}/update",
+    "update-all",
 ];
 
 /// What a click sends: a mode, or nothing (the default of the app). Nothing else is read.
@@ -340,6 +353,42 @@ async fn choose_mode(
     }
 }
 
+/// `GET /api/hub/updates`: per listed app what can be updated on this machine (`ready` or why not) and its last
+/// update, with the last lines of what the steps printed.
+async fn updates(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
+    let views = core.rt().updater().views().await;
+    Json(json!({ "apps": views }))
+}
+
+/// `POST /api/hub/apps/{id}/update`: queue an update of one app. The body is `{}`; nothing in it is read: what
+/// runs is decided by the catalog and the machine. The answer comes at once.
+async fn update(
+    State(core): State<Arc<Core<HubRuntime>>>,
+    Path(id): Path<String>,
+    _body: Bytes,
+) -> Response {
+    let updater = Arc::clone(core.rt().updater());
+    match updater.request(&id).await {
+        Ok(Queued::Queued) => Json(json!({ "result": "queued" })).into_response(),
+        Ok(Queued::Already) => Json(json!({ "result": "already" })).into_response(),
+        Err(UpdateError::UnknownApp) => {
+            appkit_hub::error_body(StatusCode::NOT_FOUND, "not_found", "no such app")
+        }
+        Err(UpdateError::NotUpdatable(why)) => appkit_hub::error_body(
+            StatusCode::CONFLICT,
+            "not_updatable",
+            &format!("the app cannot be updated here ({why})"),
+        ),
+    }
+}
+
+/// `POST /api/hub/update-all`: queue an update of every listed app that has something to update here; they
+/// run one after the other, and a failure of one goes on with the next.
+async fn update_all(State(core): State<Arc<Core<HubRuntime>>>, _body: Bytes) -> Json<Value> {
+    let queued = Arc::clone(core.rt().updater()).request_all().await;
+    Json(json!({ "result": "queued", "queued": queued }))
+}
+
 /// `POST /api/hub/rescan`: forget what was found; the next `GET /api/hub/apps` looks at the machine again.
 async fn rescan(State(core): State<Arc<Core<HubRuntime>>>, _body: Bytes) -> Json<Value> {
     core.rt().detector().invalidate();
@@ -352,6 +401,7 @@ fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
         .route(&IDENTITY.route("apps"), get(apps))
         .route(&IDENTITY.route("monitor"), get(monitor))
         .route(&IDENTITY.route("monitor/cases"), get(monitor_cases))
+        .route(&IDENTITY.route("updates"), get(updates))
         .route(
             &IDENTITY.route(MUTATION_ROUTES[0]),
             post(launch).layer(DefaultBodyLimit::max(small)),
@@ -368,6 +418,14 @@ fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
             &IDENTITY.route(MUTATION_ROUTES[3]),
             post(stop).layer(DefaultBodyLimit::max(small)),
         )
+        .route(
+            &IDENTITY.route(MUTATION_ROUTES[4]),
+            post(update).layer(DefaultBodyLimit::max(small)),
+        )
+        .route(
+            &IDENTITY.route(MUTATION_ROUTES[5]),
+            post(update_all).layer(DefaultBodyLimit::max(small)),
+        )
 }
 
 /// Start the server.
@@ -380,11 +438,13 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
     let launcher = cfg.launcher;
     let prefs = cfg.prefs;
     let monitor = cfg.monitor;
+    let updater = cfg.updater;
     let for_build = (
         Arc::clone(&detector),
         Arc::clone(&launcher),
         Arc::clone(&prefs),
         Arc::clone(&monitor),
+        Arc::clone(&updater),
     );
     serve(
         ServeParts {
@@ -402,7 +462,7 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
             guard_rules: GuardRules::new(IDENTITY.route("hello"), Vec::<String>::new())
                 .with_connect_src(RELEASES_ORIGIN),
             ui: cfg.ui,
-            runtime: HubRuntime::new(detector, launcher, prefs, monitor),
+            runtime: HubRuntime::new(detector, launcher, prefs, monitor, updater),
             // There is no vault to choose, so no runtime is ever made again.
             build: Arc::new(move |()| {
                 HubRuntime::new(
@@ -410,6 +470,7 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
                     Arc::clone(&for_build.1),
                     Arc::clone(&for_build.2),
                     Arc::clone(&for_build.3),
+                    Arc::clone(&for_build.4),
                 )
             }),
             vaults: None,

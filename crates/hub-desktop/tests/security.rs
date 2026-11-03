@@ -13,6 +13,7 @@ use hub_desktop::monitor::Monitor;
 use hub_desktop::prefs::Prefs;
 use hub_desktop::server::{self, ServerConfig, DATA_ROUTES};
 use hub_desktop::ui::UiFiles;
+use hub_desktop::update::Updater;
 
 /// The hub of this repository as a subject of the matrix: no page (the placeholder of the kit is served),
 /// the clock and the secrets of the test.
@@ -29,6 +30,10 @@ impl Subject for Hub {
                 Env::from_pairs([("APPDATA", "C:/none")]),
                 None,
             ));
+            let launcher = Arc::new(Launcher::new(
+                Arc::clone(&detector),
+                LaunchConfig::new(None, Browser::System),
+            ));
             server::start(ServerConfig {
                 addr: cfg.addr,
                 limits: cfg.limits,
@@ -38,12 +43,10 @@ impl Subject for Hub {
                 instance: cfg.instance,
                 ui: Arc::new(UiFiles::none()),
                 detector: Arc::clone(&detector),
-                launcher: Arc::new(Launcher::new(
-                    Arc::clone(&detector),
-                    LaunchConfig::new(None, Browser::System),
-                )),
+                launcher: Arc::clone(&launcher),
                 prefs: Arc::new(Prefs::new(None, Arc::clone(&detector))),
                 monitor: Arc::new(Monitor::new(None)),
+                updater: Arc::new(Updater::disabled(Arc::clone(&detector), launcher)),
             })
             .await
         })

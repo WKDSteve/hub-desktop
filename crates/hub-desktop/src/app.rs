@@ -14,11 +14,13 @@ use crate::client;
 use crate::config::{self, Env};
 use crate::detect::Detector;
 use crate::launch::{Browser, LaunchConfig, Launcher};
+use crate::machine::Role;
 use crate::monitor::Monitor;
 use crate::overlay::Overlay;
 use crate::prefs::Prefs;
 use crate::server::{self, ServerConfig};
 use crate::ui::UiFiles;
+use crate::update::{SystemRunner, Tools, UpdateConfig, Updater};
 use crate::webserve::{self, WebServer};
 use appkit_hub::Limits;
 
@@ -140,6 +142,13 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
         LaunchConfig::new(web.as_ref().map(|w| w.addr().port()), browser),
     ));
     let monitor = Arc::new(Monitor::new(file.app.testing_export.clone()));
+    // What an update may do here: the role of the machine and the programs are read once, now.
+    let updater = Arc::new(Updater::new(
+        Arc::clone(&detector),
+        Arc::clone(&launcher),
+        UpdateConfig::new(Role::of(&env), Tools::find(&env), Some(dir.join("updates"))),
+        Arc::new(SystemRunner),
+    ));
     let make_cfg = |port: u16| ServerConfig {
         addr: std::net::SocketAddr::from(([127, 0, 0, 1], port)),
         limits: Limits::default(),
@@ -152,6 +161,7 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
         launcher: Arc::clone(&launcher),
         prefs: Arc::clone(&prefs),
         monitor: Arc::clone(&monitor),
+        updater: Arc::clone(&updater),
     };
     // The port is part of the origin, so the wanted one is tried first. When it is taken the server
     // still starts, on another port, and says so: the page then has another origin.

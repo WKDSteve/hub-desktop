@@ -3,7 +3,18 @@
 // next to this one, until the viewer says it is not there; a native app is listed as "native only".
 
 import type { DirHandleLike, FileHandleLike } from 'appkit-web/folder';
-import type { Apps, Hello, HubApi, HubApp, LaunchAsk, LaunchResult, Mode, StopResult } from '../lib/api';
+import type {
+  Apps,
+  Hello,
+  HubApi,
+  HubApp,
+  LaunchAsk,
+  LaunchResult,
+  Mode,
+  StopResult,
+  UpdateInfo,
+  UpdateResult,
+} from '../lib/api';
 import type { FolderOutcome, Presence } from '../lib/app.svelte';
 import { type CasesReading, type MonitorReading, NOT_CONFIGURED } from '../lib/monitor';
 
@@ -199,6 +210,19 @@ export class WebHub implements HubApi, Presence {
 
   async monitorCases(): Promise<CasesReading> {
     return { state: 'not_configured' };
+  }
+
+  /** A page of a file runs nothing: it shows the lines to type instead (`webUpdateLines`). */
+  async updates(): Promise<{ apps: UpdateInfo[] }> {
+    return { apps: [] };
+  }
+
+  async update(): Promise<UpdateResult> {
+    throw new Error('the web hub runs nothing');
+  }
+
+  async updateAll(): Promise<number> {
+    throw new Error('the web hub runs nothing');
   }
 
   async mark(id: string, missing: boolean): Promise<void> {

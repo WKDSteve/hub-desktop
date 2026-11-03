@@ -27,8 +27,9 @@ needs none of the other apps to run.
   opens it, natively or as its web variant. Nothing else needs to be clicked.
 - **Apps that are not installed** appear darkened in a separate area, *Install or download*, with a
   link to the release page and its checksums.
-- Later: the state of each app (running, update available), watching projects with testing.nvim,
-  handing work from one app to another, and report viewers.
+- **Updates** with one click per tile, or all at once with **Update all**: the program from its release, the web
+  variant from its clone (see below).
+- Later: handing work from one app to another, and report viewers.
 
 ## How it is built
 
@@ -82,6 +83,30 @@ not listed, not started and its page is not served.
 
 An app built on the kit (Tasks, Rules) that runs has a **Stop** entry in the menu of its tile: the hub runs
 `<program> stop` of that app, nothing else.
+
+## Update the apps
+
+**Update** in the menu of a tile (and on the tile, once **Check for updates** found a newer build) updates that app;
+**Update all** updates every app that has something to update here, one after the other, and goes on with the next
+when one fails. The section **Updates** shows where each one is, what came of it and the last lines of its output.
+
+- **The web variant** (a clone of `tasks-web`, ...): `git pull --ff-only` in the clone, then the page is checked
+  against the `SHA256SUMS` of the clone, as `start-tasks.cmd /update` does. A clone with local changes or on another
+  branch than `main` is not touched (no stash, no reset, no rebase): the tile says why. An open page needs a reload.
+- **The program** (an app with a release): `gh` downloads `install.ps1`, `SHA256SUMS` and the file of the rolling
+  build `latest`, the hub checks the script and the file against `SHA256SUMS`, and only then runs the script, which
+  checks the file again and installs it for you. Tasks and Rules stop, replace and restart themselves in their
+  `install` (a failure leaves the old program and your autostart entry). AI Desktop must be closed first. Needs the
+  [GitHub CLI](https://cli.github.com) signed in (`gh auth login`; it also reaches the private repositories) and
+  Windows PowerShell.
+- **On the workstation** (`NVIM_MACHINE_ROLE=workstation`) the hub installs no program, and neither does it when the
+  role is unclear (another value, or an unset one on a managed machine): the clones are still pulled. The role is
+  read when the hub starts.
+- **The web hub** (`hub.html`) runs nothing: its section **Update the pages** lists the lines to type in the folder
+  of the clones.
+
+The page only names the app; what runs is decided by the catalog of the hub and what it found on the machine, never
+by the request.
 
 ## Testing monitor
 

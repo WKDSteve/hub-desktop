@@ -6,8 +6,10 @@
   import { ContextRegistry } from 'appkit-ui/contextmenu';
   import type { App } from './lib/app.svelte';
   import { areas, hasMenu, hasMode, missingReason, moveFocus, otherMode, stopReason } from './lib/tiles';
+  import { active, updatable, whyNot } from './lib/updating';
   import Monitor from './Monitor.svelte';
   import Tile from './Tile.svelte';
+  import Updates from './Updates.svelte';
 
   let { app, code }: { app: App; code: string | null } = $props();
 
@@ -62,8 +64,20 @@
         hint: tile.stoppable ? undefined : stopReason(tile),
         onselect: () => void app.stop(tile),
       },
+      {
+        kind: 'action',
+        label: 'Update',
+        disabled: !canUpdateTile(tile.id),
+        hint: canUpdateTile(tile.id) ? undefined : updateHint(tile.id),
+        onselect: () => void app.update(tile),
+      },
     ];
   });
+
+  /** The hub can update the app here, and no update of it is on its way. */
+  const canUpdateTile = (id: string): boolean => updatable(app.updates[id]) && !active(app.updates[id]?.job);
+  const updateHint = (id: string): string =>
+    active(app.updates[id]?.job) ? 'An update is on its way' : whyNot(app.updates[id]);
 
   onMount(() => {
     void app.start(code);
@@ -177,6 +191,17 @@
       Check for updates
     </button>
   {/if}
+  {#if app.canUpdate}
+    <button
+      type="button"
+      class="tool"
+      disabled={!app.anyUpdatable || app.updating}
+      title={app.anyUpdatable ? undefined : 'Nothing can be updated on this machine'}
+      onclick={() => void app.updateAll()}
+    >
+      {app.updating ? 'Updating…' : 'Update all'}
+    </button>
+  {/if}
   {#if app.version}<span class="version">{app.version}</span>{/if}
 </header>
 
@@ -206,6 +231,9 @@
                 failed={app.failed[tile.id]}
                 tab={tabId === tile.id}
                 update={app.hasUpdate(tile.id)}
+                job={app.updates[tile.id]?.job ?? null}
+                canUpdate={canUpdateTile(tile.id)}
+                onupdate={() => void app.update(tile)}
                 onlaunch={() => void app.launch(tile)}
                 onmore={() => openMenu(tile.id)}
                 onfocus={() => (focused = tile.id)}
@@ -237,6 +265,7 @@
         {/if}
       </section>
     </div>
+    <Updates apps={app.apps} updates={app.updates} web={!app.canUpdate} />
     <Monitor
       monitor={app.monitor}
       open={app.openCases}
@@ -289,6 +318,10 @@
     border-radius: var(--radius);
     padding: 0.2rem 0.5rem;
     min-width: 12rem;
+  }
+  .tool:disabled {
+    cursor: default;
+    color: var(--muted);
   }
   .tool {
     font: inherit;

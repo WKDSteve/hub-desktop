@@ -14,6 +14,7 @@ use hub_desktop::monitor::Monitor;
 use hub_desktop::prefs::Prefs;
 use hub_desktop::server::{self, ServerConfig, DATA_ROUTES};
 use hub_desktop::ui::UiFiles;
+use hub_desktop::update::Updater;
 
 /// The control secret of the hub that `start_with_secret` makes, as the bearer credential of a program.
 async fn start_with_monitor(monitor: Monitor) -> (appkit_hub::RunningServer, String) {
@@ -21,6 +22,10 @@ async fn start_with_monitor(monitor: Monitor) -> (appkit_hub::RunningServer, Str
     let detector = Arc::new(Detector::new(
         Env::from_pairs([("APPDATA", "C:/none")]),
         None,
+    ));
+    let launcher = Arc::new(Launcher::new(
+        Arc::clone(&detector),
+        LaunchConfig::new(None, Browser::System),
     ));
     let server = server::start(ServerConfig {
         addr: "127.0.0.1:0".parse().unwrap(),
@@ -31,12 +36,10 @@ async fn start_with_monitor(monitor: Monitor) -> (appkit_hub::RunningServer, Str
         instance: Secret::generate(CODE_BYTES).unwrap(),
         ui: Arc::new(UiFiles::none()),
         detector: Arc::clone(&detector),
-        launcher: Arc::new(Launcher::new(
-            Arc::clone(&detector),
-            LaunchConfig::new(None, Browser::System),
-        )),
+        launcher: Arc::clone(&launcher),
         prefs: Arc::new(Prefs::new(None, Arc::clone(&detector))),
         monitor: Arc::new(monitor),
+        updater: Arc::new(Updater::disabled(Arc::clone(&detector), launcher)),
     })
     .await
     .expect("the hub starts");

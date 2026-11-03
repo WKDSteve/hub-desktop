@@ -55,6 +55,36 @@ export type StopResult = 'stopping' | 'not_running' | 'starting';
 /** What a click asks for; `setup` is the first-start questions of an app. */
 export type LaunchAsk = Mode | 'setup';
 
+/** What came of one part of an update: `result` is `updated`, `up_to_date`, `installed`, or the code of why not. */
+export interface UpdatePart {
+  part: 'native' | 'web';
+  outcome: 'ok' | 'skipped' | 'failed';
+  result: string;
+}
+
+/** The last update of an app as `GET /api/hub/updates` tells it. */
+export interface UpdateJob {
+  state: 'queued' | 'running' | 'done' | 'failed' | 'skipped';
+  /** What it does now (`downloading`, `pulling`, ...). */
+  step: string | null;
+  parts: UpdatePart[];
+  /** The last lines the steps printed (text). */
+  lines: string[];
+  /** The page of the web variant changed: an open one should be reloaded. */
+  reload: boolean;
+}
+
+/** What can be updated of an app on this machine: `ready`, the code of why not, or `null` (that part is not installed). */
+export interface UpdateInfo {
+  id: string;
+  native: string | null;
+  web: string | null;
+  job: UpdateJob | null;
+}
+
+/** What a request for an update came to: queued, or one of the app is queued or running already. */
+export type UpdateResult = 'queued' | 'already';
+
 /** What the page asks of its hub: the real one (over HTTP) or the one of `hub.html` (in the page). */
 export interface HubApi {
   onUnauthorized: () => void;
@@ -70,6 +100,12 @@ export interface HubApi {
   monitor(): Promise<MonitorReading>;
   /** The red cases of the last run of one repository of the export. */
   monitorCases(key: string): Promise<CasesReading>;
+  /** What can be updated of each app here, and its last update (the web hub has none). */
+  updates(): Promise<{ apps: UpdateInfo[] }>;
+  /** Queue an update of one app; what runs is the hub's to decide. */
+  update(id: string): Promise<UpdateResult>;
+  /** Queue an update of every app that has something to update; the number queued. */
+  updateAll(): Promise<number>;
 }
 
 export class Hub extends HubClient implements HubApi {
@@ -116,6 +152,25 @@ export class Hub extends HubClient implements HubApi {
     const doc = await this.json<CasesReading>(`${this.route('monitor/cases')}?key=${encodeURIComponent(key)}`);
     if (doc.state === 'not_configured' || doc.state === 'problem') return doc;
     if (doc.state === 'ready' && Array.isArray(doc.cases)) return doc;
+    throw new ApiError(502, 'bad_reply', 'unexpected answer');
+  }
+
+  async updates(): Promise<{ apps: UpdateInfo[] }> {
+    const doc = await this.json<{ apps?: unknown }>(this.route('updates'));
+    if (Array.isArray(doc.apps)) return { apps: doc.apps as UpdateInfo[] };
+    throw new ApiError(502, 'bad_reply', 'unexpected answer');
+  }
+
+  /** Queue an update of an app. The answer comes at once; `updates()` tells how it goes. */
+  async update(id: string): Promise<UpdateResult> {
+    const doc = await this.postJson<{ result?: unknown }>(this.route(`apps/${encodeURIComponent(id)}/update`), {});
+    if (doc.result === 'queued' || doc.result === 'already') return doc.result;
+    throw new ApiError(502, 'bad_reply', 'unexpected answer');
+  }
+
+  async updateAll(): Promise<number> {
+    const doc = await this.postJson<{ queued?: unknown }>(this.route('update-all'), {});
+    if (typeof doc.queued === 'number') return doc.queued;
     throw new ApiError(502, 'bad_reply', 'unexpected answer');
   }
 

@@ -56,6 +56,17 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
     });
 
+    test('with an update shown, its output open', async ({ page, hubOn }) => {
+      const hub = await hubOn({ ...FULL, tasksWebClone: 'dirty' });
+      await hub.open(page);
+      await page.getByRole('button', { name: 'Update all' }).click();
+      const updates = page.getByRole('region', { name: 'Updates' });
+      await expect(updates).toContainText('Update failed', { timeout: 20_000 });
+      await updates.getByText('Output of Tasks').click();
+      const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
+    });
+
     test('with the dialog of the setup open', async ({ page, hub }) => {
       await hub.open(page);
       await page.locator('[data-tile="rules"]').click();

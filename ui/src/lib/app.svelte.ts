@@ -2,9 +2,20 @@
 // one-line message of the last click.
 
 import type { ToastMessage } from 'appkit-ui/toast';
-import { ApiError, type Apps, type Hello, type HubApp, type HubApi, type LaunchAsk, type Mode } from './api';
+import {
+  ApiError,
+  type Apps,
+  type Hello,
+  type HubApp,
+  type HubApi,
+  type LaunchAsk,
+  type Mode,
+  type UpdateInfo,
+  type UpdateJob,
+} from './api';
 import { type CasesView, type MonitorReading, NOT_CONFIGURED } from './monitor';
 import { askable, differs, type UpdateChecker } from './updates';
+import { active, roundText, updatable, whyNot } from './updating';
 
 /** `starting`: the code is traded. `unpaired`: no session and no code (open the link of `hub-desktop open`). */
 export type Phase = 'starting' | 'ready' | 'unpaired' | 'error';
@@ -106,8 +117,11 @@ export class App {
   available = $state<Record<string, string | null>>({});
   /** A check for updates is under way. */
   checking = $state(false);
+  /** What the hub can update of each app, and its last update, by app id. */
+  updates = $state<Record<string, UpdateInfo>>({});
 
   #asked = new Map<string, number>();
+  #watchingUpdates = false;
   #cancelToast: (() => void) | null = null;
 
   constructor(
@@ -148,7 +162,10 @@ export class App {
       this.version = hello.version;
       this.apps = (await this.hub.apps()).apps;
       await this.#readMonitor();
+      await this.#readUpdates();
       this.phase = 'ready';
+      // Updates that run since before this page was opened are followed too.
+      if (Object.values(this.updates).some((u) => active(u.job))) void this.watchUpdates();
     } catch (e) {
       // A refused session already moved the phase to `unpaired`; a refused code is the same thing for the person.
       if (e instanceof ApiError && (e.status === 401 || e.status === 400)) {
@@ -176,7 +193,93 @@ export class App {
     } catch {
       // The hub may be busy for a moment: the next look tries again.
     }
-    if (withMonitor) await this.#readMonitor();
+    if (withMonitor) {
+      await this.#readMonitor();
+      await this.#readUpdates();
+    }
+  }
+
+  /** What can be updated, read from the hub; a failure keeps what is shown. The web hub has nothing to read. */
+  async #readUpdates(): Promise<void> {
+    if (!this.canUpdate) return;
+    try {
+      const list = await this.hub.updates();
+      this.updates = Object.fromEntries(list.apps.map((u) => [u.id, u]));
+    } catch {
+      // A refused session already moved the phase; anything else keeps what is shown.
+    }
+  }
+
+  /** Only the real hub runs updates (the web hub shows the lines to type instead). */
+  get canUpdate(): boolean {
+    return this.presence === null;
+  }
+
+  /** Something of some app can be updated here. */
+  get anyUpdatable(): boolean {
+    return Object.values(this.updates).some(updatable);
+  }
+
+  /** An update is queued or running. */
+  get updating(): boolean {
+    return Object.values(this.updates).some((u) => active(u.job));
+  }
+
+  /** Update one app: its program from the release, its web variant from the clone, as the hub decides. */
+  async update(app: HubApp): Promise<void> {
+    if (!this.canUpdate || this.phase !== 'ready') return;
+    try {
+      const result = await this.hub.update(app.id);
+      this.say('ok', result === 'already' ? `${app.name} is being updated already.` : `Updating ${app.name}…`);
+      await this.#readUpdates();
+      void this.watchUpdates();
+    } catch (e) {
+      const why = e instanceof ApiError && e.code === 'not_updatable' ? whyNot(this.updates[app.id]) : 'The hub did not answer.';
+      this.say('error', `${app.name}: ${why}`);
+    }
+  }
+
+  /** Update every app that has something to update here, one after the other. */
+  async updateAll(): Promise<void> {
+    if (!this.canUpdate || this.phase !== 'ready') return;
+    try {
+      const queued = await this.hub.updateAll();
+      if (queued === 0) {
+        this.say('ok', this.updating ? 'The updates are on their way.' : 'Nothing can be updated here.');
+        return;
+      }
+      this.say('ok', queued === 1 ? 'Updating 1 app…' : `Updating ${queued} apps…`);
+      await this.#readUpdates();
+      void this.watchUpdates();
+    } catch {
+      this.say('error', 'The hub did not answer.');
+    }
+  }
+
+  /** Read the updates every second while one is queued or running; then the list, and a message of the round. */
+  async watchUpdates(): Promise<void> {
+    if (this.#watchingUpdates) return;
+    this.#watchingUpdates = true;
+    const round = new Set(Object.values(this.updates).filter((u) => active(u.job)).map((u) => u.id));
+    try {
+      while (this.phase === 'ready') {
+        await this.clock.sleep(1000);
+        await this.#readUpdates();
+        const now = Object.values(this.updates).filter((u) => active(u.job));
+        for (const u of now) round.add(u.id);
+        if (now.length === 0) break;
+      }
+    } finally {
+      this.#watchingUpdates = false;
+    }
+    if (this.phase !== 'ready' || round.size === 0) return;
+    await this.reload(false);
+    const jobs = [...round].flatMap((id) => {
+      const job: UpdateJob | null | undefined = this.updates[id]?.job;
+      const name = this.apps.find((a) => a.id === id)?.name ?? id;
+      return job ? [{ name, job }] : [];
+    });
+    if (jobs.length > 0) this.say(jobs.some((j) => j.job.state === 'failed') ? 'error' : 'ok', roundText(jobs));
   }
 
   /** The monitor is a side show: a hub that does not answer for it leaves what is shown. */

@@ -10,13 +10,16 @@ pub mod catalog;
 pub mod config;
 pub mod detect;
 pub mod launch;
+pub mod machine;
 pub mod monitor;
 pub mod overlay;
 pub mod paths;
 pub mod prefs;
 pub mod probe;
 pub mod server;
+pub mod sums;
 pub mod ui;
+pub mod update;
 pub mod webcatalog;
 pub mod webserve;
 

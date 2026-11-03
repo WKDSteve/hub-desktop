@@ -13,6 +13,7 @@ use hub_desktop::monitor::Monitor;
 use hub_desktop::prefs::Prefs;
 use hub_desktop::server::{self, ServerConfig, MUTATION_ROUTES};
 use hub_desktop::ui::UiFiles;
+use hub_desktop::update::Updater;
 
 mod common;
 use common::*;
@@ -35,6 +36,7 @@ impl Hub {
         cfg.ready_timeout = Duration::from_millis(600);
         cfg.settle = Duration::from_millis(600);
         let control = Secret::generate(TOKEN_BYTES).unwrap();
+        let launcher = Arc::new(Launcher::new(Arc::clone(&detector), cfg));
         let server = server::start(ServerConfig {
             addr: "127.0.0.1:0".parse().unwrap(),
             limits: Limits::default(),
@@ -44,9 +46,13 @@ impl Hub {
             instance: Secret::generate(CODE_BYTES).unwrap(),
             ui: Arc::new(UiFiles::none()),
             detector: Arc::clone(&detector),
-            launcher: Arc::new(Launcher::new(Arc::clone(&detector), cfg)),
-            prefs: Arc::new(Prefs::new(Some(machine.path("cfg-hub")), detector)),
+            launcher: Arc::clone(&launcher),
+            prefs: Arc::new(Prefs::new(
+                Some(machine.path("cfg-hub")),
+                Arc::clone(&detector),
+            )),
             monitor: Arc::new(Monitor::new(None)),
+            updater: Arc::new(Updater::disabled(detector, launcher)),
         })
         .await
         .unwrap();

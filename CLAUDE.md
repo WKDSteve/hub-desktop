@@ -98,13 +98,42 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   Detector nichts (`None`) und liest nie die Registry. Die Kachel sagt „Starts at login“ / „No autostart“, bei `None`
   nichts. Unter Linux/macOS gibt es keine Anzeige.
 - Build: `GET /api/hub/apps` nennt je laufender Kit-App `build` (aus `hello.build`, appkit ab v0.29.0; nur 1 bis 40 Buchstaben/Ziffern, sonst `null`).
-- Update-Badge: Die Seite fragt `api.github.com` (`ui/src/lib/updates.ts`), der Hub nie. Nur auf Knopfdruck ("Check for updates"), höchstens
+- Update-Badge: Die Seite fragt `api.github.com` (`ui/src/lib/updates.ts`), der Hub nie (für den Badge; ein Update
+  auf Knopfdruck holt die Release-Dateien über `gh`, siehe "Updates"). Nur auf Knopfdruck ("Check for updates"), höchstens
   einmal am Tag je App (`localStorage`, mit try/catch), nur öffentliche Repos, ohne Token und Cookies, nur Apps, deren `build` eine
   Commit-ID ist (7 bis 40 Hex-Zeichen; `dev` o. ä. wäre nie vergleichbar). 404 heißt "kein Rolling-Release" (kein Badge, die anderen Apps werden
   weiter gefragt), 403/Netz/Timeout (`ASK_TIMEOUT_MS`, 15 s) heißt "GitHub antwortet nicht" und beendet die Runde.
   Gelesen wird aus `releases/tags/latest` allein der Titel `Rolling build (<sha>)`; jede andere Form heißt "nicht bekannt", nie ein Badge.
   Erlaubt ist das durch `GuardRules::with_connect_src(RELEASES_ORIGIN)` in `server.rs` (appkit ab v0.30.0, die CSP bleibt sonst
   `connect-src 'self'`); `hub.html` hat `connect-src 'none'` und keinen Knopf.
+
+## Updates (M2, Teil 2)
+
+- `update.rs`: `GET /api/hub/updates` (in `DATA_ROUTES`), `POST /api/hub/apps/{id}/update` und `POST /api/hub/update-all`
+  (beide in `MUTATION_ROUTES`, Body `{}` wird nicht gelesen). Eine Warteschlange, ein Job nach dem anderen; "Update all"
+  reiht jede App mit etwas Aktualisierbarem ein und macht nach einem Fehler weiter. Fortschritt holt die Seite per
+  Polling (1 s), solange ein Job `queued`/`running` ist.
+- Programme nur drei, beim Start gefunden (`update::Tools::find`): `git`/`gh` aus einem absoluten `PATH`-Ordner,
+  `powershell.exe` unter `%SystemRoot%`. Ausgeführt über `update::Runner` (Programm `SystemRunner`: argv, stdin null,
+  Pipes, eigene Prozessgruppe, kein `CREATE_NO_WINDOW`, Ende nach `step_timeout` 10 min). Tests: Fake-Runner
+  (`tests/update_route.rs`), `SystemRunner` nur gegen `fake-app` (`--say`, `--err`, `--sleep`, `--exit`).
+- Web-Teil: nur `<clone>/.git`, Branch `main`, `status --porcelain --untracked-files=no` leer, dann `pull --ff-only`,
+  danach `<entry>` gegen `SHA256SUMS` des Klons (`sums.rs`, SHA-256 ohne Crate). Ohne `SHA256SUMS` oder ohne Zeile:
+  Hinweis, kein Fehler (wie `start-tasks.cmd /update`). Die Klone brauchen `*.html -text` und `SHA256SUMS -text` in
+  `.gitattributes` (sonst macht `core.autocrlf` CRLF daraus und die Summe passt nie).
+- Nativer Teil: nur `machine::Role::Private` (`NVIM_MACHINE_ROLE` leer/`default` ohne AzureAD-/`TRI-`-Hinweis; jeder
+  andere Wert ist `role_unclear` und installiert nichts), nur Windows, nur `install.hint: release` mit `install.file`.
+  `gh release download latest -p install.ps1 -p SHA256SUMS -p <file>` in `<config>/updates/<id>-<pid>-<nanos>` (danach
+  weg), beide Dateien gegen `SHA256SUMS`, dann `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File
+  install.ps1 -File <file> -Sums SHA256SUMS`. Kit-Apps stoppen/ersetzen/starten sich im eigenen `install`; ein laufender
+  `LoopbackServer` (ai-desktop) ist `close_first`. Während des Installs hält der Updater den Flight des `Launcher`
+  (`reserve`): ein Klick bekommt `starting`.
+- Codes an die Seite sind feste Wörter (`ui/src/lib/updating.ts` übersetzt sie); Ausgabezeilen gehen als Text an die
+  gepairte Seite (`clean_line`: ohne Escape-/Steuerzeichen, 300 Zeichen, die letzten 40), Startfehler mit Pfad nur in
+  die Konsole.
+- Browser-Tests: das Fixture setzt immer `NVIM_MACHINE_ROLE=workstation` (sonst würde ein e2e-Lauf mit dem echten `gh`
+  echte Releases installieren); `tasksWebClone: 'behind' | 'dirty'` baut einen echten Klon mit Origin im Testordner.
+- Offen: Art 2 der Task (Klon einer nativen App pullen und bauen) hat keinen Katalog-Eintrag; Folge-Task im Vault.
 
 ## Monitor (M3, Teil 1)
 

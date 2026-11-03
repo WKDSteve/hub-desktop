@@ -23,6 +23,24 @@ test('the page lists the apps, asks nothing of the network and breaks no rule of
   expect(await site.violations(page)).toEqual([]);
 });
 
+test('the web hub runs no update: it shows the lines to type in the folder of the clones', async ({ page, site }) => {
+  const seen = await site.watch(page);
+  await page.goto(site.url);
+  await expect(page.locator('[data-tile="tasks"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Update all' })).toHaveCount(0);
+  const pages = page.getByRole('region', { name: 'Update the pages' });
+  await expect(pages.locator('pre')).toHaveText('git -C tasks-web pull --ff-only\ngit -C tasks-web status --short');
+  // Only what is a web variant on this machine: no line for a program.
+  await expect(pages).not.toContainText('Rules');
+  await page.locator('[data-tile="tasks"]').focus();
+  await page.keyboard.press('Shift+Enter');
+  await expect(page.getByRole('menuitem', { name: 'Update' })).toHaveCount(0);
+  expect(seen.requests).toEqual([]);
+  expect(await site.violations(page)).toEqual([]);
+  const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+  expect(result.violations.map((v) => v.id)).toEqual([]);
+});
+
 test('the policy of the file forbids every request', async ({ page, site }) => {
   await site.watch(page);
   await page.goto(site.url);

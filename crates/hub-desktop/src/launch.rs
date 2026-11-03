@@ -125,7 +125,7 @@ pub enum LaunchError {
 struct Inflight(Mutex<HashSet<&'static str>>);
 
 /// Held while a start is on its way; letting go lets the next one in.
-struct Flight {
+pub struct Flight {
     set: Arc<Inflight>,
     id: &'static str,
 }
@@ -159,6 +159,13 @@ impl Launcher {
         catalog::find(id)
             .filter(|e| !self.detector.hides(e.id))
             .ok_or(LaunchError::UnknownApp)
+    }
+
+    /// Hold the app for something that is not a start (an update): while it is held, a click gets
+    /// `starting` and no program. `None`: a start or stop of it is on its way.
+    #[must_use]
+    pub fn reserve(&self, id: &'static str) -> Option<Flight> {
+        self.begin(id)
     }
 
     fn begin(&self, id: &'static str) -> Option<Flight> {

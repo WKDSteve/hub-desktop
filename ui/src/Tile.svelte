@@ -3,8 +3,9 @@
   // other way (the menu of the second action), and a line with the state as a word and the mode as a chip. Not on the
   // machine: the same tile quieter, as a link to the page where the app is to be had, or a badge when there is none.
   import { contextTarget } from 'appkit-ui/contextmenu';
-  import type { HubApp } from './lib/api';
+  import type { HubApp, UpdateJob } from './lib/api';
   import { autostartWord, getting, hasMenu, modeName, stateOf } from './lib/tiles';
+  import { jobLabel } from './lib/updating';
 
   let {
     app,
@@ -15,6 +16,9 @@
     onmore,
     onfocus,
     update = false,
+    job = null,
+    canUpdate = false,
+    onupdate = () => undefined,
   }: {
     app: HubApp;
     starting: boolean;
@@ -26,7 +30,14 @@
     onfocus: () => void;
     /** GitHub names a newer build than the one that runs (the check found it; never a guess). */
     update?: boolean;
+    /** The last update of the app (the hub runs it), if there was one. */
+    job?: UpdateJob | null;
+    /** The hub can update the app here and no update of it is on its way. */
+    canUpdate?: boolean;
+    onupdate?: () => void;
   } = $props();
+
+  const updating = $derived(job ? jobLabel(job) : null);
 
   const state = $derived(stateOf(app, starting, failed));
   const get = $derived(getting(app));
@@ -80,7 +91,15 @@
         {#if update}<span class="update"><span aria-hidden="true">↑</span> Update available</span>{/if}
         {#if login}<span class="note">{login}</span>{/if}
       </span>
+      {#if updating}
+        <span class="job {updating.kind}" data-update={app.id}>{updating.text}</span>
+      {/if}
     </button>
+    {#if update && canUpdate}
+      <button type="button" class="do-update" tabindex="-1" aria-label={`Update ${app.name}`} onclick={onupdate}
+        >Update</button
+      >
+    {/if}
     <button
       type="button"
       class="more"
@@ -218,6 +237,27 @@
   .update {
     color: var(--text);
     font-weight: 600;
+  }
+  .job {
+    font-size: 0.85em;
+    color: var(--muted);
+  }
+  .job.failed {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .do-update {
+    position: absolute;
+    right: 0.4rem;
+    bottom: 0.4rem;
+    padding: 0 0.5rem;
+    font: inherit;
+    font-size: 0.85em;
+    color: var(--accent-text);
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    cursor: pointer;
   }
   .chip,
   .badge {
