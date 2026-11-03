@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import catalog from './catalog.json';
-import { type CatalogEntry, type MissingStore, pageLink, view, WebHub } from './hub';
+import type { DirHandleLike } from 'appkit-web/folder';
+import { App } from '../lib/app.svelte';
+import { type CatalogEntry, type FolderPicker, type MissingStore, pageLink, presentIn, view, WebHub } from './hub';
 
 const entries = catalog as CatalogEntry[];
 const entry = (id: string): CatalogEntry => {
@@ -104,5 +106,105 @@ describe('WebHub', () => {
     const hub = new WebHub(entries, blocked, '1');
     await hub.mark('tasks', true);
     expect((await hub.apps()).apps.find((a) => a.id === 'tasks')?.missing).toBe(true);
+  });
+});
+
+/** A folder as the browser's handle gives it: names and kinds, files have no content that is read. */
+type Tree = { [name: string]: Tree | 'file' };
+function folder(name: string, tree: Tree): DirHandleLike {
+  return {
+    kind: 'directory',
+    name,
+    async *values() {
+      for (const [child, sub] of Object.entries(tree)) {
+        if (sub === 'file') {
+          yield {
+            kind: 'file',
+            name: child,
+            getFile: async () => {
+              throw new Error('the content of a file is never read');
+            },
+          };
+        } else yield folder(child, sub);
+      }
+    },
+  };
+}
+const picks = (handle: DirHandleLike): FolderPicker => async () => ({ kind: 'picked', handle });
+
+describe('the folder of the clones', () => {
+  it('finds a web variant whose page is in its folder, and nothing else', async () => {
+    expect(await presentIn(folder('repos', { 'tasks-web': { 'tasks.html': 'file' } }), entries)).toEqual(new Set(['tasks']));
+    for (const tree of [
+      {},
+      { 'tasks-web': {} },
+      { 'tasks-web': { 'other.html': 'file' } },
+      { 'tasks-web': { 'tasks.html': {} } },
+      { 'tasks-web': 'file' },
+      { 'Tasks-Web': { 'tasks.html': 'file' } },
+      // A planned app is not looked for, even when its folder is there.
+      { 'testing-web': { 'testing.html': 'file' } },
+    ] as Tree[]) {
+      expect(await presentIn(folder('repos', tree), entries), JSON.stringify(tree)).toEqual(new Set());
+    }
+  });
+
+  it('looks at a bounded number of entries of a folder', async () => {
+    const crowded: Tree = {};
+    for (let i = 0; i < 2000; i++) crowded[`x${String(i).padStart(4, '0')}`] = {};
+    crowded['tasks-web'] = { 'tasks.html': 'file' };
+    expect(await presentIn(folder('repos', crowded), entries)).toEqual(new Set());
+  });
+
+  it('marks what is not in the picked folder and takes back the mark of what is', async () => {
+    const store = memory();
+    let tree: Tree = {};
+    const hub = new WebHub(entries, store, '1', async () => ({ kind: 'picked', handle: folder('repos', tree) }));
+    expect(hub.canChooseFolder).toBe(true);
+    expect(await hub.chooseFolder()).toEqual({ kind: 'scanned', present: 0, missing: 1 });
+    expect((await hub.apps()).apps.find((a) => a.id === 'tasks')?.missing).toBe(true);
+    tree = { 'tasks-web': { 'tasks.html': 'file' } };
+    expect(await hub.chooseFolder()).toEqual({ kind: 'scanned', present: 1, missing: 0 });
+    expect((await hub.apps()).apps.find((a) => a.id === 'tasks')?.installed).toBe(true);
+    expect(store.saved).toEqual([['tasks'], []]);
+  });
+
+  it('changes nothing when the person cancels, the browser refuses, or the folder cannot be read', async () => {
+    const store = memory(['tasks']);
+    const unreadable: DirHandleLike = {
+      kind: 'directory',
+      name: 'repos',
+      async *values() {
+        throw new Error('gone');
+      },
+    };
+    expect(await new WebHub(entries, store, '1', async () => ({ kind: 'cancelled' })).chooseFolder()).toEqual({
+      kind: 'cancelled',
+    });
+    expect(
+      await new WebHub(entries, store, '1', async () => ({ kind: 'blocked', message: 'Not allowed here.' })).chooseFolder(),
+    ).toEqual({ kind: 'failed', message: 'Not allowed here.' });
+    expect(await new WebHub(entries, store, '1', picks(unreadable)).chooseFolder()).toEqual({
+      kind: 'failed',
+      message: 'The folder could not be read.',
+    });
+    expect(store.saved).toEqual([]);
+  });
+
+  it('is not offered in a browser without a folder dialog', async () => {
+    const hub = new WebHub(entries, memory(), '1');
+    expect(hub.canChooseFolder).toBe(false);
+    expect(await hub.chooseFolder()).toEqual({ kind: 'unsupported' });
+  });
+
+  it('says on the page what it found, and the list shows it', async () => {
+    const hub = new WebHub(entries, memory(), '1', picks(folder('repos', {})));
+    const none = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
+    const state = new App(hub, none, undefined, hub);
+    await state.start('web');
+    expect(state.canChooseFolder).toBe(true);
+    await state.chooseFolder();
+    expect(state.toast).toEqual({ kind: 'ok', text: '0 web apps found, 1 not in the folder.' });
+    expect(state.apps.find((a) => a.id === 'tasks')?.missing).toBe(true);
   });
 });

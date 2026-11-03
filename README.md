@@ -60,7 +60,9 @@ change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --loc
 `hub.html` is the same page as one file that is opened from disk: no program, no server. It lists the web variants
 (`tasks-web`, ...) as links to the page next to it, so clone the `*-web` repositories side by side in one folder. A
 program is shown as "native only". The page cannot look at your machine: an app that is not there is one you mark
-yourself ("Mark as not present" in the menu of the tile). Build it with `cd ui && pnpm web:build`
+yourself ("Mark as not present" in the menu of the tile), or all at once: **Choose the folder of the clones** (Chrome
+and Edge) opens the folder dialog, and every web variant whose page is not in the folder you pick is marked, the rest
+unmarked. The page reads only the names in that folder and keeps nothing of it but the marks. Build it with `cd ui && pnpm web:build`
 (`ui/dist-web/hub.html`).
 
 ## Hide, order and stop

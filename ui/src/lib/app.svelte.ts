@@ -36,7 +36,17 @@ export const realClock: Clock = {
 /** The viewer's word about an app of the web hub (the page cannot look at the machine). */
 export interface Presence {
   mark(id: string, missing: boolean): Promise<void>;
+  /** The browser has a folder dialog: the person can pick the folder of the clones once. */
+  readonly canChooseFolder: boolean;
+  chooseFolder(): Promise<FolderOutcome>;
 }
+
+/** What picking the folder of the clones came to. */
+export type FolderOutcome =
+  | { kind: 'scanned'; present: number; missing: number }
+  | { kind: 'cancelled' }
+  | { kind: 'unsupported' }
+  | { kind: 'failed'; message: string };
 
 const TOKEN_KEY = 'hub-desktop.session';
 
@@ -214,6 +224,29 @@ export class App {
     } finally {
       this.checking = false;
     }
+  }
+
+  /** Only the web hub has a folder of clones to look at, and only in a browser with a folder dialog. */
+  get canChooseFolder(): boolean {
+    return this.presence?.canChooseFolder === true;
+  }
+
+  /** The person picks the folder of the `*-web` clones; the marks follow what is there, and the list is read again. */
+  async chooseFolder(): Promise<void> {
+    if (!this.presence || !this.canChooseFolder || this.phase !== 'ready') return;
+    const outcome = await this.presence.chooseFolder();
+    if (outcome.kind === 'cancelled') return;
+    if (outcome.kind !== 'scanned') {
+      this.say('error', outcome.kind === 'failed' ? outcome.message : 'This browser cannot choose a folder.');
+      return;
+    }
+    try {
+      this.apps = (await this.hub.apps()).apps;
+    } catch {
+      // The marks are kept; the list shows them at the next read.
+    }
+    const found = outcome.present === 1 ? '1 web app found' : `${outcome.present} web apps found`;
+    this.say('ok', outcome.missing === 0 ? `${found}.` : `${found}, ${outcome.missing} not in the folder.`);
   }
 
   /** Say an app is (not) on this machine; the list is read again. */

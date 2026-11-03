@@ -63,6 +63,58 @@ test('a mark "not present" moves the app, survives a reload and can be taken bac
   await expect(page.getByRole('region', { name: 'Installed' }).locator('[data-tile="tasks"]')).toBeVisible();
 });
 
+test('the folder of the clones is picked once: what is not in it is marked, the rest is not', async ({ page, site }) => {
+  // The browser's dialog is a fake that hands over a folder with the given entries (names only, nothing is read).
+  await page.addInitScript(() => {
+    type Tree = { [name: string]: Tree | 'file' };
+    const handle = (name: string, tree: Tree): unknown => ({
+      kind: 'directory',
+      name,
+      async *values() {
+        for (const [child, sub] of Object.entries(tree)) yield sub === 'file' ? { kind: 'file', name: child } : handle(child, sub);
+      },
+    });
+    const w = window as unknown as { picks: number; tree: Tree; showDirectoryPicker: () => Promise<unknown> };
+    w.picks = 0;
+    w.tree = { 'rules-web': {} };
+    w.showDirectoryPicker = async () => {
+      w.picks++;
+      return handle('repos', w.tree);
+    };
+  });
+  const seen = await site.watch(page);
+  await page.goto(site.url);
+  await expect(page.locator('[data-tile="tasks"]')).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { picks: number }).picks)).toBe(0);
+  await page.getByRole('button', { name: 'Choose the folder of the clones' }).click();
+  await expect(page.getByRole('status')).toContainText('0 web apps found, 1 not in the folder.');
+  const other = page.getByRole('region', { name: 'Install or download' });
+  await expect(other.locator('[data-tile="tasks"]')).toContainText('Marked as not present');
+  // The marks are the menu's: they survive a reload, and a second pick with the clone there takes them back.
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Install or download' }).locator('[data-tile="tasks"]')).toBeVisible();
+  await page.evaluate(() => {
+    (window as unknown as { tree: unknown }).tree = { 'tasks-web': { 'tasks.html': 'file' } };
+  });
+  await page.getByRole('button', { name: 'Choose the folder of the clones' }).click();
+  await expect(page.getByRole('status')).toContainText('1 web app found.');
+  await expect(page.getByRole('region', { name: 'Installed' }).locator('[data-tile="tasks"]')).toHaveAttribute(
+    'href',
+    '../tasks-web/tasks.html',
+  );
+  expect(seen.requests).toEqual([]);
+  expect(seen.errors).toEqual([]);
+});
+
+test('a browser without a folder dialog keeps the marks of the menu, with no button', async ({ page, site }) => {
+  await page.addInitScript(() => {
+    delete (window as unknown as { showDirectoryPicker?: unknown }).showDirectoryPicker;
+  });
+  await page.goto(site.url);
+  await expect(page.locator('[data-tile="tasks"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Choose the folder of the clones' })).toHaveCount(0);
+});
+
 for (const scheme of ['light', 'dark'] as const) {
   test(`axe, ${scheme}: the page, and with the menu open`, async ({ page, site }) => {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });

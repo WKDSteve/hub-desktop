@@ -335,7 +335,7 @@ describe('App and the update check', () => {
   it('has no button in the web hub (a presence is there) or without a checker', async () => {
     const { Hub } = await import('./api');
     const g = github(() => ok('Rolling build (1234567)'));
-    const presence = { mark: async () => undefined };
+    const presence = { mark: async () => undefined, canChooseFolder: false, chooseFolder: async () => ({ kind: 'unsupported' as const }) };
     const web = new App(new Hub(hubWith([app()])), session, undefined, presence, new UpdateChecker(g.fetchFn, memory()));
     expect(web.canCheckUpdates).toBe(false);
     await web.start('code');

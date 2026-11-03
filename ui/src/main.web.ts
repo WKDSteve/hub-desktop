@@ -6,10 +6,15 @@ import './app.css';
 import App from './App.svelte';
 import { App as AppState } from './lib/app.svelte';
 import { installTooltips } from 'appkit-ui/tooltip';
+import { pickerSupport, pickFolder } from 'appkit-web/folder';
 import catalog from './web/catalog.json';
-import { type CatalogEntry, indexedDbMissing, WebHub } from './web/hub';
+import { type CatalogEntry, type FolderPicker, indexedDbMissing, WebHub } from './web/hub';
 
-const hub = new WebHub(catalog as CatalogEntry[], indexedDbMissing(window.indexedDB), __WEB_VERSION__);
+// The folder of the clones is looked at once, read only; a browser without the dialog (Firefox, Safari) keeps the marks
+// of the menu.
+const picker: FolderPicker =
+  pickerSupport(window) === 'ok' ? () => pickFolder(window, { id: 'hub-web-clones', mode: 'read' }) : null;
+const hub = new WebHub(catalog as CatalogEntry[], indexedDbMissing(window.indexedDB), __WEB_VERSION__, picker);
 // The marks of a tab are the browser's, not the tab's: no session storage is needed (there is no session).
 const none = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
 const state = new AppState(hub, none, undefined, hub);

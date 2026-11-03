@@ -122,6 +122,9 @@ python tools/check-lock-age.py --min-days 7
   `ui/web/pack.mjs` mit `CSP_STRICT`). `src/web/hub.ts` (`WebHub`) beantwortet die Aufrufe des Hubs in der Seite: keine
   Erkennung, Web-Einträge sind Links `../<dir>/<datei>`, Programme "Native only", "fehlt" ist eine Markierung des
   Betrachters (IndexedDB `hub-web`). Veröffentlicht wird nach `WKDSteve/hub-web` (`web.yml`, auf einem Tag).
+- Ordnerwahl: "Choose the folder of the clones" (nur mit `showDirectoryPicker`, sonst kein Knopf) setzt die Marken aller
+  Web-Varianten auf einmal: vorhanden ist, wessen `<dir>/<entry>` im gewählten Ordner liegt (`presentIn`, nur Namen, höchstens
+  2000 Einträge je Ordner). Der Ordner selbst wird nicht gespeichert, nur die Marken; im Test ein Fake-Picker (`addInitScript`).
 - `ui/src/web/catalog.json` ist die Wiedergabe von `catalog.rs` (`webcatalog.rs`); ein Test hält sie gleich. Nach einer
   Änderung am Katalog: `UPDATE_WEB_CATALOG=1 cargo test -p hub-desktop web_catalog`.
 

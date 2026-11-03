@@ -169,6 +169,9 @@
   {#if app.canRescan}
     <button type="button" class="tool" aria-keyshortcuts="r" onclick={() => void app.rescan()}>Look again</button>
   {/if}
+  {#if app.canChooseFolder}
+    <button type="button" class="tool" onclick={() => void app.chooseFolder()}>Choose the folder of the clones</button>
+  {/if}
   {#if app.canCheckUpdates}
     <button type="button" class="tool" disabled={app.checking} onclick={() => void app.checkUpdates()}>
       Check for updates

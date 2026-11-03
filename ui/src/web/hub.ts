@@ -2,8 +2,9 @@
 // look at (the page may not even know the kind of computer), so nothing is detected: a web app is a link to its page
 // next to this one, until the viewer says it is not there; a native app is listed as "native only".
 
+import type { DirHandleLike, FileHandleLike } from 'appkit-web/folder';
 import type { Apps, Hello, HubApi, HubApp, LaunchAsk, LaunchResult, Mode, StopResult } from '../lib/api';
-import type { Presence } from '../lib/app.svelte';
+import type { FolderOutcome, Presence } from '../lib/app.svelte';
 import { type MonitorReading, NOT_CONFIGURED } from '../lib/monitor';
 
 /** One entry of `catalog.json` (the rendering of `catalog.rs`, see `webcatalog.rs`). */
@@ -68,6 +69,44 @@ export function view(e: CatalogEntry, missing: ReadonlySet<string>): HubApp {
   return { ...base, installed: false, web: false, install };
 }
 
+/** What the browser's folder dialog gave (the part of `appkit-web/folder`'s `PickResult` the hub uses). */
+export type FolderPick =
+  | { kind: 'picked'; handle: DirHandleLike }
+  | { kind: 'cancelled' }
+  | { kind: 'blocked' | 'failed'; message: string };
+
+/** Asks the person for a folder; `null`: this browser has no folder dialog. */
+export type FolderPicker = (() => Promise<FolderPick>) | null;
+
+/** At most this many entries of a folder are looked at: the parent of the clones holds a few dozen. */
+const MAX_ENTRIES = 2000;
+
+async function entriesOf(dir: DirHandleLike, kind: 'file' | 'directory'): Promise<Map<string, FileHandleLike | DirHandleLike>> {
+  const out = new Map<string, FileHandleLike | DirHandleLike>();
+  let seen = 0;
+  for await (const entry of dir.values()) {
+    if (++seen > MAX_ENTRIES) break;
+    if (entry.kind === kind) out.set(entry.name, entry);
+  }
+  return out;
+}
+
+/**
+ * The web variants whose page is in `parent`, the folder of the clones: `<dir>/<entry>` of the catalog is a file
+ * there. Only names of the catalog are looked for; nothing of the folder is read but the names of its entries.
+ */
+export async function presentIn(parent: DirHandleLike, catalog: readonly CatalogEntry[]): Promise<Set<string>> {
+  const dirs = await entriesOf(parent, 'directory');
+  const present = new Set<string>();
+  for (const e of catalog) {
+    if (!e.web || e.status !== 'available') continue;
+    const dir = dirs.get(e.web.dir);
+    if (dir?.kind !== 'directory') continue;
+    if ((await entriesOf(dir, 'file')).has(e.web.entry)) present.add(e.id);
+  }
+  return present;
+}
+
 export class WebHub implements HubApi, Presence {
   onUnauthorized: () => void = () => {};
   /** What the page itself last said: what is shown when the browser keeps nothing. */
@@ -77,7 +116,42 @@ export class WebHub implements HubApi, Presence {
     private readonly catalog: readonly CatalogEntry[],
     private readonly store: MissingStore,
     private readonly version: string,
+    private readonly picker: FolderPicker = null,
   ) {}
+
+  get canChooseFolder(): boolean {
+    return this.picker !== null;
+  }
+
+  /**
+   * The person picks the folder the `*-web` clones are in; every web variant of the catalog is then marked present
+   * or not present by what is there (the marks of the menu, in the same store). The folder itself is not kept.
+   */
+  async chooseFolder(): Promise<FolderOutcome> {
+    if (!this.picker) return { kind: 'unsupported' };
+    const picked = await this.picker();
+    if (picked.kind === 'cancelled') return picked;
+    if (picked.kind !== 'picked') return { kind: 'failed', message: picked.message };
+    let present: Set<string>;
+    try {
+      present = await presentIn(picked.handle, this.catalog);
+    } catch {
+      return { kind: 'failed', message: 'The folder could not be read.' };
+    }
+    const webApps = this.catalog.filter((e) => e.web && e.status === 'available');
+    const next = new Set(await this.#ids());
+    for (const e of webApps) {
+      if (present.has(e.id)) next.delete(e.id);
+      else next.add(e.id);
+    }
+    this.#local = next;
+    try {
+      await this.store.save([...next]);
+    } catch {
+      // The browser keeps nothing: the marks hold while the page is open.
+    }
+    return { kind: 'scanned', present: present.size, missing: webApps.length - present.size };
+  }
 
   setToken(): void {}
 
