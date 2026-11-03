@@ -117,6 +117,15 @@ jobs:
           cp LICENSE stage/
           (cd stage && 7z a -tzip "../dist/${name}.zip" . >/dev/null)
           echo "file=dist/${name}.zip" >> "$GITHUB_OUTPUT"
+      # A temp dir of this job, empty at the start: the shared temp dir of the runner holds the leftovers of
+      # every earlier run, so a count there is never zero. TEMP and TMP are read on Windows, TMPDIR elsewhere.
+      # `New-Item` fails when the folder is there already, so "empty at the start" is checked, not assumed.
+      - name: Temp dir of this job
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "job-temp-$env:GITHUB_JOB-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          New-Item -ItemType Directory -Path $dir -ErrorAction Stop | Out-Null
+          "TEMP=$dir", "TMP=$dir", "TMPDIR=$dir", "JOB_TEMP=$dir" | Add-Content -Path $env:GITHUB_ENV
       # What the archive holds, without installing it (NREL-12): unpack it elsewhere, ask the
       # program for its version (the hub is a command line program), then the install script of the release-kit
       # and scripts/uninstall.* against the built program in folders of their own (scripts/test-install.*).
@@ -135,6 +144,8 @@ jobs:
           fi
           pwsh -NoProfile -File scripts/test-install.ps1 target/release/hub-desktop.exe
           sh scripts/test-install.sh target/release/hub-desktop.exe
+      - name: The install scripts left nothing in the temp dir
+        run: python tools/check-temp-leftovers.py --dir "$JOB_TEMP" --prefix hub-desktop-test-install
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-windows

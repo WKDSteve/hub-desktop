@@ -23,9 +23,13 @@ python tools/check-control-chars.py
 python tools/check-color-literals.py      # keine Farbe außerhalb der Tokens von appkit-ui
 python tools/check-appkit-pin.py
 python tools/check-lock-age.py --min-days 7
+python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge selbst
 ```
 
 - `pnpm build | tail -0` bricht den Build ab (SIGPIPE): `tail -1` nehmen.
+- Temp-Ordner in der CI: jeder Job mit Tests bekommt einen eigenen, anfangs leeren (`JOB_TEMP`); nach `cargo test` prüft
+  `tools/check-temp-leftovers.py --strict`, nach den Install-Skripten `--prefix hub-desktop-test-install` (ps1: `-<guid>`,
+  sh: `.<zufall>`). Ein Test holt seinen Ordner immer über `appkit_scratch::Scratch`.
 - Ein Fix ohne Test, der ohne den Fix rot wird, gilt nicht als fertig. Nach der Sabotage neu bauen (`touch` +
   `cargo build`), sonst bleibt der Test grün.
 - `Cargo.lock`: `check-lock-age.py` verlangt Crates, die älter als 7 Tage sind. Meldet es eine zu junge Version:

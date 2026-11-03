@@ -67,7 +67,20 @@ jobs:
           pnpm build
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # A temp dir of this job, empty at the start: the shared temp dir of the runner holds the leftovers of
+      # every earlier run, so a count there is never zero. TEMP and TMP are read on Windows, TMPDIR elsewhere.
+      # `New-Item` fails when the folder is there already, so "empty at the start" is checked, not assumed.
+      - name: Temp dir of this job
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "job-temp-$env:GITHUB_JOB-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          New-Item -ItemType Directory -Path $dir -ErrorAction Stop | Out-Null
+          "TEMP=$dir", "TMP=$dir", "TMPDIR=$dir", "JOB_TEMP=$dir" | Add-Content -Path $env:GITHUB_ENV
       - run: cargo test --workspace --locked
+      # No test left anything in the temp dir of this job (a test makes its folder with `Scratch`, which removes it
+      # also after a failure). Strict: whatever name a test gave its folder counts.
+      - name: The tests left nothing in the temp dir
+        run: python tools/check-temp-leftovers.py --dir "$JOB_TEMP" --strict
       # The browser tests: the binary and the fake program (`cargo build --workspace`), the system's Chrome, a hub of
       # its own for every test against a machine that exists only for it (ui/e2e/fixture.ts), axe in light and dark.
       - run: cargo build --workspace --locked
@@ -78,6 +91,10 @@ jobs:
         run: |
           pwsh -NoProfile -File scripts/test-install.ps1 target/debug/hub-desktop.exe
           sh scripts/test-install.sh target/debug/hub-desktop.exe
+      # And none of their folders (hub-desktop-test-install-* and .*) stayed, also after a run that was cut short. Not
+      # strict: the child PowerShells may leave files of their own there.
+      - name: The install scripts left nothing in the temp dir
+        run: python tools/check-temp-leftovers.py --dir "$JOB_TEMP" --prefix hub-desktop-test-install
       - name: Browser tests (Playwright, axe)
         working-directory: ui
         run: pnpm e2e
