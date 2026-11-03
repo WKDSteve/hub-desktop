@@ -144,7 +144,7 @@ describe('UpdateChecker', () => {
   it('asks GitHub without a token, a cookie or a referrer, and finds a newer build', async () => {
     const g = github(() => ok('Rolling build (1234567)'));
     const round = await new UpdateChecker(g.fetchFn, memory()).check([app()]);
-    expect(round).toEqual({ states: { tasks: 'available' }, failed: false });
+    expect(round).toEqual({ states: { tasks: 'available' }, available: { tasks: '1234567' }, failed: false });
     expect(g.asked).toHaveLength(1);
     expect(g.asked[0]?.url).toBe('https://api.github.com/repos/WKDSteve/tasks-desktop/releases/tags/latest');
     const init = g.asked[0]?.init;
@@ -182,7 +182,7 @@ describe('UpdateChecker', () => {
       app({ id: 'docmap', installed: false }),
     ]);
     expect(g.asked).toHaveLength(0);
-    expect(round).toEqual({ states: {}, failed: false });
+    expect(round).toEqual({ states: {}, available: {}, failed: false });
   });
 
   it('treats a title of any other form, and an answer that is not JSON or too large, as not known', async () => {
@@ -219,7 +219,7 @@ describe('UpdateChecker', () => {
       }) as typeof fetch,
       memory(),
     );
-    expect(await checker.check([app()])).toEqual({ states: { tasks: 'unknown' }, failed: true });
+    expect(await checker.check([app()])).toEqual({ states: { tasks: 'unknown' }, available: {}, failed: true });
   });
 
   it('ignores a kept entry of a shape we did not write, and works with a storage that throws', async () => {
@@ -277,6 +277,28 @@ describe('App and the update check', () => {
     expect(g.asked).toHaveLength(1);
     expect(state.hasUpdate('tasks')).toBe(true);
     expect(state.toast?.text).toBe('1 update is available.');
+  });
+
+  it('loses the badge when the app has been updated since the check, without asking again', async () => {
+    const { Hub } = await import('./api');
+    const g = github(() => ok('Rolling build (1234567)'));
+    let apps = [app()];
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const path = String(input);
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+      if (path === '/auth/exchange') return json({ token: 'a'.repeat(64) });
+      if (path === '/api/hub/hello') return json({ instance: 'i', version: '1', engine: { ready: false, problem: null } });
+      if (path === '/api/hub/apps') return json({ apps });
+      return json({ state: 'not_configured' });
+    }) as typeof fetch;
+    const state = new App(new Hub(fetchFn), session, undefined, null, new UpdateChecker(g.fetchFn, memory()));
+    await state.start('code');
+    await state.checkUpdates();
+    expect(state.hasUpdate('tasks')).toBe(true);
+    apps = [app({ build: '1234567' })];
+    await state.reload();
+    expect(state.hasUpdate('tasks')).toBe(false);
+    expect(g.asked).toHaveLength(1);
   });
 
   it('has no button in the web hub (a presence is there) or without a checker', async () => {

@@ -95,6 +95,8 @@ function safely<T>(call: () => T, fallback: T): T {
 /** What a round of asking came to. */
 export interface Round {
   states: Record<string, UpdateState>;
+  /** The build GitHub named for each app that was judged (`null`: it named none we can read). */
+  available: Record<string, string | null>;
   /** GitHub did not answer in a way we can use (rate limit, offline, a form we do not know). */
   failed: boolean;
 }
@@ -141,6 +143,7 @@ export class UpdateChecker {
   /** Check the apps that may be asked about; an app asked less than a day ago is judged from what was kept. */
   async check(apps: readonly HubApp[]): Promise<Round> {
     const states: Record<string, UpdateState> = {};
+    const available: Record<string, string | null> = {};
     let failed = false;
     for (const app of apps.filter(askable)) {
       let kept = this.#read(app.id);
@@ -150,13 +153,15 @@ export class UpdateChecker {
         if (found === undefined) {
           failed = true;
           states[app.id] = kept ? stateOf(app.build, kept.available) : 'unknown';
+          if (kept) available[app.id] = kept.available;
           continue;
         }
         kept = { at: this.now(), available: found };
         this.#keep(app.id, kept);
       }
       states[app.id] = stateOf(app.build, kept.available);
+      available[app.id] = kept.available;
     }
-    return { states, failed };
+    return { states, available, failed };
   }
 }

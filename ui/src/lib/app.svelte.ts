@@ -4,7 +4,7 @@
 import type { ToastMessage } from 'appkit-ui/toast';
 import { ApiError, type Apps, type Hello, type HubApp, type HubApi, type LaunchAsk, type Mode } from './api';
 import { type MonitorReading, NOT_CONFIGURED } from './monitor';
-import { askable, type UpdateChecker, type UpdateState } from './updates';
+import { askable, differs, type UpdateChecker } from './updates';
 
 /** `starting`: the code is traded. `unpaired`: no session and no code (open the link of `hub-desktop open`). */
 export type Phase = 'starting' | 'ready' | 'unpaired' | 'error';
@@ -89,8 +89,8 @@ export class App {
   setupFor = $state<HubApp | null>(null);
   /** The testing export the hub reads, as it showed last. */
   monitor = $state<MonitorReading>(NOT_CONFIGURED);
-  /** What the last check for updates found, by app id; empty until a person pressed the button. */
-  updates = $state<Record<string, UpdateState>>({});
+  /** The build GitHub named at the last check, by app id; empty until a person pressed the button. */
+  available = $state<Record<string, string | null>>({});
   /** A check for updates is under way. */
   checking = $state(false);
 
@@ -185,9 +185,10 @@ export class App {
     return this.checker !== null && this.presence === null;
   }
 
-  /** Whether the badge "Update available" belongs on this app. */
+  /** Whether the badge "Update available" belongs on this app: judged against the build it runs now, so an app that was updated since the check loses it. */
   hasUpdate(id: string): boolean {
-    return this.updates[id] === 'available';
+    const app = this.apps.find((a) => a.id === id);
+    return app !== undefined && askable(app) && differs(app.build, this.available[id] ?? null);
   }
 
   /** Ask GitHub about the apps that may be asked about (a person pressed the button), and say what came of it. */
@@ -201,7 +202,7 @@ export class App {
         return;
       }
       const round = await this.checker.check(this.apps);
-      this.updates = { ...this.updates, ...round.states };
+      this.available = { ...this.available, ...round.available };
       const newer = askedAbout.filter((a) => round.states[a.id] === 'available').length;
       if (round.failed) this.say('error', 'GitHub did not answer. Try again later.');
       else if (newer > 0) this.say('ok', newer === 1 ? '1 update is available.' : `${newer} updates are available.`);
