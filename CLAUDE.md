@@ -91,6 +91,8 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   gepinnte Kopien, `SOURCES.json` nennt Repo, Pfad, Commit und SHA-256. Nie von Hand ändern; `python tools/sync-app-icons.py
   --update` holt alle vom `main` der Besitzer (braucht `gh`, streamtap ist privat), ohne Argument prüft es offline.
 - Neue App im Katalog: Eintrag in `SOURCES.json` (`repo`, `path`), `--update`. Ohne Icon zeigt die Kachel den Anfangsbuchstaben.
+- Das Programm trägt sein Icon selbst: `assets/hub-desktop.res` (schreibt der Generator, nie von Hand) gibt `build.rs` dem
+  Linker; Explorer und die Links zeigen es, `tests/program_icon.rs` prüft es.
 - `ui/src/lib/icons.ts` wählt die Variante nach dem, was die Kachel öffnet. Vite macht daraus eine Datei (Hub, CSP
   `img-src 'self'`) oder eine `data:`-URL (`hub.html`, CSP `img-src data:`).
 
