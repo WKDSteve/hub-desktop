@@ -28,7 +28,8 @@ needs none of the other apps to run.
   and the apps that follow. One click starts the app (its own hub first, if it is not running) and
   opens it, natively or as its web variant. Nothing else needs to be clicked.
 - **Apps that are not installed** appear darkened in a separate area, *Install or download*, with a
-  link to the release page and its checksums.
+  link to the release page and its checksums. An app without a release (`pult`) says to build it from its
+  checkout, an app that does not exist yet (`Takt Player`) says it is planned.
 - **Updates** with one click per tile, or all at once with **Update all**: the program from its release, the web
   variant from its clone (see below).
 - Later: handing work from one app to another, and report viewers.

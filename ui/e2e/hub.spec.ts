@@ -17,11 +17,14 @@ test('the hub shows what is on the machine as tiles and the rest, quieter, below
   // Every tile and the bar show their icon, really drawn: the policy of the page lets them through.
   const drawn = (selector: string) =>
     page.locator(selector).evaluateAll((all) => all.map((i) => (i as HTMLImageElement).naturalWidth > 0));
-  await expect.poll(() => drawn('[data-tile] img')).toEqual(Array(6).fill(true));
+  await expect.poll(() => drawn('[data-tile] img')).toEqual(Array(8).fill(true));
   await expect.poll(() => drawn('.kit-brand img')).toEqual([true]);
   // A planned app is below, with its badge, and is no link; an app that is only not installed yet links to its release.
   await expect(other.getByRole('button', { name: /Testing/ })).toContainText('Planned');
+  await expect(other.getByRole('button', { name: /Takt Player/ })).toContainText('Planned');
   await expect(other.getByRole('link', { name: /streamtap/ })).toContainText('Download');
+  // An app without a release is built from its checkout: no page to link to.
+  await expect(other.getByRole('button', { name: /pult/ })).toContainText('Build it yourself');
   await expect(other.getByRole('link')).toHaveCount(1);
   // Quieter: the surface and the text colour are not those of an installed tile.
   const look = (id: string) =>
@@ -242,7 +245,7 @@ test('the keyboard does everything: arrows between tiles, Enter, /, r, Escape, t
   await page.keyboard.press('ArrowLeft');
   await expect(tile(page, 'tasks')).toBeFocused();
   await page.keyboard.press('End');
-  await expect(tile(page, 'streamtap')).toBeFocused();
+  await expect(tile(page, 'takt')).toBeFocused();
   await page.keyboard.press('Home');
   await expect(tile(page, 'tasks')).toBeFocused();
   await page.keyboard.press('ArrowDown');
@@ -309,7 +312,7 @@ test('an empty machine shows empty areas in words and every app below', async ({
   const hub = await hubOn(empty);
   await hub.open(page);
   await expect(page.getByText('No app is installed on this machine yet.')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Install or download' }).getByRole('listitem')).toHaveCount(6);
+  await expect(page.getByRole('region', { name: 'Install or download' }).getByRole('listitem')).toHaveCount(8);
 });
 
 test('a running app of the kit can be stopped from the menu, once, and the others cannot', async ({ page, hubOn }) => {

@@ -112,5 +112,41 @@
       "name": "streamtap",
       "private": true
     }
+  },
+  {
+    "id": "pult",
+    "name": "pult",
+    "summary": "The personal virtual audio mixer",
+    "status": "available",
+    "native": true,
+    "web": null,
+    "install": {
+      "hint": "build_yourself",
+      "page": null,
+      "file": null
+    },
+    "repo": {
+      "owner": "WKDSteve",
+      "name": "pult",
+      "private": true
+    }
+  },
+  {
+    "id": "takt",
+    "name": "Takt Player",
+    "summary": "The media player of the takt suite",
+    "status": "planned",
+    "native": false,
+    "web": null,
+    "install": {
+      "hint": "planned",
+      "page": null,
+      "file": null
+    },
+    "repo": {
+      "owner": "WKDSteve",
+      "name": "takt",
+      "private": false
+    }
   }
 ]

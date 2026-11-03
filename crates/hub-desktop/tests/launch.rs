@@ -351,6 +351,9 @@ async fn what_is_not_installed_or_has_no_program_or_is_unknown_is_refused() {
         ("docmap", LaunchError::NotInstalled),
         ("ai", LaunchError::NotInstalled),
         ("streamtap", LaunchError::NotInstalled),
+        ("pult", LaunchError::NotInstalled),
+        // Planned, with no program and no web variant: there is nothing to install yet.
+        ("takt", LaunchError::NotAvailable("native")),
         ("testing", LaunchError::NotInstalled),
         ("nope", LaunchError::UnknownApp),
         ("hub", LaunchError::UnknownApp),

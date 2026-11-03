@@ -282,6 +282,53 @@ pub const CATALOG: &[Entry] = &[
             file: None,
         },
     },
+    Entry {
+        id: "pult",
+        name: "pult",
+        summary: "The personal virtual audio mixer",
+        repo: Repo {
+            owner: OWNER,
+            name: "pult",
+            visibility: Visibility::Private,
+        },
+        status: Status::Available,
+        // `scripts/build-install.ps1` of the checkout puts it here, per user; there is no release. The variable
+        // `PULT_INSTALL_DIR` names the folder of the program itself, not the one above `bin`.
+        native: Some(Native::GuiExe {
+            candidates: &[
+                r"{$PULT_INSTALL_DIR}\pult-app.exe",
+                r"{LOCALAPPDATA}\pult\bin\pult-app.exe",
+            ],
+        }),
+        web: None,
+        default_mode: Mode::Native,
+        install: Install {
+            hint: Hint::BuildYourself,
+            page: None,
+            file: None,
+        },
+    },
+    // `takt-player` has no window yet: without an argument it plays a demo of three seconds in a console and
+    // ends. It gets a way to start when it has a window.
+    Entry {
+        id: "takt",
+        name: "Takt Player",
+        summary: "The media player of the takt suite",
+        repo: Repo {
+            owner: OWNER,
+            name: "takt",
+            visibility: Visibility::Public,
+        },
+        status: Status::Planned,
+        native: None,
+        web: None,
+        default_mode: Mode::Native,
+        install: Install {
+            hint: Hint::Planned,
+            page: None,
+            file: None,
+        },
+    },
 ];
 
 /// The entry with this id.
@@ -320,6 +367,7 @@ mod tests {
             }
         }
         assert!(find("testing").unwrap().native.is_none());
+        assert!(find("takt").unwrap().native.is_none());
     }
 
     #[test]

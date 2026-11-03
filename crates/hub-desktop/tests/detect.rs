@@ -99,6 +99,40 @@ async fn streamtap_is_found_below_its_install_variable_and_in_its_default_folder
     );
 }
 
+/// pult's install script takes `PULT_INSTALL_DIR` for the folder of the program itself (no `bin` below it,
+/// unlike streamtap's): that one is found first, and without the variable the default folder.
+#[tokio::test]
+async fn pult_is_found_in_its_install_variable_and_in_its_default_folder() {
+    let machine = Machine::new("hub-detect-pult");
+    let elsewhere = machine.path("Elsewhere");
+    let env = machine.env(&[("PULT_INSTALL_DIR", elsewhere.display().to_string())]);
+    assert!(!app(&look(env.clone(), None).await, "pult").installed());
+    machine.touch("Elsewhere/pult-app.exe");
+    machine.touch("Local/pult/bin/pult-app.exe");
+    let found = look(env, None).await;
+    let pult = app(&found, "pult");
+    assert!(pult.installed() && pult.run.is_none());
+    let named = std::fs::canonicalize(elsewhere.join("pult-app.exe")).unwrap();
+    assert_eq!(pult.native.as_deref(), Some(named.as_path()));
+    let default = std::fs::canonicalize(machine.path("Local/pult/bin/pult-app.exe")).unwrap();
+    assert_eq!(
+        app(&look(machine.env(&[]), None).await, "pult")
+            .native
+            .as_deref(),
+        Some(default.as_path())
+    );
+}
+
+/// takt-player has no window yet: a program in its install folder does not make the tile startable.
+#[tokio::test]
+async fn takt_is_planned_and_a_program_on_the_machine_changes_nothing() {
+    let machine = Machine::new("hub-detect-takt");
+    machine.touch("Local/takt/bin/takt-player.exe");
+    let all = look(machine.env(&[]), None).await;
+    let takt = app(&all, "takt");
+    assert!(!takt.installed() && takt.native.is_none());
+}
+
 #[tokio::test]
 async fn docmap_is_found_in_either_place_and_has_no_state() {
     let machine = Machine::new("hub-detect-docmap");
@@ -405,7 +439,7 @@ async fn an_app_the_overlay_hides_is_not_listed_and_the_others_follow_its_order(
     .unwrap();
     let detector = Detector::with_ttl(machine.env(&[]), None, Duration::ZERO).with_overlay(overlay);
     let ids: Vec<&str> = detector.apps().await.iter().map(|a| a.entry.id).collect();
-    assert_eq!(ids, ["testing", "rules", "tasks", "docmap"]);
+    assert_eq!(ids, ["testing", "rules", "tasks", "docmap", "pult", "takt"]);
     assert!(detector.hides("ai") && !detector.hides("tasks"));
     assert!(detector.app("ai").await.is_none());
 }
