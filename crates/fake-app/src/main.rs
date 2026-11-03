@@ -4,7 +4,8 @@
 //! own starts.
 //!
 //! For the runner of the updates it also takes a few options, anywhere in its arguments: `--say <text>` prints a
-//! line to stdout, `--err <text>` one to stderr, `--sleep <ms>` waits, `--exit <code>` ends with that code.
+//! line to stdout, `--err <text>` one to stderr, `--sleep <ms>` waits, `--exit <code>` ends with that code,
+//! `--env <name>` prints `<name>=<value>` (or `<unset>`).
 //! Every other argument is only logged.
 
 use std::io::Write;
@@ -36,6 +37,11 @@ fn main() {
                 value().parse().unwrap_or(0),
             )),
             "--exit" => code = value().parse().unwrap_or(1),
+            "--env" => println!(
+                "{}={}",
+                value(),
+                std::env::var(value()).unwrap_or_else(|_| "<unset>".to_owned())
+            ),
             _ => continue,
         }
         rest.next();

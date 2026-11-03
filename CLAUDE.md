@@ -115,7 +115,8 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   Polling (1 s), solange ein Job `queued`/`running` ist.
 - Programme nur drei, beim Start gefunden (`update::Tools::find`): `git`/`gh` aus einem absoluten `PATH`-Ordner,
   `powershell.exe` unter `%SystemRoot%`. Ausgeführt über `update::Runner` (Programm `SystemRunner`: argv, stdin null,
-  Pipes, eigene Prozessgruppe, kein `CREATE_NO_WINDOW`, Ende nach `step_timeout` 10 min). Tests: Fake-Runner
+  Pipes, eigene Prozessgruppe, kein `CREATE_NO_WINDOW`, Ende nach `step_timeout` 10 min, ohne `PSModulePath`: mit dem
+  Wert von PowerShell 7 lädt Windows PowerShell 5.1 dessen Module und kennt kein `Get-FileHash`). Tests: Fake-Runner
   (`tests/update_route.rs`), `SystemRunner` nur gegen `fake-app` (`--say`, `--err`, `--sleep`, `--exit`).
 - Web-Teil: nur `<clone>/.git`, Branch `main`, `status --porcelain --untracked-files=no` leer, dann `pull --ff-only`,
   danach `<entry>` gegen `SHA256SUMS` des Klons (`sums.rs`, SHA-256 ohne Crate). Ohne `SHA256SUMS` oder ohne Zeile:

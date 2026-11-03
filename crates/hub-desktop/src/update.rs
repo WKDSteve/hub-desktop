@@ -187,6 +187,10 @@ impl Runner for SystemRunner {
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GH_PROMPT_DISABLED", "1")
             .env("GH_NO_UPDATE_NOTIFIER", "1")
+            // A hub started from PowerShell 7 has its module path: Windows PowerShell would load the modules of 7
+            // and find no `Get-FileHash` (the install script fails). Without it, 5.1 makes its own (pwsh does the
+            // same when it starts powershell.exe); git and gh do not read it.
+            .env_remove("PSModulePath")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

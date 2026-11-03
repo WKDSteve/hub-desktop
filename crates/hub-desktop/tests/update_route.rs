@@ -716,6 +716,27 @@ fn the_system_runner_collects_the_output_and_the_exit_code() {
     assert_eq!(lines, ["hello", "warn"], "{ran:?}");
 }
 
+/// Windows PowerShell 5.1 that gets the `PSModulePath` of PowerShell 7 (the hub started from a pwsh terminal)
+/// loads the modules of 7 and has no `Get-FileHash`: the install script of a release fails. Without the variable
+/// it makes its own; git and gh do not read it.
+#[cfg(windows)]
+#[test]
+fn the_system_runner_hands_no_module_path_of_powershell_on() {
+    let machine = Machine::new("hub-runner-psmodulepath");
+    let program = machine.program(&format!("tools/fake{}", std::env::consts::EXE_SUFFIX));
+    // Windows sets it for every process (the folder of the modules of 5.1); a machine without it tests nothing.
+    if std::env::var_os("PSModulePath").is_none() {
+        return;
+    }
+    let step = Step {
+        program,
+        args: ["--env", "PSModulePath"].iter().map(Into::into).collect(),
+        cwd: machine.path(""),
+    };
+    let ran = SystemRunner.run(&step, Duration::from_secs(20)).unwrap();
+    assert_eq!(ran.lines, ["PSModulePath=<unset>"], "{ran:?}");
+}
+
 #[test]
 fn the_system_runner_ends_a_step_whose_time_is_up() {
     let machine = Machine::new("hub-runner-timeout");
