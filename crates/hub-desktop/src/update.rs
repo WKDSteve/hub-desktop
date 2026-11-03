@@ -111,11 +111,36 @@ pub trait Runner: Send + Sync {
     fn run(&self, step: &Step, timeout: Duration) -> Result<Ran, String>;
 }
 
+/// The bytes 0x80 to 0xFF of code page 850, the OEM code page of a western European Windows. Windows PowerShell
+/// 5.1 writes into a pipe in it; the umlauts and `ß` are at the same places in 437 (US).
+const CP850_HIGH: &str = "ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜø£Ø×ƒáíóúñÑªº¿®¬½¼¡«»░▒▓│┤ÁÂÀ©╣║╗╝¢¥┐└┴┬├─┼ãÃ╚╔╩╦╠═╬¤ðÐÊËÈıÍÎÏ┘┌█▄¦Ì▀ÓßÔÒõÕµþÞÚÛÙýÝ¯´\u{ad}±‗¾¶§÷¸°¨·¹³²■\u{a0}";
+
+/// UTF-8 when the line is that (git and gh write it), else the OEM code page.
+fn decode(raw: &[u8]) -> std::borrow::Cow<'_, str> {
+    match std::str::from_utf8(raw) {
+        Ok(text) => text.into(),
+        Err(_) => raw
+            .iter()
+            .map(|&b| {
+                if b < 0x80 {
+                    char::from(b)
+                } else {
+                    CP850_HIGH
+                        .chars()
+                        .nth(usize::from(b - 0x80))
+                        .unwrap_or('\u{fffd}')
+                }
+            })
+            .collect::<String>()
+            .into(),
+    }
+}
+
 /// A line of output as the page gets it: text, without escape sequences and control characters (a tab
 /// is a space), at most [`MAX_LINE`] characters.
 #[must_use]
 pub fn clean_line(raw: &[u8]) -> String {
-    let text = String::from_utf8_lossy(raw);
+    let text = decode(raw);
     let mut out = String::new();
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
@@ -962,7 +987,18 @@ mod tests {
         assert_eq!(clean_line(b"a\tb\r"), "a b");
         assert_eq!(clean_line(b"\x1b[31mred\x1b[0m and \x1b=x"), "red and x");
         assert_eq!(clean_line(b"bell\x07 nul\x00 del\x7f"), "bell nul del");
-        assert_eq!(clean_line(&[0xff, b'a']), "\u{fffd}a");
+        assert_eq!(clean_line("ausführbar".as_bytes()), "ausführbar");
+    }
+
+    /// Windows PowerShell 5.1 writes into a pipe in the OEM code page: "ausf\x81hrbaren" is "ausführbaren".
+    #[test]
+    fn a_line_that_is_no_utf8_is_read_as_the_oem_code_page() {
+        assert_eq!(
+            clean_line(b"ausf\x81hrbaren \x84\x94\x81 \x8e\x99\x9a \xe1 \xc4"),
+            "ausführbaren äöü ÄÖÜ ß ─"
+        );
+        assert_eq!(CP850_HIGH.chars().count(), 128);
+        assert_eq!(clean_line(&[0xff, b'a']), "\u{a0}a");
         assert_eq!(
             clean_line("é".repeat(400).as_bytes()).chars().count(),
             MAX_LINE
