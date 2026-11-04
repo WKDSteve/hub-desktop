@@ -27,8 +27,6 @@ export interface Machine {
   docmap: boolean;
   /** ai-desktop: not installed, or installed and its port is free, serves its health, or answers as somebody else. */
   ai: 'none' | 'stopped' | 'running' | 'busy';
-  /** The page of testing-web is there (an app that is planned counts as installed then). */
-  testingWeb: boolean;
   /** The hub of tasks runs: `hub.json` in its config folder and a server that answers `hello` as that hub. */
   tasksRunning?: boolean;
   /** The text of `catalog-overlay.json` in the config folder of the hub. */
@@ -87,7 +85,6 @@ export const FULL: Machine = {
   rules: true,
   docmap: true,
   ai: 'busy',
-  testingWeb: false,
 };
 
 export interface Hub {
@@ -156,7 +153,6 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
     mkdirSync(at('Repos'), { recursive: true });
     cloneBehind(root, at('Repos/tasks-web'), machine.tasksWebClone === 'dirty');
   } else if (machine.tasks.web) page('Repos/tasks-web/tasks.html');
-  if (machine.testingWeb) page('Repos/testing-web/testing.html');
   if (machine.rules) install(PROGRAMS.rules);
   if (machine.docmap) install(PROGRAMS.docmap);
   if (machine.ai !== 'none') install(PROGRAMS.ai);

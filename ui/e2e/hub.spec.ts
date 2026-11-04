@@ -307,7 +307,6 @@ test('an empty machine shows empty areas in words and every app below', async ({
     rules: false,
     docmap: false,
     ai: 'none',
-    testingWeb: false,
   };
   const hub = await hubOn(empty);
   await hub.open(page);
