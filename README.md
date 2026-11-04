@@ -43,7 +43,9 @@ needs none of the other apps to run.
 - the page in Svelte 5 on appkit's `ui-kit`;
 - a catalog of the known apps compiled into the program: it only names fixed ways to detect and
   start an app, never a command line;
-- a web variant `hub-web` (one HTML file, no server) for machines where no native program may run.
+- a web variant `hub-web` (one HTML file, no server) for machines where no native program may run;
+- a mark with one spoke per installed app (up to ten) in the bar and the tab of the page; the program and
+  its links keep the one with five.
 
 ## Build and run from source
 

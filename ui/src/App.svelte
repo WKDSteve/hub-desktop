@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import Brand from 'appkit-ui/Brand.svelte';
-  import { logo } from './lib/icons';
+  import { logoFor } from './lib/icons';
   import ContextMenu from 'appkit-ui/ContextMenu.svelte';
   import Toast from 'appkit-ui/Toast.svelte';
   import { ContextRegistry } from 'appkit-ui/contextmenu';
@@ -103,6 +103,12 @@
     if (app.setupFor && setup && !setup.open) setup.showModal();
   });
 
+  // Bar and tab show one spoke per app on this machine. A filter changes neither: it only hides tiles.
+  const mark = $derived(logoFor(app.apps.filter((a) => a.installed).length));
+  $effect(() => {
+    document.head.querySelector('link[rel="icon"]')?.setAttribute('href', mark);
+  });
+
   function typing(target: EventTarget | null): boolean {
     return (
       target instanceof HTMLElement &&
@@ -175,7 +181,7 @@
 <svelte:window onkeydown={onWindowKey} />
 
 <header class="bar">
-  <Brand label="Hub"><span class="brand-mark"><img src={logo} alt="" width="20" height="20" />Hub</span></Brand>
+  <Brand label="Hub"><span class="brand-mark"><img src={mark} alt="" width="20" height="20" />Hub</span></Brand>
   <h1 class="sr-only">Hub</h1>
   <label class="filter">
     <span class="sr-only">Filter the apps</span>

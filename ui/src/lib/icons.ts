@@ -14,7 +14,28 @@ const borrowed = import.meta.glob<string>('../../../assets/icons/_borrowed/*.svg
 
 const byId = new Map(Object.entries(borrowed).map(([file, url]) => [file.replace(/^.*\/|\.svg$/g, ''), url]));
 
+const spokes =
+  import.meta.env.MODE === 'web'
+    ? import.meta.glob<string>('../../../assets/icons/hub-web-*/hub-web-*-small.svg', {
+        eager: true,
+        query: '?url',
+        import: 'default',
+      })
+    : import.meta.glob<string>('../../../assets/icons/hub-desktop-*/hub-desktop-*-small.svg', {
+        eager: true,
+        query: '?url',
+        import: 'default',
+      });
+
+const bySpokes = new Map(Object.entries(spokes).map(([file, url]) => [Number(file.match(/-(\d+)-small\.svg$/)?.[1]), url]));
+const MOST_SPOKES = Math.max(...bySpokes.keys());
+
 export const logo: string = import.meta.env.MODE === 'web' ? hubWeb : hubDesktop;
+
+/** The hub's mark with one spoke per installed app, the last one for more; with none (or not known yet) the plain one. */
+export function logoFor(installed: number): string {
+  return bySpokes.get(Math.min(installed, MOST_SPOKES)) ?? logo;
+}
 
 /**
  * The icon of a tile: the variant the tile opens (`tasks-web`), else the other one (a program in the web hub has no web

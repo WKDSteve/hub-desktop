@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { iconOf, logo } from './icons';
+import { iconOf, logo, logoFor } from './icons';
 
 const app = (id: string, default_mode: 'native' | 'web' = 'native', href: string | null = null) => ({ id, default_mode, href });
 const named = (url: string | null) => url?.replace(/^.*\//, '');
@@ -31,5 +31,19 @@ describe('iconOf', () => {
 
   it('takes the own mark from the own folder', () => {
     expect(logo).toMatch(/hub-(desktop|web)-small\.svg$/);
+  });
+});
+
+describe('logoFor', () => {
+  it('has one spoke per installed app', () => {
+    for (let n = 1; n <= 10; n += 1) expect(named(logoFor(n))).toBe(`hub-desktop-${n}-small.svg`);
+  });
+
+  it('stays at ten with more apps than that', () => {
+    expect(named(logoFor(11))).toBe('hub-desktop-10-small.svg');
+  });
+
+  it('is the plain mark with no app', () => {
+    expect(logoFor(0)).toBe(logo);
   });
 });

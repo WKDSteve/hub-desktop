@@ -19,6 +19,13 @@ test('the hub shows what is on the machine as tiles and the rest, quieter, below
     page.locator(selector).evaluateAll((all) => all.map((i) => (i as HTMLImageElement).naturalWidth > 0));
   await expect.poll(() => drawn('[data-tile] img')).toEqual(Array(8).fill(true));
   await expect.poll(() => drawn('.kit-brand img')).toEqual([true]);
+  // The hub's own mark has one spoke per app in "Installed", in the bar and in the tab, and both are really served.
+  const spokes = await installed.locator('[data-tile]').count();
+  const mark = new RegExp(`hub-desktop-${spokes}-small[^/]*\\.svg$`);
+  await expect(page.locator('.kit-brand img')).toHaveAttribute('src', mark);
+  await expect(page.locator('head link[rel="icon"]')).toHaveAttribute('href', mark);
+  const tabIcon = await page.locator('head link[rel="icon"]').evaluate((l) => (l as HTMLLinkElement).href);
+  expect((await page.request.get(tabIcon)).ok()).toBe(true);
   // A planned app is below, with its badge, and is no link; an app that is only not installed yet links to its release.
   await expect(other.getByRole('button', { name: /Takt Player/ })).toContainText('Planned');
   await expect(other.getByRole('link', { name: /streamtap/ })).toContainText('Download');
@@ -312,6 +319,7 @@ test('an empty machine shows empty areas in words and every app below', async ({
   await hub.open(page);
   await expect(page.getByText('No app is installed on this machine yet.')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Install or download' }).getByRole('listitem')).toHaveCount(8);
+  await expect(page.locator('.kit-brand img')).toHaveAttribute('src', /hub-desktop-small[^/]*\.svg$/);
 });
 
 test('a running app of the kit can be stopped from the menu, once, and the others cannot', async ({ page, hubOn }) => {

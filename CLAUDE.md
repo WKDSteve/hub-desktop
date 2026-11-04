@@ -87,8 +87,9 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 
 ## Icons (Regel APP-11)
 
-- Eigene Icons: `assets/icons/hub-*/`. Die Icons der Kacheln gehören den Repos der Apps: `assets/icons/_borrowed/` hält
-  gepinnte Kopien, `SOURCES.json` nennt Repo, Pfad, Commit und SHA-256. Nie von Hand ändern; `python tools/sync-app-icons.py
+- Eigene Icons: `assets/icons/hub-*/`; `hub-<variante>-<n>` hat n Speichen (1 bis 10). Leiste und Tab zeigen so viele wie
+  installierte Apps (`logoFor`), Programm und Links fest fünf (`hub-desktop`). Die Icons der Kacheln gehören den Repos der
+  Apps: `assets/icons/_borrowed/` hält gepinnte Kopien, `SOURCES.json` nennt Repo, Pfad, Commit und SHA-256. Nie von Hand ändern; `python tools/sync-app-icons.py
   --update` holt alle vom `main` der Besitzer (braucht `gh`, streamtap ist privat), ohne Argument prüft es offline.
 - Neue App im Katalog: Eintrag in `SOURCES.json` (`repo`, `path`), `--update`. Ohne Icon zeigt die Kachel den Anfangsbuchstaben.
 - Das Programm trägt sein Icon selbst: `assets/hub-desktop.res` (schreibt der Generator, nie von Hand) gibt `build.rs` dem

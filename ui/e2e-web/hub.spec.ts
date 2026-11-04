@@ -21,6 +21,11 @@ test('the page lists the apps, asks nothing of the network and breaks no rule of
   await expect.poll(() => drawn('[data-tile] img')).toEqual(Array(8).fill(true));
   await expect.poll(() => drawn('.kit-brand img')).toEqual([true]);
   await expect(page.locator('head link[rel="icon"]')).toHaveAttribute('href', /^data:image\/svg\+xml/);
+  // One spoke per app in "Installed" (here the one page next to this one) and the centre of the hub, in tab and bar.
+  const circles = async (url: string | null) => decodeURIComponent(url ?? '').match(/<circle/g)?.length;
+  await expect(page.getByRole('region', { name: 'Installed' }).locator('[data-tile]')).toHaveCount(1);
+  await expect.poll(async () => circles(await page.locator('head link[rel="icon"]').getAttribute('href'))).toBe(2);
+  await expect.poll(async () => circles(await page.locator('.kit-brand img').getAttribute('src'))).toBe(2);
   await expect(page.getByRole('button', { name: 'Look again' })).toHaveCount(0);
   // GitHub is out of reach for this file (connect-src 'none'): there is no button for the update badge.
   await expect(page.getByRole('button', { name: 'Check for updates' })).toHaveCount(0);
