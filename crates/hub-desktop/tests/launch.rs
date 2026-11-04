@@ -86,6 +86,23 @@ async fn tasks_starts_as_its_own_hub_asks_with_start_open_in_its_own_folder() {
     );
 }
 
+/// pult keeps no vault: a click starts it right away, with the arguments of every hub of the kit.
+#[tokio::test]
+async fn pult_starts_as_a_hub_without_any_setup() {
+    let machine = Machine::new("hub-launch-pult");
+    let program = machine.program(&format!(
+        "Local/pult/bin/{}",
+        hub_desktop::catalog::PULT.program_file()
+    ));
+    let (launcher, _) = launcher(&machine, machine.env(&[]), None, None);
+    assert_eq!(
+        launcher.launch("pult", Request::Default).await,
+        Ok(Outcome::Started)
+    );
+    wait_for_starts(&program, 1);
+    assert_eq!(argv(&starts_of(&program)[0]), ["start", "--open"]);
+}
+
 /// Acceptance 6: a double click, or two tabs, start the app once.
 #[tokio::test]
 async fn many_clicks_at_once_start_one_program_and_the_rest_are_told_it_is_starting() {

@@ -100,21 +100,26 @@ async fn streamtap_is_found_below_its_install_variable_and_in_its_default_folder
 }
 
 /// pult's install script takes `PULT_INSTALL_DIR` for the folder of the program itself (no `bin` below it,
-/// unlike streamtap's): that one is found first, and without the variable the default folder.
+/// unlike streamtap's): that one is found first, and without the variable the default folder. It has no vault,
+/// so there is nothing to set up, and it is a hub: it says whether it runs.
 #[tokio::test]
 async fn pult_is_found_in_its_install_variable_and_in_its_default_folder() {
     let machine = Machine::new("hub-detect-pult");
     let elsewhere = machine.path("Elsewhere");
     let env = machine.env(&[("PULT_INSTALL_DIR", elsewhere.display().to_string())]);
     assert!(!app(&look(env.clone(), None).await, "pult").installed());
-    machine.touch("Elsewhere/pult-app.exe");
-    machine.touch("Local/pult/bin/pult-app.exe");
+    let program = catalog::PULT.program_file();
+    machine.touch(&format!("Elsewhere/{program}"));
+    machine.touch(&format!("Local/pult/bin/{program}"));
     let found = look(env, None).await;
     let pult = app(&found, "pult");
-    assert!(pult.installed() && pult.run.is_none());
-    let named = std::fs::canonicalize(elsewhere.join("pult-app.exe")).unwrap();
+    assert!(pult.installed());
+    assert_eq!(pult.run, Some(Run::Stopped));
+    assert_eq!(pult.setup, None, "it keeps no vault");
+    let named = std::fs::canonicalize(elsewhere.join(&program)).unwrap();
     assert_eq!(pult.native.as_deref(), Some(named.as_path()));
-    let default = std::fs::canonicalize(machine.path("Local/pult/bin/pult-app.exe")).unwrap();
+    let default =
+        std::fs::canonicalize(machine.path(&format!("Local/pult/bin/{program}"))).unwrap();
     assert_eq!(
         app(&look(machine.env(&[]), None).await, "pult")
             .native
@@ -473,6 +478,36 @@ async fn an_app_the_overlay_hides_is_not_listed_and_the_others_follow_its_order(
     assert_eq!(ids, ["testing", "rules", "tasks", "docmap", "pult", "takt"]);
     assert!(detector.hides("ai") && !detector.hides("tasks"));
     assert!(detector.app("ai").await.is_none());
+}
+
+/// A route of pult is a running hub: the tile says so and can stop it. One that says another instance is not.
+#[tokio::test]
+async fn a_running_route_of_pult_is_seen_and_can_be_stopped() {
+    let machine = Machine::new("hub-detect-pult-runs");
+    machine.touch(&format!("Local/pult/bin/{}", catalog::PULT.program_file()));
+    let dir = machine.path("cfg-pult");
+    std::fs::create_dir_all(&dir).unwrap();
+    let record = |port, instance: &str| appkit_core::registry::HubRecord {
+        app: "pult".to_owned(),
+        port,
+        pid: 4242,
+        version: "0.1.0".to_owned(),
+        instance: instance.to_owned(),
+    };
+    let port = fake_server(
+        200,
+        r#"{"app":"pult","instance":"abc123","setup_required":false}"#.to_owned(),
+    )
+    .await;
+    appkit_core::registry::write_record(&dir, &record(port, "abc123")).unwrap();
+    let all = look(machine.env(&[]), None).await;
+    assert_eq!(app(&all, "pult").run, Some(Run::Running));
+    assert!(app(&all, "pult").view().stoppable);
+
+    appkit_core::registry::write_record(&dir, &record(port, "another")).unwrap();
+    let all = look(machine.env(&[]), None).await;
+    assert_eq!(app(&all, "pult").run, Some(Run::Stopped));
+    assert!(!app(&all, "pult").view().stoppable);
 }
 
 #[tokio::test]

@@ -49,7 +49,8 @@ pub enum Native {
     AppKitHub {
         identity: &'static AppIdentity,
         /// The variables that name the vault of the app, as the app reads them, first one first: without
-        /// any of them and without a `vault` in its settings the app cannot be used yet.
+        /// any of them and without a `vault` in its settings the app cannot be used yet. None: the app
+        /// keeps no vault.
         vault_vars: &'static [&'static str],
     },
     /// A program with a window of its own and no hub: started with no argument.
@@ -118,6 +119,15 @@ pub const TASKS: AppIdentity = AppIdentity {
     title: "Tasks",
     default_port: 17615,
     route_ns: "tasks",
+};
+
+pub const PULT: AppIdentity = AppIdentity {
+    app: "pult",
+    binary: "pult",
+    env_prefix: "PULT",
+    title: "pult",
+    default_port: 17619,
+    route_ns: "pult",
 };
 
 pub const RULES: AppIdentity = AppIdentity {
@@ -304,13 +314,12 @@ pub const CATALOG: &[Entry] = &[
             visibility: Visibility::Private,
         },
         status: Status::Available,
-        // `scripts/build-install.ps1` of the checkout puts it here, per user; there is no release. The variable
-        // `PULT_INSTALL_DIR` names the folder of the program itself, not the one above `bin`.
-        native: Some(Native::GuiExe {
-            candidates: &[
-                r"{$PULT_INSTALL_DIR}\pult-app.exe",
-                r"{LOCALAPPDATA}\pult\bin\pult-app.exe",
-            ],
+        // `scripts/build-install.ps1` of the checkout puts it here, per user; there is no release. Its hub runs
+        // with a route: `pult start --open` starts the window beside it unless one runs, and shows the remote
+        // control page. `pult stop` ends the route. It has no vault.
+        native: Some(Native::AppKitHub {
+            identity: &PULT,
+            vault_vars: &[],
         }),
         web: None,
         default_mode: Mode::Native,

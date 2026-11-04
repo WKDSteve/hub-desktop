@@ -99,6 +99,10 @@ impl Machine {
                 "TESTING_DESKTOP_CONFIG_DIR".into(),
                 self.path("cfg-testing").display().to_string(),
             ),
+            (
+                "PULT_CONFIG_DIR".into(),
+                self.path("cfg-pult").display().to_string(),
+            ),
             // Never the port of a real ai-desktop on the machine that runs the test.
             ("AI_DESKTOP_PORT".into(), free_port().to_string()),
         ];

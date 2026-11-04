@@ -531,6 +531,10 @@ async fn running_hello(dir: &Path, identity: &appkit_core::identity::AppIdentity
 /// Why a hub that does not run cannot be used once it does: its settings name no vault, or one that is
 /// not a folder. Only the settings file and the variables are read; the folder is looked at, not entered.
 fn vault_problem(dir: &Path, vault_vars: &[&str], env: &Env) -> Option<String> {
+    // An app that keeps no vault has nothing to set up.
+    if vault_vars.is_empty() {
+        return None;
+    }
     let settings = read_foreign_config(&dir.join("config.json"));
     let from_file = settings
         .as_ref()
