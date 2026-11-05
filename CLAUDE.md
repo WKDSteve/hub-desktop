@@ -20,7 +20,7 @@ cargo test --workspace --locked
 cargo build --workspace --locked && (cd ui && pnpm e2e)   # echtes Binary + fake-app, Chrome, axe hell/dunkel
 cd ui && pnpm web:test && pnpm web:build && pnpm web:e2e   # hub.html (Web-Hub), von der Platte in Chrome
 python tools/check-control-chars.py
-python tools/check-color-literals.py      # keine Farbe außerhalb der Tokens von appkit-ui
+python tools/check-color-literals.py --tokens ui/src/palette.css      # keine Farbe außerhalb der Tokens von appkit-ui und der Palette
 python tools/check-appkit-pin.py
 python tools/sync-app-icons.py            # die Icons der anderen Apps sind, was gepinnt ist (offline)
 python tools/check-lock-age.py --min-days 7
