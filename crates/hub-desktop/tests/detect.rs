@@ -345,10 +345,16 @@ async fn a_web_variant_below_the_web_root_counts_as_installed_and_opens_as_web()
     let all = look(machine.env(&[]), Some(root)).await;
     assert_eq!(app(&all, "tasks").mode(), catalog::Mode::Native);
 
-    // Testing has no web variant yet: a page of that name is no install.
+    // Testing has one too.
+    assert!(!app(&all, "testing").installed());
     machine.touch("Web/testing-web/testing.html");
     let all = look(machine.env(&[]), Some(machine.path("Web"))).await;
-    assert!(!app(&all, "testing").installed());
+    assert_eq!(app(&all, "testing").mode(), catalog::Mode::Web);
+
+    // Rules has none: a page of that name is no install.
+    machine.touch("Web/rules-web/rules.html");
+    let all = look(machine.env(&[]), Some(machine.path("Web"))).await;
+    assert!(!app(&all, "rules").installed());
 }
 
 /// testing-desktop falls back to `REPOS_DIR` when nothing else names its root: a tile that says "no vault is

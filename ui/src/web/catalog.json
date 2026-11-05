@@ -80,7 +80,10 @@
     "summary": "The test runs of testing.nvim",
     "status": "available",
     "native": true,
-    "web": null,
+    "web": {
+      "dir": "testing-web",
+      "entry": "testing.html"
+    },
     "install": {
       "hint": "release",
       "page": "https://github.com/WKDSteve/testing-desktop/releases/tag/latest",

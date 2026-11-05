@@ -267,9 +267,10 @@ pub const CATALOG: &[Entry] = &[
             identity: &TESTING,
             vault_vars: &["TESTING_REPOS_ROOT", "REPOS_DIR"],
         }),
-        // `testing-web/testing.html` comes with the web phase of testing-desktop: until the page is published the web
-        // hub would show a tile that leads nowhere.
-        web: None,
+        web: Some(Web {
+            repo_dir: "testing-web",
+            entry: "testing.html",
+        }),
         default_mode: Mode::Native,
         install: Install {
             hint: Hint::Release,

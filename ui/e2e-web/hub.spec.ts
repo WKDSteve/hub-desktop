@@ -21,11 +21,11 @@ test('the page lists the apps, asks nothing of the network and breaks no rule of
   await expect.poll(() => drawn('[data-tile] img')).toEqual(Array(8).fill(true));
   await expect.poll(() => drawn('.kit-brand img')).toEqual([true]);
   await expect(page.locator('head link[rel="icon"]')).toHaveAttribute('href', /^data:image\/svg\+xml/);
-  // One spoke per app in "Installed" (here the one page next to this one) and the centre of the hub, in tab and bar.
+  // One spoke per app in "Installed" (here the two pages next to this one) and the centre of the hub, in tab and bar.
   const circles = async (url: string | null) => decodeURIComponent(url ?? '').match(/<circle/g)?.length;
-  await expect(page.getByRole('region', { name: 'Installed' }).locator('[data-tile]')).toHaveCount(1);
-  await expect.poll(async () => circles(await page.locator('head link[rel="icon"]').getAttribute('href'))).toBe(2);
-  await expect.poll(async () => circles(await page.locator('.kit-brand img').getAttribute('src'))).toBe(2);
+  await expect(page.getByRole('region', { name: 'Installed' }).locator('[data-tile]')).toHaveCount(2);
+  await expect.poll(async () => circles(await page.locator('head link[rel="icon"]').getAttribute('href'))).toBe(3);
+  await expect.poll(async () => circles(await page.locator('.kit-brand img').getAttribute('src'))).toBe(3);
   await expect(page.getByRole('button', { name: 'Look again' })).toHaveCount(0);
   // GitHub is out of reach for this file (connect-src 'none'): there is no button for the update badge.
   await expect(page.getByRole('button', { name: 'Check for updates' })).toHaveCount(0);
@@ -40,7 +40,10 @@ test('the web hub runs no update: it shows the lines to type in the folder of th
   await expect(page.locator('[data-tile="tasks"]')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Update all' })).toHaveCount(0);
   const pages = page.getByRole('region', { name: 'Update the pages' });
-  await expect(pages.locator('pre')).toHaveText('git -C tasks-web pull --ff-only\ngit -C tasks-web status --short');
+  await expect(pages.locator('pre')).toHaveText([
+    /git -C tasks-web pull --ff-only\s+git -C tasks-web status --short/,
+    /git -C testing-web pull --ff-only\s+git -C testing-web status --short/,
+  ]);
   // Only what is a web variant on this machine: no line for a program.
   await expect(pages).not.toContainText('Rules');
   await page.locator('[data-tile="tasks"]').focus();
@@ -116,7 +119,7 @@ test('the folder of the clones is picked once: what is not in it is marked, the 
   await expect(page.locator('[data-tile="tasks"]')).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { picks: number }).picks)).toBe(0);
   await page.getByRole('button', { name: 'Choose the folder of the clones' }).click();
-  await expect(page.getByRole('status')).toContainText('0 web apps found, 1 not in the folder.');
+  await expect(page.getByRole('status')).toContainText('0 web apps found, 2 not in the folder.');
   const other = page.getByRole('region', { name: 'Install or download' });
   await expect(other.locator('[data-tile="tasks"]')).toContainText('Marked as not present');
   // The marks are the menu's: they survive a reload, and a second pick with the clone there takes them back.
@@ -126,7 +129,7 @@ test('the folder of the clones is picked once: what is not in it is marked, the 
     (window as unknown as { tree: unknown }).tree = { 'tasks-web': { 'tasks.html': 'file' } };
   });
   await page.getByRole('button', { name: 'Choose the folder of the clones' }).click();
-  await expect(page.getByRole('status')).toContainText('1 web app found.');
+  await expect(page.getByRole('status')).toContainText('1 web app found, 1 not in the folder.');
   await expect(page.getByRole('region', { name: 'Installed' }).locator('[data-tile="tasks"]')).toHaveAttribute(
     'href',
     '../tasks-web/tasks.html',

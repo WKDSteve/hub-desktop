@@ -167,7 +167,7 @@ async fn nothing_but_the_exact_path_of_the_page_is_served() {
         "/tasks-web/Tasks.html",
         "/tasks-web\\tasks.html",
         "/tasks-web/tasks.html::$DATA",
-        "/testing-web/testing.html",
+        "/rules-web/rules.html",
         "/api/hub/hello",
         "/api/hub/apps",
         "/auth/exchange",

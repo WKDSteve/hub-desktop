@@ -145,7 +145,7 @@ describe('the folder of the clones', () => {
       { 'tasks-web': 'file' },
       { 'Tasks-Web': { 'tasks.html': 'file' } },
       // An app without a web variant is not looked for, even when a folder of that name is there.
-      { 'testing-web': { 'testing.html': 'file' } },
+      { 'rules-web': { 'rules.html': 'file' } },
     ] as Tree[]) {
       expect(await presentIn(folder('repos', tree), entries), JSON.stringify(tree)).toEqual(new Set());
     }
@@ -170,12 +170,15 @@ describe('the folder of the clones', () => {
     let tree: Tree = {};
     const hub = new WebHub(entries, store, '1', async () => ({ kind: 'picked', handle: folder('repos', tree) }));
     expect(hub.canChooseFolder).toBe(true);
-    expect(await hub.chooseFolder()).toEqual({ kind: 'scanned', present: 0, missing: 1 });
+    expect(await hub.chooseFolder()).toEqual({ kind: 'scanned', present: 0, missing: 2 });
     expect((await hub.apps()).apps.find((a) => a.id === 'tasks')?.missing).toBe(true);
     tree = { 'tasks-web': { 'tasks.html': 'file' } };
-    expect(await hub.chooseFolder()).toEqual({ kind: 'scanned', present: 1, missing: 0 });
+    expect(await hub.chooseFolder()).toEqual({ kind: 'scanned', present: 1, missing: 1 });
     expect((await hub.apps()).apps.find((a) => a.id === 'tasks')?.installed).toBe(true);
-    expect(store.saved).toEqual([['tasks'], []]);
+    expect((await hub.apps()).apps.find((a) => a.id === 'testing')?.missing).toBe(true);
+    tree = { 'tasks-web': { 'tasks.html': 'file' }, 'testing-web': { 'testing.html': 'file' } };
+    expect(await hub.chooseFolder()).toEqual({ kind: 'scanned', present: 2, missing: 0 });
+    expect(store.saved).toEqual([['tasks', 'testing'], ['testing'], []]);
   });
 
   it('changes nothing when the person cancels, the browser refuses, or the folder cannot be read', async () => {
@@ -213,7 +216,7 @@ describe('the folder of the clones', () => {
     await state.start('web');
     expect(state.canChooseFolder).toBe(true);
     await state.chooseFolder();
-    expect(state.toast).toEqual({ kind: 'ok', text: '0 web apps found, 1 not in the folder.' });
+    expect(state.toast).toEqual({ kind: 'ok', text: '0 web apps found, 2 not in the folder.' });
     expect(state.apps.find((a) => a.id === 'tasks')?.missing).toBe(true);
   });
 });
