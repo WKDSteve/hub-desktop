@@ -154,6 +154,8 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
     };
     await check();
+    await page.locator('[data-tile="tasks"]').hover();
+    await check();
     await page.locator('[data-tile="tasks"]').focus();
     await page.keyboard.press('Shift+Enter');
     await expect(page.getByRole('menu')).toBeVisible();

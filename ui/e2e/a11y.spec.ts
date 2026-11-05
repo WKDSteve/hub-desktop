@@ -17,6 +17,18 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
     });
 
+    // The colours of the palette under the pointer and with the focus ring: axe reads the state the tile is in.
+    test('a tile under the pointer and with the focus ring has no violation', async ({ page, hub }) => {
+      await hub.open(page);
+      const tile = page.locator('[data-tile="tasks"]');
+      await tile.hover();
+      const hovered = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      expect(hovered.violations, JSON.stringify(hovered.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
+      await tile.focus();
+      const focused = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+      expect(focused.violations, JSON.stringify(focused.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
+    });
+
     test('with the monitor shown', async ({ page, hubOn }) => {
       const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
       await hub.open(page);

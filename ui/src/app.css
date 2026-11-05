@@ -1,6 +1,7 @@
 /* The tokens and the base rules are the kit's (appkit-ui), shared with the other apps: every colour the CSS of
    this page states comes from `tokens.css` (tools/check-color-literals.py). */
 @import 'appkit-ui/tokens.css';
+@import './palette.css';
 @import 'appkit-ui/base.css';
 
 /* The page is as high as the window. */

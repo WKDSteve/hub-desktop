@@ -186,7 +186,7 @@ jobs:
       # The icons of the other apps are what is pinned; offline, an owner may be private (rule APP-11).
       - run: python tools/sync-app-icons.py
       # A colour the CSS of the page states is a token of appkit-ui (the same check runs in appkit).
-      - run: python tools/check-color-literals.py
+      - run: python tools/check-color-literals.py --tokens ui/src/palette.css
       # The shell scripts of the repository: ShellCheck is on the maintainer's runner (`scoop install shellcheck`).
       - name: ShellCheck
         if: github.event_name == 'push'
