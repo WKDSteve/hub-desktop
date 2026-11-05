@@ -30,9 +30,8 @@ test('the hub shows what is on the machine as tiles and the rest, quieter, below
   await expect(other.getByRole('button', { name: /Takt Player/ })).toContainText('Planned');
   await expect(other.getByRole('link', { name: /streamtap/ })).toContainText('Download');
   await expect(other.getByRole('link', { name: /Testing/ })).toContainText('Download');
-  // An app without a release is built from its checkout: no page to link to.
-  await expect(other.getByRole('button', { name: /pult/ })).toContainText('Build it yourself');
-  await expect(other.getByRole('link')).toHaveCount(2);
+  await expect(other.getByRole('link', { name: /pult/ })).toContainText('Download');
+  await expect(other.getByRole('link')).toHaveCount(3);
   // Quieter: the surface and the text colour are not those of an installed tile.
   const look = (id: string) =>
     tile(page, id).evaluate((el) => {

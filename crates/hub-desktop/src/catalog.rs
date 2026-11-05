@@ -314,18 +314,20 @@ pub const CATALOG: &[Entry] = &[
             visibility: Visibility::Private,
         },
         status: Status::Available,
-        // `scripts/build-install.ps1` of the checkout puts it here, per user; there is no release. Its hub runs
-        // with a route: `pult start --open` starts the window beside it unless one runs, and shows the remote
-        // control page. `pult stop` ends the route. It has no vault.
+        // `install.ps1` of its release zip (or `scripts/build-install.ps1` of the checkout) puts it here, per
+        // user. Its hub runs with a route: `pult start --open` starts the window beside it unless one runs, and
+        // shows the remote control page. `pult stop` ends the route. It has no vault.
         native: Some(Native::AppKitHub {
             identity: &PULT,
             vault_vars: &[],
         }),
         web: None,
         default_mode: Mode::Native,
+        // Only the page is named: the zip holds its own install script, so the update of the hub, which runs the
+        // kit's stamped `install.ps1` of the release, has nothing to run (as with streamtap).
         install: Install {
-            hint: Hint::BuildYourself,
-            page: None,
+            hint: Hint::Release,
+            page: Some("https://github.com/WKDSteve/pult/releases/tag/latest"),
             file: None,
         },
     },

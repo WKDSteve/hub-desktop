@@ -118,8 +118,8 @@
     "native": true,
     "web": null,
     "install": {
-      "hint": "build_yourself",
-      "page": null,
+      "hint": "release",
+      "page": "https://github.com/WKDSteve/pult/releases/tag/latest",
       "file": null
     },
     "repo": {
