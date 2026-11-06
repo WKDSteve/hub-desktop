@@ -58,6 +58,11 @@ target/release/hub-desktop            # runs the hub in this window and opens th
 change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,
 `cargo test --workspace --locked` and, in `ui/`, `pnpm check && pnpm test`.
 
+From a checkout, `.\scripts\build-install.ps1` builds and installs for the current user (`-BuildOnly` only builds);
+`.\scripts\uninstall.ps1` takes the installation away again (`-PurgeSettings` also removes the settings). Both refuse to
+install or remove in a Claude session and in an elevated one (`-AllowElevated` for a build machine); `-BuildOnly` works
+in either.
+
 ## License
 
 [MIT](LICENSE)

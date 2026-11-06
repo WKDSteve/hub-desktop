@@ -43,9 +43,11 @@ $tmp = Join-Path ([IO.Path]::GetTempPath()) ('hub-desktop-test-install-' + [Guid
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
 $saved = @{}
-foreach ($name in 'HUB_DESKTOP_INSTALL_DIR', 'HUB_DESKTOP_CONFIG_DIR', 'HUB_DESKTOP_NO_LOGIN_SYNC') {
+foreach ($name in 'HUB_DESKTOP_INSTALL_DIR', 'HUB_DESKTOP_CONFIG_DIR', 'HUB_DESKTOP_NO_LOGIN_SYNC', 'CLAUDECODE') {
     $saved[$name] = [Environment]::GetEnvironmentVariable($name)
 }
+# Everything here stays in the temporary folder, so the scripts may run from a Claude session; their refusal is checked below.
+$env:CLAUDECODE = $null
 $env:HUB_DESKTOP_INSTALL_DIR = Join-Path $tmp 'bin'
 $env:HUB_DESKTOP_CONFIG_DIR = Join-Path $tmp 'cfg'
 $env:HUB_DESKTOP_NO_LOGIN_SYNC = '1'
@@ -182,6 +184,14 @@ try {
     New-Item -ItemType Directory -Path $bin -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $bin 'other.txt') -Value 'mine'
     $r = Invoke-Script 'install.ps1' @('-File', $archive)
+
+    # 7b. A Claude session is refused and removes nothing (AppData and the registry are redirected there).
+    $env:CLAUDECODE = '1'
+    $r = Invoke-Script 'uninstall.ps1' @()
+    $env:CLAUDECODE = $null
+    Write-Check ($r.Code -ne 0 -and $r.Text -match 'Claude session') 'an uninstall in a Claude session is refused'
+    Write-Check (Test-Path -LiteralPath (Join-Path $bin 'hub-desktop.exe')) 'and the program stays'
+
     $r = Invoke-Script 'uninstall.ps1' @()
     Write-Check (Test-Path -LiteralPath (Join-Path $bin 'other.txt')) 'the other file and so the folder stay'
 }
