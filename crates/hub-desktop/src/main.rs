@@ -2,7 +2,7 @@
 //! double click, or the link that `install` makes) it runs the hub in this window and opens the browser.
 
 use hub_desktop::app::{self, ServeOptions};
-use hub_desktop::background::{self, InstallOptions, UninstallOptions};
+use hub_desktop::background::{self, UninstallOptions};
 
 const USAGE: &str = "usage:
   hub-desktop                              (no argument, as a double click) run the hub in this
@@ -77,11 +77,9 @@ async fn run(args: Vec<String>) -> Result<(), String> {
             }
         }
         Some("install") if args.len() == 1 || (args.len() == 2 && args[1] == "--shortcut") => {
-            let opts = InstallOptions {
-                shortcut: args.len() == 2,
-                ..InstallOptions::default()
-            };
-            background::install(opts).await.map(|t| print!("{t}"))
+            background::install(background::install_options(args.len() == 2))
+                .await
+                .map(|t| print!("{t}"))
         }
         Some("uninstall")
             if args.len() == 1 || (args.len() == 2 && args[1] == "--purge-settings") =>

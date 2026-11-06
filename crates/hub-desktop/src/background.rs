@@ -8,6 +8,7 @@ use std::pin::Pin;
 
 use appkit_hub::background::Background;
 pub use appkit_hub::background::{run_command, start_from, InstallOptions, UninstallOptions};
+use appkit_hub::background::{LinkName, LinkStart};
 
 use crate::config::Env;
 
@@ -46,6 +47,18 @@ pub fn installed_program(env: &Env) -> Result<PathBuf, String> {
     appkit_hub::background::installed_program(&APP, env)
 }
 
+/// What `install` is asked for: with a link, it is called `hub-desktop.lnk` and runs the hub in a minimized console,
+/// which is the hub for as long as it stays open.
+#[must_use]
+pub fn install_options(shortcut: bool) -> InstallOptions {
+    InstallOptions {
+        shortcut,
+        link_name: LinkName::App,
+        link_start: LinkStart::ServeMinimized,
+        ..InstallOptions::default()
+    }
+}
+
 /// Copy this program to a fixed place and start the hub from there again when one was running.
 ///
 /// # Errors
@@ -65,6 +78,15 @@ pub fn uninstall(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_link_is_named_by_the_app_and_runs_the_hub_minimized() {
+        let opts = super::install_options(true);
+        assert!(opts.shortcut);
+        assert_eq!(opts.link_name, super::LinkName::App);
+        assert_eq!(opts.link_start, super::LinkStart::ServeMinimized);
+        assert!(!super::install_options(false).shortcut);
+    }
 
     /// `uninstall --purge-settings` removes the files of the kit and nothing else: the hub names
     /// no file of its own, so a file in the config folder that is not the kit's stays.
