@@ -109,6 +109,25 @@ pub trait Runner: Send + Sync {
     ///
     /// The program could not be started.
     fn run(&self, step: &Step, timeout: Duration) -> Result<Ran, String>;
+
+    /// As [`Runner::run`], and every line goes to `on_line` as soon as it is there: an install that takes minutes shows
+    /// what it says while it runs. A runner without a live view gives its lines at the end.
+    ///
+    /// # Errors
+    ///
+    /// The program could not be started.
+    fn run_lines(
+        &self,
+        step: &Step,
+        timeout: Duration,
+        on_line: &(dyn Fn(String) + Send + Sync),
+    ) -> Result<Ran, String> {
+        let ran = self.run(step, timeout)?;
+        for line in &ran.lines {
+            on_line(line.clone());
+        }
+        Ok(ran)
+    }
 }
 
 /// The bytes 0x80 to 0xFF of code page 850, the OEM code page of a western European Windows. Windows PowerShell
@@ -189,6 +208,15 @@ pub struct SystemRunner;
 
 impl Runner for SystemRunner {
     fn run(&self, step: &Step, timeout: Duration) -> Result<Ran, String> {
+        self.run_lines(step, timeout, &|_| {})
+    }
+
+    fn run_lines(
+        &self,
+        step: &Step,
+        timeout: Duration,
+        on_line: &(dyn Fn(String) + Send + Sync),
+    ) -> Result<Ran, String> {
         use std::io::{BufRead, BufReader, Read};
         use std::process::{Command, Stdio};
 
@@ -261,6 +289,7 @@ impl Runner for SystemRunner {
         let end = Instant::now() + timeout;
         let code = loop {
             while let Ok(line) = lines.try_recv() {
+                on_line(line.clone());
                 tail.push(line);
             }
             match child.try_wait() {
@@ -279,6 +308,7 @@ impl Runner for SystemRunner {
         // open: it is not waited for.
         let grace = Instant::now() + Duration::from_millis(500);
         while let Ok(line) = lines.recv_timeout(grace.saturating_duration_since(Instant::now())) {
+            on_line(line.clone());
             tail.push(line);
         }
         Ok(Ran {
@@ -756,16 +786,21 @@ impl Updater {
         self.say(id, step.shown());
         let runner = Arc::clone(&self.runner);
         let timeout = self.cfg.step_timeout;
-        let ran = tokio::task::spawn_blocking(move || runner.run(&step, timeout))
+        let (send, mut said) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let running = tokio::task::spawn_blocking(move || {
+            runner.run_lines(&step, timeout, &|line| {
+                let _ = send.send(line);
+            })
+        });
+        // Ends when the step does: the sender goes with the closure.
+        while let Some(line) = said.recv().await {
+            self.say(id, line);
+        }
+        let ran = running
             .await
             .unwrap_or_else(|_| Err("the step stopped unexpectedly".to_owned()));
         match ran {
-            Ok(ran) => {
-                for line in &ran.lines {
-                    self.say(id, line.clone());
-                }
-                Ok(ran)
-            }
+            Ok(ran) => Ok(ran),
             Err(why) => {
                 // Why it could not start may hold a path: the console of the hub has it, the page a sentence.
                 eprintln!("update {id}: {why}");

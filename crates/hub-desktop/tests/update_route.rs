@@ -32,6 +32,8 @@ struct FakeRunner {
     answer: Box<Answer>,
     /// Every step, as `<program> <args...>`.
     seen: Mutex<Vec<String>>,
+    /// Closed: a pull says a line and then waits until it is open again.
+    gate: std::sync::atomic::AtomicBool,
 }
 
 impl FakeRunner {
@@ -61,6 +63,25 @@ impl Runner for FakeRunner {
             .unwrap()
             .push(format!("{name} {}", args.join(" ")));
         Ok((self.answer)(name, step))
+    }
+
+    fn run_lines(
+        &self,
+        step: &Step,
+        timeout: Duration,
+        on_line: &(dyn Fn(String) + Send + Sync),
+    ) -> Result<Ran, String> {
+        if arg(step, 0) == "pull" {
+            on_line("said while it runs".to_owned());
+            while !self.gate.load(std::sync::atomic::Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+        let ran = self.run(step, timeout)?;
+        for line in &ran.lines {
+            on_line(line.clone());
+        }
+        Ok(ran)
     }
 }
 
@@ -172,6 +193,7 @@ impl Hub {
         ));
         let runner = Arc::new(FakeRunner {
             tools: tools.clone(),
+            gate: std::sync::atomic::AtomicBool::new(true),
             answer,
             seen: Mutex::new(Vec::new()),
         });
@@ -331,6 +353,39 @@ async fn a_clean_clone_on_main_is_pulled_fast_forward_and_its_page_checked() {
         "{job}"
     );
     hub.server.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_lines_of_a_step_reach_the_job_while_the_step_runs() {
+    let heads = Mutex::new(0);
+    let hub = Hub::new(
+        "hub-update-live",
+        Setup::default(),
+        Box::new(move |name, step| {
+            clean_git(name, step, true, &heads).unwrap_or_else(|| fail(&[]))
+        }),
+    )
+    .await;
+    hub.runner
+        .gate
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let reply = hub.post("/api/hub/apps/tasks/update", "{}").await;
+    assert_eq!(reply.status, 200, "{reply:?}");
+    let end = std::time::Instant::now() + Duration::from_secs(15);
+    loop {
+        let job = hub.of("tasks").await["job"].clone();
+        let lines = job["lines"].to_string();
+        if lines.contains("said while it runs") {
+            assert_eq!(job["state"], "running", "{job}");
+            break;
+        }
+        assert!(std::time::Instant::now() < end, "{job}");
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
+    hub.runner
+        .gate
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(hub.finished("tasks").await["state"], "done");
 }
 
 #[tokio::test]
@@ -714,6 +769,31 @@ fn the_system_runner_collects_the_output_and_the_exit_code() {
     let mut lines = ran.lines.clone();
     lines.sort();
     assert_eq!(lines, ["hello", "warn"], "{ran:?}");
+}
+
+#[test]
+fn the_system_runner_gives_a_line_before_the_step_ends() {
+    let machine = Machine::new("hub-runner-live");
+    let program = machine.program(&format!("tools/fake{}", std::env::consts::EXE_SUFFIX));
+    let step = Step {
+        program,
+        args: ["--say", "a", "--sleep", "1000", "--say", "b"]
+            .iter()
+            .map(Into::into)
+            .collect(),
+        cwd: machine.path(""),
+    };
+    let started = std::time::Instant::now();
+    let at: Mutex<Vec<(String, Duration)>> = Mutex::new(Vec::new());
+    let ran = SystemRunner
+        .run_lines(&step, Duration::from_secs(20), &|line| {
+            at.lock().unwrap().push((line, started.elapsed()));
+        })
+        .unwrap();
+    let at = at.into_inner().unwrap();
+    assert_eq!(ran.lines, ["a", "b"], "{ran:?}");
+    assert_eq!(at.len(), 2, "{at:?}");
+    assert!(at[1].1 - at[0].1 >= Duration::from_millis(500), "{at:?}");
 }
 
 /// Windows PowerShell 5.1 that gets the `PSModulePath` of PowerShell 7 (the hub started from a pwsh terminal)
