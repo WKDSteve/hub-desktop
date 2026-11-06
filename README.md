@@ -17,7 +17,7 @@ In your own PowerShell (not elevated; no administrator rights, no SmartScreen st
 powershell -ExecutionPolicy Bypass -c "& ([scriptblock]::Create((irm https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.ps1))) -InstallArgs '--shortcut'"
 ```
 
-This puts a link **Hub** on the desktop and in the Start menu (one click starts the hub and opens its page). Without
+This puts a link **hub-desktop** on the desktop and in the Start menu (one click starts the hub and opens its page). Without
 `-InstallArgs '--shortcut'` there is no link: start `%LOCALAPPDATA%\hub-desktop\bin\hub-desktop.exe`, or run
 `hub-desktop install --shortcut` later. `hub-desktop uninstall` and `uninstall.ps1` take the links away again. The hub
 needs none of the other apps to run.

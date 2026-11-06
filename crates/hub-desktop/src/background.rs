@@ -47,14 +47,14 @@ pub fn installed_program(env: &Env) -> Result<PathBuf, String> {
     appkit_hub::background::installed_program(&APP, env)
 }
 
-/// What `install` is asked for: with a link, it is called `hub-desktop.lnk` and runs the hub in a minimized console,
-/// which is the hub for as long as it stays open.
+/// What `install` is asked for: with a link, it is called `hub-desktop.lnk` and starts the program as a double click
+/// does, minimized: the hub, and the browser with it, or the browser alone when the hub already runs.
 #[must_use]
 pub fn install_options(shortcut: bool) -> InstallOptions {
     InstallOptions {
         shortcut,
         link_name: LinkName::App,
-        link_start: LinkStart::ServeMinimized,
+        link_start: LinkStart::AsClicked,
         ..InstallOptions::default()
     }
 }
@@ -84,7 +84,7 @@ mod tests {
         let opts = super::install_options(true);
         assert!(opts.shortcut);
         assert_eq!(opts.link_name, super::LinkName::App);
-        assert_eq!(opts.link_start, super::LinkStart::ServeMinimized);
+        assert_eq!(opts.link_start, super::LinkStart::AsClicked);
         assert!(!super::install_options(false).shortcut);
     }
 
