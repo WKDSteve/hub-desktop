@@ -13,9 +13,9 @@ const USAGE: &str = "usage:
                                            config folder); --open also opens the browser
   hub-desktop stop                         stop the hub that runs in the background
   hub-desktop install [--shortcut]         copy this program to a fixed place (a build then does
-                                           not fight the running hub for the file); --shortcut
-                                           also puts a link on the desktop and in
-                                           the Start menu
+                                           not fight the running hub for the file); the Start
+                                           menu gets a link, --shortcut adds one
+                                           on the desktop
   hub-desktop uninstall [--purge-settings] stop the hub and take away what install made;
                                            --purge-settings also removes the settings; the program
                                            file is left for the script
