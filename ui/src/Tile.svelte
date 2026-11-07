@@ -274,6 +274,10 @@
     border-radius: var(--radius);
     cursor: pointer;
   }
+  .do-update:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
   .chip,
   .badge {
     padding: 0 0.4rem;

@@ -344,6 +344,9 @@
     padding: 0.2rem 0.6rem;
     cursor: pointer;
   }
+  .tool:hover:not(:disabled) {
+    background: var(--accent-soft);
+  }
   .version {
     color: var(--muted);
   }
@@ -388,9 +391,16 @@
     padding: 0.25rem 0.8rem;
     cursor: pointer;
   }
+  .actions button:hover {
+    background: var(--accent-soft);
+  }
   .actions .primary {
     color: var(--accent-text);
     background: var(--accent);
     border-color: var(--accent);
+  }
+  .actions .primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
   }
 </style>
