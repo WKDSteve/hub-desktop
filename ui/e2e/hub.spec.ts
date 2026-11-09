@@ -141,6 +141,7 @@ test('one click starts the app once, a double click too, and the tile says it is
 });
 
 test('two tabs of the page start the app once', async ({ page, context, hub }) => {
+  test.slow(); // waits for the fake program to log both launches: 25 s on a loaded runner, the config allows 30
   const second = await context.newPage();
   const first = launchRequests(page);
   const other = launchRequests(second);

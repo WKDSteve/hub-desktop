@@ -95,6 +95,7 @@ for (const scheme of ['light', 'dark'] as const) {
     });
 
     test('the filled button of a tile shows the pointer', async ({ page, hubOn }) => {
+      test.slow(); // a real clone to ask GitHub about and axe twice: 10 to 25 s, over 30 s on a loaded runner
       const hub = await hubOn({ ...FULL, tasksWebClone: 'behind' });
       await page.route('**/api/hub/apps', async (route) => {
         const doc = await (await route.fetch()).json();
@@ -114,6 +115,7 @@ for (const scheme of ['light', 'dark'] as const) {
     });
 
     test('with an update shown, its output open', async ({ page, hubOn }) => {
+      test.slow(); // the real update (git against a dirty clone, up to 20 s to fail) and axe twice: 30 to 43 s on the runner
       const hub = await hubOn({ ...FULL, tasksWebClone: 'dirty' });
       await hub.open(page);
       await showsThePointer(page.getByRole('button', { name: 'Update all' }));
