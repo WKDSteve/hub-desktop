@@ -5,3 +5,6 @@ __pycache__/
 /.cargo/config.toml
 *.local.*
 .claude/
+
+# What a test sheet leaves to look at
+TESTS/sheets/out/
