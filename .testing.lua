@@ -10,9 +10,12 @@ return {
       -- the run's folder, so it finds no app, no vault and no settings of the person, and NVIM_MACHINE_ROLE=workstation
       -- keeps it from installing releases. The ports are fixed (0 is refused); a port in use makes the hub take a free
       -- one, and the link it prints says which. HUB_DESKTOP_NO_LAUNCH prints the pairing link instead of opening a browser.
-      -- The binary embeds ui/dist: build the interface first (cd ui && pnpm build), else the page is a placeholder.
+      -- The binary embeds ui/dist, so the build makes the interface first (a build without it embeds a placeholder).
       ["hub"] = {
-        build = { "cargo", "build", "-p", "hub-desktop", "--locked" },
+        build = {
+          { "pnpm", "--dir", "ui", "build" },
+          { "cargo", "build", "-p", "hub-desktop", "--locked" },
+        },
         run = { "target/debug/hub-desktop.exe" },
         env = {
           HUB_DESKTOP_CONFIG_DIR = "${temp}/cfg-hub",
