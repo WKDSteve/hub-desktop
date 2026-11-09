@@ -344,8 +344,9 @@
     padding: 0.2rem 0.6rem;
     cursor: pointer;
   }
+  /* --line, not --accent-soft: the button rests on --surface-2, which the translucent accent hardly changes. */
   .tool:hover:not(:disabled) {
-    background: var(--accent-soft);
+    background: var(--line);
   }
   .version {
     color: var(--muted);
@@ -392,7 +393,7 @@
     cursor: pointer;
   }
   .actions button:hover {
-    background: var(--accent-soft);
+    background: var(--line);
   }
   .actions .primary {
     color: var(--accent-text);

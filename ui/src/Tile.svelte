@@ -178,6 +178,11 @@
     background: var(--surface-2);
     color: var(--muted);
   }
+  /* After .dim .main, which would otherwise take the hover of a tile that is not installed away. One that can do
+     nothing (a planned app) does not react. */
+  .dim .main:hover:not([aria-disabled='true']) {
+    background: var(--line);
+  }
   .dim .main[aria-disabled='true'] {
     cursor: default;
   }

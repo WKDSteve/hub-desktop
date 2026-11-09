@@ -50,6 +50,8 @@ for (const scheme of ['light', 'dark'] as const) {
       await hub.open(page);
       await showsThePointer(page.getByRole('button', { name: 'Look again' }));
       await showsThePointer(page.getByRole('button', { name: 'Check for updates' }));
+      // A tile of an app that is not installed (its rest is --surface-2) shows the pointer too.
+      await showsThePointer(page.locator('[data-tile="testing"]'));
     });
 
     test('with the monitor shown', async ({ page, hubOn }) => {

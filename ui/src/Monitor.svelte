@@ -162,7 +162,7 @@
     white-space: nowrap;
   }
   .toggle:hover {
-    background: var(--accent-soft);
+    background: var(--line);
   }
   .cases {
     grid-column: 1 / -1;
