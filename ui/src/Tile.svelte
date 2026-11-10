@@ -183,6 +183,11 @@
   .dim .main:hover:not([aria-disabled='true']) {
     background: var(--line);
   }
+  /* That fill is the colour of a chip's edge: under the pointer the chip ("Download") keeps its edge in --muted. */
+  .dim .main:hover:not([aria-disabled='true']) .chip,
+  .dim .main:hover:not([aria-disabled='true']) .badge {
+    border-color: var(--muted);
+  }
   .dim .main[aria-disabled='true'] {
     cursor: default;
   }

@@ -46,6 +46,21 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(focused.violations, JSON.stringify(focused.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
     });
 
+    // Axe does not compare an edge with what is behind it: the fill of a tile of an app that is not installed is --line
+    // under the pointer, the colour of a chip's edge at rest, so the chip ("Download") would lose its edge.
+    test('the chip of a tile that is not installed keeps its edge under the pointer', async ({ page, hub }) => {
+      await hub.open(page);
+      const tile = page.locator('[data-tile="testing"]');
+      await page.mouse.move(0, 0);
+      await tile.hover();
+      const [fill, edge] = await tile.evaluate((node) => {
+        const chip = node.querySelector('.badge, .chip');
+        return [getComputedStyle(node).backgroundColor, chip ? getComputedStyle(chip).borderTopColor : ''];
+      });
+      expect(edge).not.toBe('');
+      expect(edge).not.toBe(fill);
+    });
+
     test('the buttons of the page show the pointer', async ({ page, hub }) => {
       await hub.open(page);
       await showsThePointer(page.getByRole('button', { name: 'Look again' }));
