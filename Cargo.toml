@@ -7,10 +7,10 @@ members = ["crates/hub-desktop", "crates/fake-app"]
 # this app at once, point these at a local checkout in a .cargo/config.toml that is not committed
 # (`[patch."https://github.com/WKDSteve/appkit"]`, see the README of appkit).
 [workspace.dependencies]
-appkit-core = { git = "https://github.com/WKDSteve/appkit", tag = "v0.38.0" }
-appkit-hub = { git = "https://github.com/WKDSteve/appkit", tag = "v0.38.0" }
-appkit-testkit = { git = "https://github.com/WKDSteve/appkit", tag = "v0.38.0" }
-appkit-scratch = { git = "https://github.com/WKDSteve/appkit", tag = "v0.38.0" }
+appkit-core = { git = "https://github.com/WKDSteve/appkit", tag = "v0.44.1" }
+appkit-hub = { git = "https://github.com/WKDSteve/appkit", tag = "v0.44.1" }
+appkit-testkit = { git = "https://github.com/WKDSteve/appkit", tag = "v0.44.1" }
+appkit-scratch = { git = "https://github.com/WKDSteve/appkit", tag = "v0.44.1" }
 
 [workspace.package]
 edition = "2024"
