@@ -13,11 +13,20 @@ const PROGRAM: &str = env!("CARGO_BIN_EXE_hub-desktop");
 
 /// A port nobody listens on right now.
 fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+    // The listener is dropped at once, so two calls can see the same number; a number is handed out once per process.
+    static GIVEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let mut given = GIVEN.lock().unwrap();
+        if !given.contains(&port) {
+            given.push(port);
+            return port;
+        }
+    }
 }
 
 fn command(config: &Path, port: u16) -> Command {
