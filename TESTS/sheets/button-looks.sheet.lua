@@ -5,6 +5,7 @@
 --   testing sheets step button-looks --headed
 return {
   id = "hub-desktop.button-looks",
+  feature = "hub-desktop.button-states",
   title = "hub-desktop: a button and a tile at rest, under the pointer and with focus, light and dark",
   task = "hub-desktop/live-check-knopf-und-kachel-des-hubs-hell-und-dunkel-in-ruhe",
   engine = "browser",
