@@ -162,7 +162,7 @@ jobs:
       # (2026-11-12, run 43255349683; the rerun was green), and that line is what a next case needs.
       - name: pnpm (which one)
         run: |
-          command -v pnpm || { echo "::error::pnpm is not on the PATH of this job: $PATH"; exit 127; }
+          command -v pnpm || { echo "::error::pnpm is not on the PATH of this job"; exit 127; }
           pnpm --version
       # The lockfile is the truth; the age and trust policy are in ui/pnpm-workspace.yaml.
       - run: |
