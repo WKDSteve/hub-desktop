@@ -158,8 +158,20 @@ jobs:
       - name: pnpm (the hosted runner has node, not pnpm)
         if: matrix.leg == 'windows-latest'
         run: npm install --global pnpm@10
+      # Which pnpm the job finds: a self-hosted job once ended with exit 127 right after a complete install
+      # (2026-11-12, run 43255349683; the rerun was green), and that line is what a next case needs.
+      - name: pnpm (which one)
+        run: |
+          command -v pnpm || { echo "::error::pnpm is not on the PATH of this job: $PATH"; exit 127; }
+          pnpm --version
       # The lockfile is the truth; the age and trust policy are in ui/pnpm-workspace.yaml.
-      - run: pnpm install --frozen-lockfile
+      - run: |
+          code=0
+          pnpm install --frozen-lockfile || code=$?
+          if [ "$code" -ne 0 ]; then
+            echo "::error::pnpm install ended with exit $code ($(command -v pnpm || echo 'pnpm not found'))"
+          fi
+          exit "$code"
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
