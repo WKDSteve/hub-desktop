@@ -18,7 +18,7 @@ powershell -ExecutionPolicy Bypass -c "& ([scriptblock]::Create((irm https://git
 ```
 
 This puts a link **hub-desktop** in the Start menu (one click starts the hub and opens its page) and, with
-`-InstallArgs '--shortcut'`, on the desktop too; the desktop link can be added later with `hub-desktop install --shortcut`. `hub-desktop uninstall` and `uninstall.ps1` take the links away again. The hub
+`-InstallArgs '--shortcut'`, on the desktop too; the desktop link can be added later with `hub-desktop install --shortcut`. `hub-desktop install` ends with the whole call that starts the hub (`start it: "...\bin\hub-desktop.exe" start --open`) and says whether that folder is on `PATH` (install does not add it there). `hub-desktop uninstall` and `uninstall.ps1` take the links away again. The hub
 needs none of the other apps to run.
 
 ## What it does
