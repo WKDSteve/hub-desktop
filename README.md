@@ -7,7 +7,7 @@
 One place to start every `*-desktop` and `*-web` app: a local hub that shows each app as a tile and
 opens it as a native app or as a web app with a single click.
 
-> **Status: first milestone.** The hub lists the installed apps as tiles and starts them with one click, natively or
+> **Status: alpha, first milestone.** The hub lists the installed apps as tiles and starts them with one click, natively or
 > as a web app. There is no versioned release yet; the newest state of `main` is on the
 > [`latest` pre-release](https://github.com/WKDSteve/hub-desktop/releases/tag/latest).
 
