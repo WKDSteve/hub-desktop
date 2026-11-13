@@ -19,6 +19,11 @@ In your own PowerShell (not elevated; no administrator rights, no SmartScreen st
 powershell -ExecutionPolicy Bypass -c "& ([scriptblock]::Create((irm https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.ps1))) -InstallArgs '--shortcut'"
 ```
 
+Every file of a release and of the rolling build is attested by the workflow that built it. With the GitHub CLI
+installed, the install script checks that itself; by hand:
+`gh attestation verify <file> -R WKDSteve/hub-desktop --signer-workflow WKDSteve/hub-desktop/.github/workflows/rolling.yml`
+(`release.yml` for a release).
+
 This puts a link **hub-desktop** in the Start menu (one click starts the hub and opens its page) and, with
 `-InstallArgs '--shortcut'`, on the desktop too; the desktop link can be added later with `hub-desktop install --shortcut`. `hub-desktop install` ends with the whole call that starts the hub (`start it: "...\bin\hub-desktop.exe" start --open`) and says whether that folder is on `PATH` (install does not add it there). `hub-desktop uninstall` and `uninstall.ps1` take the links away again. The hub
 needs none of the other apps to run.
