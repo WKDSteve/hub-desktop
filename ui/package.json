@@ -25,7 +25,7 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
-    "appkit-ui": "github:WKDSteve/appkit#v0.47.0&path:ui-kit",
-    "appkit-web": "github:WKDSteve/appkit#v0.47.0&path:web-kit"
+    "appkit-ui": "github:WKDSteve/appkit#v0.48.0&path:ui-kit",
+    "appkit-web": "github:WKDSteve/appkit#v0.48.0&path:web-kit"
   }
 }
