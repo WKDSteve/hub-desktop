@@ -139,3 +139,22 @@ button: it shows the red cases of that run by file and line, with the message, e
 testing.nvim wrote them into the export, already without paths of your machine). The hub reads the folder (`testing export --out`) and starts
 nothing; the history and the start of a run stay with testing.nvim. A folder that cannot be read is said in one
 sentence, without its path.
+
+<!-- connections:begin (written by the app-icons tool of the workshop; change integrations.json there, not this block) -->
+## Connections
+
+![hub-desktop: what it uses and what uses it](assets/graphs/hub-desktop.png)
+
+**Uses**
+
+- [ai-desktop](https://github.com/WKDSteve/ai-desktop): hub-desktop shows ai-desktop as a tile and starts it. ([picture](assets/graphs/pair/hub-desktop--ai-desktop.png))
+- [appkit](https://github.com/WKDSteve/appkit): hub-desktop is built on appkit: guard, pairing and install (`appkit-core`, `appkit-hub`) and the page kit (`appkit-ui`, `appkit-web`). ([picture](assets/graphs/pair/hub-desktop--appkit.png))
+- [docmap-desktop](https://github.com/WKDSteve/docmap-desktop): hub-desktop shows docmap-desktop as a tile and starts it. ([picture](assets/graphs/pair/hub-desktop--docmap-desktop.png))
+- [pult](https://github.com/WKDSteve/pult): hub-desktop shows pult as a tile and starts its hub. ([picture](assets/graphs/pair/hub-desktop--pult.png))
+- [rules-desktop](https://github.com/WKDSteve/rules-desktop): hub-desktop shows rules-desktop as a tile and starts it, native or as a web app. ([picture](assets/graphs/pair/hub-desktop--rules-desktop.png))
+- [streamtap](https://github.com/WKDSteve/streamtap): hub-desktop shows streamtap as a tile; it is a program with a window of its own. ([picture](assets/graphs/pair/hub-desktop--streamtap.png))
+- [takt](https://github.com/WKDSteve/takt): hub-desktop lists takt as a tile. ([picture](assets/graphs/pair/hub-desktop--takt.png))
+- [tasks-desktop](https://github.com/WKDSteve/tasks-desktop): hub-desktop shows tasks-desktop as a tile and starts it, native or as a web app. ([picture](assets/graphs/pair/hub-desktop--tasks-desktop.png))
+- [testing-desktop](https://github.com/WKDSteve/testing-desktop): hub-desktop shows testing-desktop as a tile and starts it, native or as a web app. ([picture](assets/graphs/pair/hub-desktop--testing-desktop.png))
+- [testing.nvim](https://github.com/WKDSteve/testing.nvim): The monitor of hub-desktop shows a light per repository, read from an export folder of testing.nvim (`testing-export/1`). ([picture](assets/graphs/pair/hub-desktop--testing.nvim.png))
+<!-- connections:end -->
