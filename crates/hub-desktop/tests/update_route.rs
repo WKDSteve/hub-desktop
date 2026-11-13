@@ -142,6 +142,8 @@ struct Setup {
     /// The clone of tasks-web with its page and sums.
     tasks_web: bool,
     extra_env: Vec<(&'static str, String)>,
+    /// `update.require_attestation` of `config.json`.
+    require_attestation: bool,
 }
 
 impl Default for Setup {
@@ -151,6 +153,7 @@ impl Default for Setup {
             tasks_native: false,
             tasks_web: true,
             extra_env: Vec::new(),
+            require_attestation: false,
         }
     }
 }
@@ -200,7 +203,8 @@ impl Hub {
         let updater = Arc::new(Updater::new(
             Arc::clone(&detector),
             Arc::clone(&launcher),
-            UpdateConfig::new(setup.role, tools, Some(machine.path("cfg-hub/updates"))),
+            UpdateConfig::new(setup.role, tools, Some(machine.path("cfg-hub/updates")))
+                .requiring_attestation(setup.require_attestation),
             Arc::clone(&runner) as Arc<dyn Runner>,
         ));
         let control = Secret::generate(TOKEN_BYTES).unwrap();
@@ -528,6 +532,9 @@ async fn an_app_with_nothing_to_update_here_is_refused_in_words_and_an_unknown_o
 /// The answers of a release whose files match their sums (or, with `tamper`, a file that does not).
 #[cfg(windows)]
 fn release(name: &str, step: &Step, tamper: bool) -> Option<Ran> {
+    if name == "gh" && arg(step, 0) == "attestation" {
+        return Some(ok(&["Verification succeeded!"]));
+    }
     if name == "gh" {
         let dir = PathBuf::from(arg(step, 12));
         let script = b"param()".to_vec();
@@ -564,8 +571,18 @@ async fn the_native_build_is_downloaded_checked_and_installed_by_the_script_of_i
     let job = hub.finished("tasks").await;
     assert_eq!(job["state"], "done", "{job}");
     assert_eq!(part(&job, "native")["result"], "installed");
+    assert_eq!(job["attestation"], "attested", "{job}");
     let seen = hub.seen();
-    assert_eq!(seen.len(), 2, "{seen:?}");
+    assert_eq!(seen.len(), 3, "{seen:?}");
+    // Between the sums and the install: gh says who built the file.
+    assert!(seen[1].starts_with("gh attestation verify "), "{seen:?}");
+    assert!(
+        seen[1].ends_with(
+            r"\tasks-hub-windows-x86_64.exe -R WKDSteve/tasks-desktop --signer-workflow WKDSteve/tasks-desktop/.github/workflows/rolling.yml"
+        ),
+        "{seen:?}"
+    );
+    let seen = [seen[0].clone(), seen[2].clone()];
     assert!(
         seen[0].starts_with(
             "gh release download latest -R WKDSteve/tasks-desktop -p install.ps1 -p SHA256SUMS -p tasks-hub-windows-x86_64.exe -D "
@@ -593,6 +610,16 @@ async fn the_native_build_is_downloaded_checked_and_installed_by_the_script_of_i
         shown.contains("-File install.ps1 -File tasks-hub-windows-x86_64.exe -Sums SHA256SUMS"),
         "{shown}"
     );
+    assert!(
+        shown.contains(
+            "gh attestation verify tasks-hub-windows-x86_64.exe -R WKDSteve/tasks-desktop"
+        ),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("tasks-hub-windows-x86_64.exe: attested"),
+        "{shown}"
+    );
     // The download folder is gone with the run.
     let work = hub.machine.path("cfg-hub/updates");
     assert_eq!(std::fs::read_dir(&work).map(|d| d.count()).unwrap_or(0), 0);
@@ -615,6 +642,116 @@ async fn a_build_that_does_not_match_its_sums_is_never_installed() {
     hub.post("/api/hub/apps/tasks/update", "{}").await;
     let job = hub.finished("tasks").await;
     assert_eq!(part(&job, "native")["result"], "checksum_failed", "{job}");
+    assert!(
+        hub.seen().iter().all(|s| !s.starts_with("powershell")),
+        "{:?}",
+        hub.seen()
+    );
+    hub.server.shutdown().await;
+}
+
+/// A release whose files match their sums, and what `gh attestation verify` says of the build.
+#[cfg(windows)]
+fn attested_as(said: Ran) -> Box<Answer> {
+    Box::new(move |name, step| {
+        if name == "gh" && arg(step, 0) == "attestation" {
+            return said.clone();
+        }
+        release(name, step, false).unwrap_or_else(|| fail(&[]))
+    })
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_build_whose_attestation_does_not_verify_is_never_installed() {
+    let hub = Hub::new(
+        "hub-update-attest-wrong",
+        Setup {
+            tasks_native: true,
+            tasks_web: false,
+            ..Setup::default()
+        },
+        attested_as(fail(&[
+            "Loaded digest sha256:00 for file://tasks-hub-windows-x86_64.exe",
+            "Error: verification failed: the signer workflow does not match",
+        ])),
+    )
+    .await;
+    hub.post("/api/hub/apps/tasks/update", "{}").await;
+    let job = hub.finished("tasks").await;
+    assert_eq!(job["state"], "failed", "{job}");
+    assert_eq!(
+        part(&job, "native")["result"],
+        "attestation_failed",
+        "{job}"
+    );
+    assert_eq!(job["attestation"], "failed", "{job}");
+    assert!(
+        job["lines"]
+            .to_string()
+            .contains("does not verify: nothing is run."),
+        "{job}"
+    );
+    assert!(
+        hub.seen().iter().all(|s| !s.starts_with("powershell")),
+        "{:?}",
+        hub.seen()
+    );
+    hub.server.shutdown().await;
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_build_without_an_attestation_is_installed_with_a_note_unless_one_is_required() {
+    // An old build, no network, not signed in: gh could not check, which is not a "no".
+    let unchecked = || fail(&["HTTP 404: Not Found (no attestations found for subject)"]);
+    let hub = Hub::new(
+        "hub-update-attest-none",
+        Setup {
+            tasks_native: true,
+            tasks_web: false,
+            ..Setup::default()
+        },
+        attested_as(unchecked()),
+    )
+    .await;
+    hub.post("/api/hub/apps/tasks/update", "{}").await;
+    let job = hub.finished("tasks").await;
+    assert_eq!(job["state"], "done", "{job}");
+    assert_eq!(part(&job, "native")["result"], "installed", "{job}");
+    assert_eq!(job["attestation"], "not_checked", "{job}");
+    assert!(
+        job["lines"].to_string().contains("could not be checked"),
+        "{job}"
+    );
+    assert!(
+        hub.seen().iter().any(|s| s.starts_with("powershell")),
+        "{:?}",
+        hub.seen()
+    );
+    hub.server.shutdown().await;
+
+    // With update.require_attestation the same build is left alone.
+    let hub = Hub::new(
+        "hub-update-attest-required",
+        Setup {
+            tasks_native: true,
+            tasks_web: false,
+            require_attestation: true,
+            ..Setup::default()
+        },
+        attested_as(unchecked()),
+    )
+    .await;
+    hub.post("/api/hub/apps/tasks/update", "{}").await;
+    let job = hub.finished("tasks").await;
+    assert_eq!(job["state"], "failed", "{job}");
+    assert_eq!(
+        part(&job, "native")["result"],
+        "attestation_required",
+        "{job}"
+    );
+    assert_eq!(job["attestation"], "not_checked", "{job}");
     assert!(
         hub.seen().iter().all(|s| !s.starts_with("powershell")),
         "{:?}",
@@ -699,7 +836,7 @@ async fn update_all_runs_one_app_after_the_other_and_goes_on_after_a_failure() {
                     _ => ok(&[]),
                 };
             }
-            if name == "gh" {
+            if name == "gh" && arg(step, 0) == "release" {
                 let dir = PathBuf::from(arg(step, 12));
                 let script = b"param()".to_vec();
                 let build = b"rules".to_vec();

@@ -146,7 +146,8 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
     let updater = Arc::new(Updater::new(
         Arc::clone(&detector),
         Arc::clone(&launcher),
-        UpdateConfig::new(Role::of(&env), Tools::find(&env), Some(dir.join("updates"))),
+        UpdateConfig::new(Role::of(&env), Tools::find(&env), Some(dir.join("updates")))
+            .requiring_attestation(file.app.update.require_attestation),
         Arc::new(SystemRunner),
     ));
     let make_cfg = |port: u16| ServerConfig {

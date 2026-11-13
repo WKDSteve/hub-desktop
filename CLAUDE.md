@@ -142,6 +142,13 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   install.ps1 -File <file> -Sums SHA256SUMS`. Kit-Apps stoppen/ersetzen/starten sich im eigenen `install`; ein laufender
   `LoopbackServer` (ai-desktop) ist `close_first`. Während des Installs hält der Updater den Flight des `Launcher`
   (`reserve`): ein Klick bekommt `starting`.
+- Attestierung (nativer Teil, zwischen Summen und Install): `gh attestation verify <file> -R <repo> --signer-workflow
+  <repo>/.github/workflows/rolling.yml`, Zeitlimit `attest_timeout` 60 s, Urteil in `update::verdict` (wie die
+  Install-Skripte des Release-Kits: nur was `gh` selbst "verification failed"/"mismatch"/"does not match" nennt, ist
+  falsch und stoppt; alles andere, auch ein Zeitlimit, ist "nicht geprüft" und nur mit `update.require_attestation`
+  in `config.json` ein Abbruch). Der Job trägt `attestation`: `attested`, `not_checked`, `failed`. Keine eigene
+  Sigstore-Prüfung. Tests mit dem `gh`-Stub: jeder `gh`-Aufruf der Fake-Runner unterscheidet `release` und
+  `attestation` am ersten Argument.
 - Codes an die Seite sind feste Wörter (`ui/src/lib/updating.ts` übersetzt sie); Ausgabezeilen gehen als Text an die
   gepairte Seite (`clean_line`: ohne Escape-/Steuerzeichen, 300 Zeichen, die letzten 40), Startfehler mit Pfad nur in
   die Konsole.

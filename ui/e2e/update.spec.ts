@@ -69,3 +69,38 @@ test('with nothing to update on the machine, update all and the entry of the men
   expect(asked).toEqual([]);
   await expect(page.getByRole('region', { name: 'Updates' })).toHaveCount(0);
 });
+
+// The program is never installed in these tests (the machine is the workstation), so what the hub found of the
+// attestation is given to the page as the hub would: the real answer, with a finished job of the program added.
+for (const [word, state, result, text] of [
+  ['attested', 'done', 'installed', 'Attestation: verified, built by the workflow of its repository'],
+  ['not_checked', 'done', 'installed', 'Attestation: not checked'],
+  ['failed', 'failed', 'attestation_failed', 'Attestation: does not verify, nothing was installed'],
+] as const) {
+  test(`the updates say what came of the attestation: ${word}`, async ({ page, hub }) => {
+    await page.route('**/api/hub/updates', async (route) => {
+      const real = await route.fetch();
+      const doc = (await real.json()) as { apps: { id: string; job: unknown }[] };
+      for (const app of doc.apps) {
+        if (app.id !== 'tasks') continue;
+        app.job = {
+          state,
+          step: null,
+          parts: [{ part: 'native', outcome: state === 'done' ? 'ok' : 'failed', result }],
+          lines: ['$ gh attestation verify tasks-hub-windows-x86_64.exe -R WKDSteve/tasks-desktop'],
+          reload: false,
+          attestation: word,
+        };
+      }
+      await route.fulfill({ response: real, json: doc });
+    });
+    await hub.open(page);
+    const updates = page.getByRole('region', { name: 'Updates' });
+    await expect(updates.locator(`[data-attestation="${word}"]`)).toContainText(text);
+    if (word === 'failed') {
+      await expect(updates).toContainText('Update failed: its attestation does not verify');
+    } else {
+      await expect(updates).toContainText('Program: installed');
+    }
+  });
+}

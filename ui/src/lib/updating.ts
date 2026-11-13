@@ -23,6 +23,8 @@ const REASONS: Record<string, string> = {
   download_failed: 'the release could not be downloaded',
   checksum_failed: 'a file of the release does not match SHA256SUMS',
   install_failed: 'the install script failed',
+  attestation_failed: 'its attestation does not verify (not built by the workflow of its repository)',
+  attestation_required: 'its attestation could not be checked, and one is required (update.require_attestation)',
   close_first: 'it is running: close it first',
   busy: 'a start or stop of it is on its way',
   no_work_folder: 'there is no folder for the download',
@@ -56,6 +58,7 @@ const STEPS: Record<string, string> = {
   pulling: 'Pulling…',
   downloading: 'Downloading…',
   verifying: 'Checking the sums…',
+  attesting: 'Checking the attestation…',
   installing: 'Installing…',
 };
 
@@ -93,6 +96,25 @@ export function partText(part: UpdatePart): string {
     return `${what}: ${word}`;
   }
   return `${what}: ${part.outcome === 'skipped' ? 'not updated' : 'failed'}, ${reasonText(part.result)}`;
+}
+
+/**
+ * What the check of the attestation of the program came to, in words; `null` when the job did not get that far.
+ * An unknown word of a newer hub is shown as it is, never dropped.
+ */
+export function attestationText(job: UpdateJob): string | null {
+  switch (job.attestation ?? null) {
+    case null:
+      return null;
+    case 'attested':
+      return 'Attestation: verified, built by the workflow of its repository';
+    case 'not_checked':
+      return 'Attestation: not checked (no attestation, or gh could not ask); see the output';
+    case 'failed':
+      return 'Attestation: does not verify, nothing was installed';
+    default:
+      return `Attestation: ${String(job.attestation).replaceAll('_', ' ')}`;
+  }
 }
 
 /** The message of a finished round of updates. */

@@ -114,6 +114,12 @@ when one fails. The section **Updates** shows where each one is, what came of it
   `install` (a failure leaves the old program and your autostart entry). AI Desktop must be closed first. Needs the
   [GitHub CLI](https://cli.github.com) signed in (`gh auth login`; it also reaches the private repositories) and
   Windows PowerShell.
+- **The attestation** of the program: after the sums, the hub asks `gh attestation verify` whether the file was built
+  by the rolling workflow of its repository, and the update says what came of it. A file whose attestation does not
+  verify is never run. One that could not be checked (a build from before attestations, no network, not signed in) is
+  installed on its sums, with a note; `"update": { "require_attestation": true }` in `config.json` makes that a
+  refusal. The hub is the one checker that was installed before the release it checks, which is why this check sits
+  here and not only in the install script that comes with the release.
 - **On the workstation** (`NVIM_MACHINE_ROLE=workstation`) the hub installs no program, and neither does it when the
   role is unclear (another value, or an unset one on a managed machine): the clones are still pulled. The role is
   read when the hub starts.

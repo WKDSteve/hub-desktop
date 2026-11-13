@@ -11,8 +11,12 @@
 //! - **Native build** (an app with a release): only on the private machine ([`Role::installs`]). `gh`
 //!   downloads `install.ps1`, `SHA256SUMS` and the file of the catalog from the rolling build `latest` (the
 //!   channel the update badge compares with; `gh` brings its own sign-in for a private repository). The hub
-//!   checks the script and the file against `SHA256SUMS` and runs nothing that does not match; the script
-//!   checks the file again and installs it. An app of the kit stops, replaces and restarts itself in its
+//!   checks the script and the file against `SHA256SUMS` and runs nothing that does not match. Then `gh
+//!   attestation verify` says whether the file was built by the rolling workflow of its repository
+//!   ([`verdict`]): a file whose attestation does not verify is never run; one that could not be checked (a
+//!   build from before attestations, no network, not signed in) is installed with a note, unless
+//!   [`UpdateConfig::require_attestation`] says otherwise. The hub is the one checker that was installed before
+//!   the release it checks; it writes no Sigstore of its own. The script checks the file again and installs it. An app of the kit stops, replaces and restarts itself in its
 //!   `install` (a copy beside, then a move: a failure leaves the old program); a program that serves a page
 //!   (ai-desktop) and runs is refused, the hub cannot stop it.
 //!
@@ -40,6 +44,45 @@ pub const MAX_LINE: usize = 300;
 
 /// A `SHA256SUMS` is a few lines; a larger one is no list of sums.
 const MAX_SUMS: u64 = 64 * 1024;
+
+/// The workflow that builds and attests the rolling build `latest` (appkit `release-kit`), below
+/// `<owner>/<repo>/.github/workflows/`.
+pub const ROLLING_WORKFLOW: &str = "rolling.yml";
+
+/// What `gh attestation verify` came to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    /// The file was built by the workflow of its repository.
+    Attested,
+    /// `gh` says the attestation is wrong: the file is not what that workflow built.
+    Wrong,
+    /// It could not be checked (no attestation, no network, not signed in, out of time): the line that says
+    /// why, if there is one.
+    NotChecked(Option<String>),
+}
+
+/// The verdict of a run of `gh attestation verify`. Only what `gh` itself calls a failed verification is
+/// [`Verdict::Wrong`], as in the install scripts of the release kit: anything else is no "no".
+#[must_use]
+pub fn verdict(ran: &Ran) -> Verdict {
+    if ran.ok() {
+        return Verdict::Attested;
+    }
+    let said = ran.lines.join("\n").to_lowercase();
+    let wrong = [
+        "verification failed",
+        "mismatch",
+        "does not match",
+        "doesn't match",
+    ]
+    .iter()
+    .any(|sign| said.contains(sign));
+    if wrong && ran.code.is_some() {
+        Verdict::Wrong
+    } else {
+        Verdict::NotChecked(ran.lines.iter().find(|l| !l.trim().is_empty()).cloned())
+    }
+}
 
 /// The script of a release (appkit `release-kit`), and the list of its sums.
 pub const INSTALL_SCRIPT: &str = "install.ps1";
@@ -368,6 +411,11 @@ pub struct UpdateConfig {
     pub work: Option<PathBuf>,
     /// How long one step may take: a download, a pull, an install.
     pub step_timeout: Duration,
+    /// How long the check of an attestation may take; out of time is "not checked".
+    pub attest_timeout: Duration,
+    /// A build whose attestation could not be checked is not installed (`update.require_attestation` in
+    /// `config.json`; off: it is installed with a note).
+    pub require_attestation: bool,
 }
 
 impl UpdateConfig {
@@ -378,7 +426,16 @@ impl UpdateConfig {
             tools,
             work,
             step_timeout: Duration::from_secs(600),
+            attest_timeout: Duration::from_secs(60),
+            require_attestation: false,
         }
+    }
+
+    /// With `update.require_attestation` of `config.json`.
+    #[must_use]
+    pub fn requiring_attestation(mut self, require: bool) -> Self {
+        self.require_attestation = require;
+        self
     }
 
     /// Nothing can be updated: no programs, no folder, not the private machine.
@@ -521,6 +578,9 @@ pub struct JobView {
     pub lines: Vec<String>,
     /// The page of the web variant changed: an open one should be reloaded.
     pub reload: bool,
+    /// What the check of the attestation of the native build came to: `attested`, `not_checked` or `failed`;
+    /// none: it did not get that far, or there is no native part.
+    pub attestation: Option<&'static str>,
 }
 
 impl JobView {
@@ -531,6 +591,7 @@ impl JobView {
             parts: Vec::new(),
             lines: Vec::new(),
             reload: false,
+            attestation: None,
         }
     }
 
@@ -782,10 +843,20 @@ impl Updater {
 
     /// Run one step, its lines into the job. `Err`: it could not be started (said in the lines).
     async fn step(&self, id: &'static str, word: &'static str, step: Step) -> Result<Ran, ()> {
+        self.step_in(id, word, step, self.cfg.step_timeout).await
+    }
+
+    /// As [`Self::step`], with the time the step may take.
+    async fn step_in(
+        &self,
+        id: &'static str,
+        word: &'static str,
+        step: Step,
+        timeout: Duration,
+    ) -> Result<Ran, ()> {
         self.change(id, |job| job.step = Some(word));
         self.say(id, step.shown());
         let runner = Arc::clone(&self.runner);
-        let timeout = self.cfg.step_timeout;
         let (send, mut said) = tokio::sync::mpsc::unbounded_channel::<String>();
         let running = tokio::task::spawn_blocking(move || {
             runner.run_lines(&step, timeout, &|line| {
@@ -970,6 +1041,9 @@ impl Updater {
         }
         let script = dir.join(INSTALL_SCRIPT);
         let build = dir.join(file);
+        if let Err(code) = self.attest(id, &gh, &repo, &build, &dir).await {
+            return Outcome::Failed(code);
+        }
         let sums = dir.join(SUMS_FILE);
         let install = Step::new(
             &powershell,
@@ -991,6 +1065,76 @@ impl Updater {
             Ok(ran) if ran.ok() => Outcome::Installed,
             _ => Outcome::Failed("install_failed"),
         }
+    }
+}
+
+impl Updater {
+    /// Ask `gh` whether `build` was built by the rolling workflow of `repo`, and say what came of it in the job.
+    /// `Err`: the code of why nothing is installed.
+    async fn attest(
+        &self,
+        id: &'static str,
+        gh: &Path,
+        repo: &str,
+        build: &Path,
+        dir: &Path,
+    ) -> Result<(), &'static str> {
+        let workflow = format!("{repo}/.github/workflows/{ROLLING_WORKFLOW}");
+        let verify = Step::new(
+            gh,
+            &[
+                "attestation".as_ref(),
+                "verify".as_ref(),
+                build.as_os_str(),
+                "-R".as_ref(),
+                repo.as_ref(),
+                "--signer-workflow".as_ref(),
+                workflow.as_ref(),
+            ],
+            dir,
+        );
+        let name = build
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let found = match self
+            .step_in(id, "attesting", verify, self.cfg.attest_timeout)
+            .await
+        {
+            Ok(ran) => verdict(&ran),
+            Err(()) => Verdict::NotChecked(None),
+        };
+        let (word, result) = match found {
+            Verdict::Attested => {
+                self.say(id, format!("{name}: attested, built by {workflow}."));
+                ("attested", Ok(()))
+            }
+            Verdict::Wrong => {
+                self.say(
+                    id,
+                    format!("{name}: its attestation does not verify: nothing is run."),
+                );
+                ("failed", Err("attestation_failed"))
+            }
+            Verdict::NotChecked(_) if self.cfg.require_attestation => {
+                self.say(
+                    id,
+                    format!(
+                        "{name}: its attestation could not be checked, and update.require_attestation is set: nothing is run."
+                    ),
+                );
+                ("not_checked", Err("attestation_required"))
+            }
+            Verdict::NotChecked(_) => {
+                self.say(
+                    id,
+                    format!("{name}: its attestation could not be checked (see above); installing on its sums."),
+                );
+                ("not_checked", Ok(()))
+            }
+        };
+        self.change(id, |job| job.attestation = Some(word));
+        result
     }
 }
 
@@ -1037,6 +1181,48 @@ mod tests {
         assert_eq!(
             clean_line("é".repeat(400).as_bytes()).chars().count(),
             MAX_LINE
+        );
+    }
+
+    #[test]
+    fn only_what_gh_calls_a_failed_verification_is_a_wrong_attestation() {
+        let ran = |code: Option<i32>, lines: &[&str]| Ran {
+            code,
+            lines: lines.iter().map(|l| (*l).to_owned()).collect(),
+        };
+        assert_eq!(
+            verdict(&ran(Some(0), &["Verification succeeded!"])),
+            Verdict::Attested
+        );
+        for said in [
+            "Error: verification failed: no matching predicate",
+            "x signer workflow MISMATCH",
+            "the digest does not match",
+            "the subject doesn't match",
+        ] {
+            assert_eq!(
+                verdict(&ran(Some(1), &["Loaded digest", said])),
+                Verdict::Wrong,
+                "{said}"
+            );
+        }
+        // Not a "no": no attestation yet, no network, not signed in.
+        for said in [
+            "HTTP 404: Not Found (no attestations found)",
+            "error connecting to api.github.com",
+            "To get started with GitHub CLI, please run: gh auth login",
+        ] {
+            assert_eq!(
+                verdict(&ran(Some(1), &["", said])),
+                Verdict::NotChecked(Some(said.to_owned())),
+                "{said}"
+            );
+        }
+        assert_eq!(verdict(&ran(Some(1), &[])), Verdict::NotChecked(None));
+        // Out of time is not a verdict of gh, whatever it had printed by then.
+        assert_eq!(
+            verdict(&ran(None, &["verification failed"])),
+            Verdict::NotChecked(Some("verification failed".to_owned()))
         );
     }
 

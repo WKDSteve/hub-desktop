@@ -27,6 +27,25 @@ pub struct HubSettings {
     /// What a person chose for a tile, by the id of the app of the catalog.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tiles: BTreeMap<String, TileSettings>,
+    /// What an update insists on.
+    #[serde(default, skip_serializing_if = "UpdateSettings::is_default")]
+    pub update: UpdateSettings,
+}
+
+/// The choices for updates (`update` in `config.json`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateSettings {
+    /// A native build whose attestation could not be checked (`gh attestation verify`) is not installed. Off:
+    /// it is installed on its `SHA256SUMS`, with a note. A build whose attestation is wrong is never installed.
+    #[serde(default)]
+    pub require_attestation: bool,
+}
+
+impl UpdateSettings {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// The choices for one tile. Only the mode a click opens: nothing that names a program.

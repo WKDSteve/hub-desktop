@@ -3,14 +3,14 @@
   // printed (as text, never markup). The web hub runs nothing: it shows the lines to type in the folder of the
   // clones instead.
   import type { HubApp, UpdateInfo } from './lib/api';
-  import { jobLabel, partText, webUpdateLines } from './lib/updating';
+  import { attestationText, jobLabel, partText, webUpdateLines } from './lib/updating';
 
   let { apps, updates, web }: { apps: HubApp[]; updates: Record<string, UpdateInfo>; web: boolean } = $props();
 
   const jobs = $derived(
     apps.flatMap((a) => {
       const job = updates[a.id]?.job;
-      return job ? [{ app: a, job, label: jobLabel(job) }] : [];
+      return job ? [{ app: a, job, label: jobLabel(job), attestation: attestationText(job) }] : [];
     }),
   );
   const typed = $derived(
@@ -25,7 +25,7 @@
   <section class="updates" aria-labelledby="updates-heading">
     <h2 id="updates-heading">Updates</h2>
     <ul>
-      {#each jobs as { app, job, label } (app.id)}
+      {#each jobs as { app, job, label, attestation } (app.id)}
         <li>
           <span class="name">{app.name}</span>
           <span class="state {label.kind}" role={label.kind === 'active' ? 'status' : undefined}>{label.text}</span>
@@ -33,6 +33,9 @@
             <ul class="parts">
               {#each job.parts as part (part.part)}<li>{partText(part)}</li>{/each}
             </ul>
+          {/if}
+          {#if attestation}
+            <p class="attestation" data-attestation={job.attestation}>{attestation}</p>
           {/if}
           {#if job.lines.length > 0}
             <details>
@@ -90,6 +93,11 @@
   }
   .note {
     color: var(--muted);
+  }
+  .attestation {
+    margin: 0.25rem 0 0;
+    color: var(--muted);
+    font-size: 0.9em;
   }
   pre {
     margin: 0.35rem 0 0;

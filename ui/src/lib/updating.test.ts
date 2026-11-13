@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { Hub, type HubApp, type UpdateInfo, type UpdateJob } from './api';
 import { App, type Clock, type TokenStore } from './app.svelte';
-import { active, jobLabel, partText, reasonText, roundText, updatable, webUpdateLines, whyNot } from './updating';
+import {
+  active,
+  attestationText,
+  jobLabel,
+  partText,
+  reasonText,
+  roundText,
+  updatable,
+  webUpdateLines,
+  whyNot,
+} from './updating';
 
 const job = (over: Partial<UpdateJob>): UpdateJob => ({
   state: 'done',
@@ -132,6 +142,36 @@ async function until(check: () => boolean): Promise<void> {
   for (let i = 0; i < 200 && !check(); i++) await new Promise((r) => setTimeout(r, 0));
   expect(check()).toBe(true);
 }
+
+describe('the words of an attestation', () => {
+  const job = (attestation?: string | null): UpdateJob => ({
+    state: 'done',
+    step: null,
+    parts: [],
+    lines: [],
+    reload: false,
+    ...(attestation === undefined ? {} : { attestation }),
+  });
+
+  it('says each of the three results, and nothing when the job did not get that far', () => {
+    expect(attestationText(job('attested'))).toMatch(/^Attestation: verified/);
+    expect(attestationText(job('not_checked'))).toMatch(/^Attestation: not checked/);
+    expect(attestationText(job('failed'))).toMatch(/^Attestation: does not verify, nothing was installed/);
+    expect(attestationText(job(null))).toBeNull();
+    // An older hub does not send the field at all.
+    expect(attestationText(job())).toBeNull();
+  });
+
+  it('shows a word it does not know as it is', () => {
+    expect(attestationText(job('checked_offline'))).toBe('Attestation: checked offline');
+  });
+
+  it('words the two codes that stop an install, and the step', () => {
+    expect(reasonText('attestation_failed')).toContain('does not verify');
+    expect(reasonText('attestation_required')).toContain('update.require_attestation');
+    expect(jobLabel({ ...job(), state: 'running', step: 'attesting' }).text).toBe('Checking the attestation…');
+  });
+});
 
 describe('App and updates', () => {
   it('updates one app, follows it until it is done and says what came of it', async () => {

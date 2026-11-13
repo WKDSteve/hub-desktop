@@ -72,6 +72,11 @@ export interface UpdateJob {
   lines: string[];
   /** The page of the web variant changed: an open one should be reloaded. */
   reload: boolean;
+  /**
+   * What the check of the attestation of the program came to (`attested`, `not_checked`, `failed`); `null` or
+   * missing (an older hub): it did not get that far.
+   */
+  attestation?: string | null;
 }
 
 /** What can be updated of an app on this machine: `ready`, the code of why not, or `null` (that part is not installed). */
