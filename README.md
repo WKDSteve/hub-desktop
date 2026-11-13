@@ -2,6 +2,8 @@
 
 # hub-desktop
 
+[![wkd](https://img.shields.io/badge/wkd-family-c6ff3d)](https://wkdsteve.github.io/wkd/apps/hub-desktop/)
+
 One place to start every `*-desktop` and `*-web` app: a local hub that shows each app as a tile and
 opens it as a native app or as a web app with a single click.
 
