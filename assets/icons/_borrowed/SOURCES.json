@@ -1,61 +1,61 @@
 {
   "icons": {
     "ai-desktop": {
-      "commit": "4f5d8a77320f6b8f03159636fa8e6887856b74cc",
+      "commit": "b82b406ad2f6884f1607ad2570d465542a4f3df6",
       "path": "assets/icons/ai-desktop/ai-desktop-small.svg",
       "repo": "WKDSteve/ai-desktop",
       "sha256": "31414a78fae894343518d4be48908f83452edf2df20650c22e416daf4fbab03f"
     },
     "docmap-desktop": {
-      "commit": "6f8480e7fe89bdf5f2417dba22f4a9e7784d249e",
+      "commit": "764b6b8178326b2fe75bd23ced92a730417ee7ee",
       "path": "assets/icons/docmap-desktop/docmap-desktop-small.svg",
       "repo": "WKDSteve/docmap-desktop",
-      "sha256": "884558f4209931ab09cf9600164734884983061f94f7031d74806d4ce7e06559"
+      "sha256": "6beec625c069e77216a25c32099a0c12b9794ffa93c2ad3b56f09217ece695a3"
     },
     "pult": {
-      "commit": "553123783e3f5fac424cebac855d868da5609251",
+      "commit": "839a3265356caf5cc5784ee557f05ee70d3cc706",
       "path": "assets/icons/pult/pult-small.svg",
       "repo": "WKDSteve/pult",
       "sha256": "eac5f5aa1339a43240c835ad0176bf579376e11c79b00494c11c12b8be607a75"
     },
     "rules-desktop": {
-      "commit": "37e6e0de58291ef3db165af5fccaca798637cbb1",
+      "commit": "abe7371414e0c251031329201c9b67cf1dc9fe70",
       "path": "assets/icons/rules-desktop/rules-desktop-small.svg",
       "repo": "WKDSteve/rules-desktop",
       "sha256": "6ef053991a8d128aa38cb0e209cc077b253b3a3e7b9ef52e58d16c17fc3379c1"
     },
     "streamtap": {
-      "commit": "a10628d0e95883e4399201d4fc5daa459734ef07",
+      "commit": "1dcf4e56d16bf1e26e0f994430fc65775980dbc2",
       "path": "assets/icons/streamtap/streamtap-small.svg",
       "repo": "WKDSteve/streamtap",
       "sha256": "67cda79248d631d060c184475b957cccbe95da0ee8648126658fc50b99c9139e"
     },
     "takt": {
-      "commit": "055cb7c9a6f7753b21d0ba90b0800b4e9500ad4e",
+      "commit": "0629a87d3edc7930430bc0e408de3d6a5d4f318d",
       "path": "assets/icons/takt/takt-small.svg",
       "repo": "WKDSteve/takt",
       "sha256": "d3f6025545ab736f8837a0ba3fcfb0cf18c6a542e4fbb111c67f01fc8a838fc4"
     },
     "tasks-desktop": {
-      "commit": "739041561c29fb36aa3e4141c601919061f375b9",
+      "commit": "6fb85c05d820fd535dc1e76ad93e83022d039334",
       "path": "assets/icons/tasks-desktop/tasks-desktop-small.svg",
       "repo": "WKDSteve/tasks-desktop",
       "sha256": "486e75025b31c613a6f67b3d4063b00b4705b1c5a91e2966eb55a007ad59926a"
     },
     "tasks-web": {
-      "commit": "739041561c29fb36aa3e4141c601919061f375b9",
+      "commit": "6fb85c05d820fd535dc1e76ad93e83022d039334",
       "path": "assets/icons/tasks-web/tasks-web-small.svg",
       "repo": "WKDSteve/tasks-desktop",
       "sha256": "673547411af71fbabca63fe9e3c2f3a39566187ed77e162c4a5cedf63be32c1c"
     },
     "testing-desktop": {
-      "commit": "376c4e0a732426c18e93fdf0861d07f5e3400899",
+      "commit": "7b87ecf6db0b2e082d5d4893991d63dd1a0a0340",
       "path": "assets/icons/testing-desktop/testing-desktop-small.svg",
       "repo": "WKDSteve/testing-desktop",
       "sha256": "ff13dc9c8585cca639fda3c2f18d6a73174c6f21f9d5232833440d8e244bdd98"
     },
     "testing-web": {
-      "commit": "376c4e0a732426c18e93fdf0861d07f5e3400899",
+      "commit": "7b87ecf6db0b2e082d5d4893991d63dd1a0a0340",
       "path": "assets/icons/testing-web/testing-web-small.svg",
       "repo": "WKDSteve/testing-desktop",
       "sha256": "8d983c4234c1ad0bfa096ce120f6385a4db5d3054187e422525971cdbd969220"
