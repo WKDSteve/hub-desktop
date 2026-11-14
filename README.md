@@ -16,8 +16,10 @@ opens it as a native app or as a web app with a single click.
 In your own PowerShell (not elevated; no administrator rights, no SmartScreen stop):
 
 ```
-powershell -ExecutionPolicy Bypass -c "& ([scriptblock]::Create((irm https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.ps1))) -InstallArgs '--shortcut'"
+& ([scriptblock]::Create((irm https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.ps1))) -InstallArgs '--shortcut'
 ```
+
+Type the line into the PowerShell session as it is. Wrapped in a new `powershell -ExecutionPolicy Bypass -c "..."`, Microsoft Defender reports the command line as a trojan (`Trojan:Win32/Commando.B!ml`) and nothing is installed.
 
 Every file of a release and of the rolling build is attested by the workflow that built it. With the GitHub CLI
 installed, the install script checks that itself; by hand:

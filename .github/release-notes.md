@@ -7,8 +7,10 @@ downloads the archive, checks it against `SHA256SUMS` and hands over to `hub-des
 needed: run it in your own terminal (PowerShell not elevated):
 
 ```
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/WKDSteve/hub-desktop/releases/download/{tag}/install.ps1 | iex"
+irm https://github.com/WKDSteve/hub-desktop/releases/download/{tag}/install.ps1 | iex
 ```
+
+Type the line into the PowerShell session as it is. Wrapped in a new `powershell -ExecutionPolicy Bypass -c "..."`, Microsoft Defender reports the command line as a trojan (`Trojan:Win32/Commando.B!ml`) and nothing is installed.
 
 Or save `install.ps1` from this page and run `powershell -ExecutionPolicy Bypass -File .\install.ps1` (a plain
 `.\install.ps1` is blocked: by the execution policy, or by the mark a browser puts on a downloaded file).

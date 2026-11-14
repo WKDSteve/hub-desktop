@@ -5,8 +5,10 @@
 **Install it with the script** (for the current user, no administrator rights, and no SmartScreen stop: the script downloads the program itself and checks it against `SHA256SUMS`). In your own PowerShell (not elevated):
 
 ```
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.ps1 | iex"
+irm https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.ps1 | iex
 ```
+
+Type the line into the PowerShell session as it is. Wrapped in a new `powershell -ExecutionPolicy Bypass -c "..."`, Microsoft Defender reports the command line as a trojan (`Trojan:Win32/Commando.B!ml`) and nothing is installed.
 
 Or save `install.ps1` from this page and run `powershell -ExecutionPolicy Bypass -File .\install.ps1` (a plain `.\install.ps1` is blocked: by the execution policy, or by the mark a browser puts on a downloaded file). To add a link on the desktop, run it as a script block in a PowerShell session instead: `& ([scriptblock]::Create((irm https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.ps1))) -InstallArgs '--shortcut'`.
 
