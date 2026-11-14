@@ -155,6 +155,8 @@ sentence, without its path.
 - [streamtap](https://github.com/WKDSteve/streamtap): hub-desktop shows streamtap as a tile; it is a program with a window of its own. ([picture](assets/graphs/pair/hub-desktop--streamtap.png))
 - [takt](https://github.com/WKDSteve/takt): hub-desktop lists takt as a tile. ([picture](assets/graphs/pair/hub-desktop--takt.png))
 - [tasks-desktop](https://github.com/WKDSteve/tasks-desktop): hub-desktop shows tasks-desktop as a tile and starts it, native or as a web app. ([picture](assets/graphs/pair/hub-desktop--tasks-desktop.png))
+- [tasks-web](https://github.com/WKDSteve/tasks-web): The hub opens the web form of tasks from a local clone of tasks-web, served on 127.0.0.1, and pulls the clone to keep it current. ([picture](assets/graphs/pair/hub-desktop--tasks-web.png))
 - [testing-desktop](https://github.com/WKDSteve/testing-desktop): hub-desktop shows testing-desktop as a tile and starts it, native or as a web app. ([picture](assets/graphs/pair/hub-desktop--testing-desktop.png))
+- [testing-web](https://github.com/WKDSteve/testing-web): The hub opens the web form of testing from a local clone of testing-web, served on 127.0.0.1, and pulls the clone to keep it current. ([picture](assets/graphs/pair/hub-desktop--testing-web.png))
 - [testing.nvim](https://github.com/WKDSteve/testing.nvim): The monitor of hub-desktop shows a light per repository, read from an export folder of testing.nvim (`testing-export/1`). ([picture](assets/graphs/pair/hub-desktop--testing.nvim.png))
 <!-- connections:end -->
