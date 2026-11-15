@@ -142,12 +142,23 @@ fn a_click_runs_the_hub_and_a_second_click_opens_on_it_instead_of_starting_anoth
         "{again:?}"
     );
 
-    // `stop` ends it and takes its files away.
+    // `stop` ends it and takes its files away. It asks over the control route and the hub ends itself:
+    // the kit would end a hub that does not listen the hard way, after 10 s, and leave its files.
+    let asked = Instant::now();
     let stopped = run(config, port, &["stop"]);
     assert!(stopped.status.success(), "{stopped:?}");
     wait_for("the hub to end", || {
         first.child.try_wait().unwrap().is_some()
     });
+    assert!(
+        asked.elapsed() < Duration::from_secs(8),
+        "the hub ended only after {:?}: it did not listen to stop",
+        asked.elapsed()
+    );
+    assert!(
+        first.child.try_wait().unwrap().is_some_and(|s| s.success()),
+        "the hub ended itself"
+    );
     assert!(!config.join("hub.json").exists());
 }
 

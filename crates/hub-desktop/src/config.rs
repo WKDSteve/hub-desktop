@@ -30,6 +30,11 @@ pub struct HubSettings {
     /// What an update insists on.
     #[serde(default, skip_serializing_if = "UpdateSettings::is_default")]
     pub update: UpdateSettings,
+    /// The apps of the kit whose hub hub-desktop starts in the background when it starts with its icon
+    /// in the notification area (`tray`: the login, a link, a double click), by the id of the catalog.
+    /// `autostart on` fills it with the apps that had a login entry of their own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub start_with_hub: Vec<String>,
 }
 
 /// The choices for updates (`update` in `config.json`).
@@ -95,6 +100,16 @@ impl AppSettings for HubSettings {
                 "testing_export: {} is not an absolute folder of this machine",
                 dir.display()
             ));
+        }
+        for (i, id) in self.start_with_hub.iter().enumerate() {
+            if !crate::catalog::find(id).is_some_and(crate::catalog::Entry::is_kit_hub) {
+                return Err(format!(
+                    "start_with_hub: {id:?} is not an app of the catalog with a hub of the kit"
+                ));
+            }
+            if self.start_with_hub[..i].contains(id) {
+                return Err(format!("start_with_hub: {id:?} is named twice"));
+            }
         }
         for (id, tile) in &self.tiles {
             if crate::catalog::find(id).is_none() {
@@ -210,6 +225,22 @@ mod tests {
     fn tiles(json: &str) -> Result<HubSettings, String> {
         let cfg: FileConfig = serde_json::from_str(json).map_err(|e| e.to_string())?;
         cfg.app.validate().map(|()| cfg.app)
+    }
+
+    #[test]
+    fn the_hubs_started_with_hub_desktop_are_apps_of_the_kit_named_once() {
+        let ok = tiles(r#"{"start_with_hub":["tasks","rules"]}"#).unwrap();
+        assert_eq!(ok.start_with_hub, ["tasks", "rules"]);
+        for bad in [
+            r#"{"start_with_hub":["nope"]}"#,
+            r#"{"start_with_hub":["docmap"]}"#,
+            r#"{"start_with_hub":["ai"]}"#,
+            r#"{"start_with_hub":["tasks","tasks"]}"#,
+            r#"{"start_with_hub":"tasks"}"#,
+            r#"{"start_with_hub":[{"program":"C:/x.exe"}]}"#,
+        ] {
+            assert!(tiles(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

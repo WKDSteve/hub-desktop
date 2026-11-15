@@ -80,12 +80,36 @@ async fn wait_for_stop() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
-/// Run the server until Ctrl-C.
+/// What the hub hands to the icon in the notification area once it serves.
+#[derive(Clone)]
+pub struct Ready {
+    pub port: u16,
+    pub detector: Arc<Detector>,
+    pub launcher: Arc<Launcher>,
+    /// The apps whose hub starts with hub-desktop (`start_with_hub` of `config.json`).
+    pub start_with_hub: Vec<String>,
+}
+
+/// Run the server until Ctrl-C, or until `<program> stop` asks it to end.
 ///
 /// # Errors
 ///
 /// A text for the person at the terminal: what is missing or in the way.
 pub async fn serve(opts: ServeOptions) -> Result<(), String> {
+    serve_until(opts, wait_for_stop(), |_| {}).await
+}
+
+/// Run the server until `stop` resolves or `<program> stop` asks it to end (the control route); `ready`
+/// is called once, when it serves and `hub.json` names it.
+///
+/// # Errors
+///
+/// A text for the person at the terminal: what is missing or in the way.
+pub async fn serve_until(
+    opts: ServeOptions,
+    stop: impl std::future::Future<Output = ()>,
+    ready: impl FnOnce(Ready),
+) -> Result<(), String> {
     let env = Env::from_process();
     let dir = app_dir(&env)?;
     let file = config::load_file(&dir).map_err(|e| e.to_string())?;
@@ -229,7 +253,18 @@ pub async fn serve(opts: ServeOptions) -> Result<(), String> {
         }
     }
 
-    wait_for_stop().await;
+    ready(Ready {
+        port,
+        detector: Arc::clone(&detector),
+        launcher: Arc::clone(&launcher),
+        start_with_hub: file.app.start_with_hub.clone(),
+    });
+    let presence = running.presence();
+    tokio::select! {
+        () = stop => {}
+        // `<program> stop` asks over the control route first; without this it ends the hub the hard way.
+        () = presence.asked_to_end() => {}
+    }
     registry::remove_record(&dir);
     registry::remove_secret(&dir);
     running.shutdown().await;

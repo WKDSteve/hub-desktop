@@ -1,13 +1,14 @@
 //! The hub as a program on the machine (`start`, `stop`, `install`, `uninstall`): the work is the
-//! kit's, this module states what is the hub's own. There is no `autostart`: the hub is started by
-//! a person (a link, a double click), not with the login.
+//! kit's, this module states what is the hub's own. On Windows `start` runs the hub with its icon in
+//! the notification area (`tray`), as a window program that shows itself, not as a process without a
+//! window; `autostart` is in `login.rs`.
 
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 
-use appkit_hub::background::Background;
 pub use appkit_hub::background::{run_command, start_from, InstallOptions, UninstallOptions};
+use appkit_hub::background::{Background, Program};
 use appkit_hub::background::{LinkName, LinkStart};
 
 use crate::config::Env;
@@ -26,7 +27,26 @@ pub(crate) const APP: Background<'static> = Background {
 ///
 /// A text for the person at the terminal.
 pub async fn start() -> Result<String, String> {
-    appkit_hub::background::start(&APP).await
+    match background_verb() {
+        Some((verb, program)) => appkit_hub::background::start_as(&APP, verb, program).await,
+        None => appkit_hub::background::start(&APP).await,
+    }
+}
+
+/// What `start` runs in the background: on Windows the hub with its icon (`tray`), as the window program
+/// the release build is (a debug build is a console program and gets a console without a window, as
+/// every hub of the kit); elsewhere `serve`, as the kit does (`None`).
+#[must_use]
+pub fn background_verb() -> Option<(&'static str, Program)> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let program = if cfg!(debug_assertions) {
+        Program::Console
+    } else {
+        Program::Window
+    };
+    Some(("tray", program))
 }
 
 /// Stop the hub that runs (the one `hub.json` names and that answers as it).
@@ -86,6 +106,17 @@ mod tests {
         assert_eq!(opts.link_name, super::LinkName::App);
         assert_eq!(opts.link_start, super::LinkStart::AsClicked);
         assert!(!super::install_options(false).shortcut);
+    }
+
+    #[test]
+    fn on_windows_the_hub_in_the_background_is_the_tray_and_the_release_hides_nothing() {
+        let want = if cfg!(debug_assertions) {
+            Program::Console
+        } else {
+            Program::Window
+        };
+        let expected = cfg!(windows).then_some(("tray", want));
+        assert_eq!(background_verb(), expected);
     }
 
     /// `uninstall --purge-settings` removes the files of the kit and nothing else: the hub names

@@ -10,6 +10,7 @@ pub mod catalog;
 pub mod config;
 pub mod detect;
 pub mod launch;
+pub mod login;
 pub mod machine;
 pub mod monitor;
 pub mod overlay;
@@ -18,6 +19,9 @@ pub mod prefs;
 pub mod probe;
 pub mod server;
 pub mod sums;
+#[cfg(windows)]
+pub mod tray;
+pub mod traymenu;
 pub mod ui;
 pub mod update;
 pub mod webcatalog;

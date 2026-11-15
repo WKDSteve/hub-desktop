@@ -312,6 +312,24 @@ impl Detector {
         state
     }
 
+    /// The installed apps of the kit that the person did not hide, in the order of the catalog, looked at
+    /// now: the program and whether its hub answers, without the login entries (no program is run, so
+    /// it may be asked often: the icon in the notification area does) and without touching the cache.
+    pub async fn kit_hubs(&self) -> Vec<AppState> {
+        let roots = web_roots(self.web_root.as_deref(), &self.env);
+        let mut found = Vec::new();
+        for entry in CATALOG
+            .iter()
+            .filter(|e| e.is_kit_hub() && !self.overlay.hides(e.id))
+        {
+            let state = detect(entry, &self.env, &roots, no_autostart).await;
+            if state.native.is_some() {
+                found.push(state);
+            }
+        }
+        found
+    }
+
     /// One app, from the same look.
     pub async fn app(&self, id: &str) -> Option<AppState> {
         self.apps().await.iter().find(|a| a.entry.id == id).cloned()

@@ -99,6 +99,25 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 - `ui/src/lib/icons.ts` wählt die Variante nach dem, was die Kachel öffnet. Vite macht daraus eine Datei (Hub, CSP
   `img-src 'self'`) oder eine `data:`-URL (`hub.html`, CSP `img-src data:`).
 
+## Tray und Autostart (M7)
+
+- `tray.rs` (nur Windows): `hub-desktop tray` = `app::serve_until` auf der tokio-Runtime + Icon (`tray-icon`, ohne
+  WebView) und die Nachrichtenschleife (`winit`) auf dem Hauptthread; `main` baut die Runtime darum selbst. Menü und
+  Ids in `traymenu.rs` (plattformneutral, getestet): "Open hub", je installiertem Kit-Hub Zustand + Open/Stop über den
+  `Launcher`, "Quit hub". Der Zustand kommt aus `Detector::kit_hubs` (alle 5 s, ohne `reg.exe`, Cache unberührt),
+  nie aus `apps()`. Das Icon ist die Gruppe 1 aus `assets/hub-desktop.res`; fehlt der Infobereich, 15 Versuche im
+  Abstand von 2 s, dann endet der Hub.
+- `start` (und der Doppelklick des Release-Builds) startet `tray` über appkit `start_as(.., "tray", Program::Window)`:
+  kein `CREATE_NO_WINDOW`, eigene Prozessgruppe, `hub.log`. Debug-Build: `Program::Console`. Andere Systeme: `serve`.
+- `serve_until` endet auch auf `<program> stop` (Control-Route, `presence().asked_to_end()`); Test in `tests/cli.rs`.
+- `login.rs`: `autostart on|off|status` gegen `LoginEntries` (Programm `SystemLogin` über appkit, Tests ein Fake, nie die
+  echte Registry). `on`: eigener Run-Wert, dann `start_with_hub` in `config.json`, dann die Run-Werte von
+  `TAKES_OVER` (tasks, rules, testing; nicht pult) entfernen. `off` gibt nichts zurück.
+- `start_with_hub`: nur Kit-Hubs, je einmal; der Tray startet sie mit `Request::Background` (argv `["start"]`, keine
+  Seite, nicht bei `setup`).
+- Ein Kit-Hub, der noch ein Konsolenprogramm ist, bekommt aus dem Tray (Fenster-Programm ohne Konsole) ein eigenes
+  Konsolenfenster: erst die Fenster-Programm-Builds der Apps (`hub-ist-fenster-programm-…`) machen das unsichtbar.
+
 ## Overlay und Stop (M2, Teil 1)
 
 - `overlay.rs`: `catalog-overlay.json` im Config-Ordner, Schema `hub-catalog/1`. Nur ausblenden, ordnen, `web_root`;

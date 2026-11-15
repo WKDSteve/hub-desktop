@@ -124,6 +124,23 @@ pub struct Entry {
     pub install: Install,
 }
 
+impl Entry {
+    /// The names of the app, when it is built on `appkit-hub` (it has a hub of the kit).
+    #[must_use]
+    pub fn kit_identity(&self) -> Option<&'static AppIdentity> {
+        match self.native {
+            Some(Native::AppKitHub { identity, .. }) => Some(identity),
+            _ => None,
+        }
+    }
+
+    /// Whether the app is built on `appkit-hub`: only such a hub is started in the background or stopped.
+    #[must_use]
+    pub fn is_kit_hub(&self) -> bool {
+        self.kit_identity().is_some()
+    }
+}
+
 /// The names of the apps that are built on `appkit-hub`, as the apps give them to themselves. They
 /// are on disk (the config folder, `hub.json`) and in the environment of the person: a rename on their
 /// side is a migration, and `tests/catalog.rs` holds these copies to what they say.

@@ -88,6 +88,10 @@ pub enum Request {
     Web,
     /// The first-start questions of an app: its program with no argument, in a console of its own.
     Setup,
+    /// The hub of an app of the kit in the background, without a page (`<program> start`): what
+    /// hub-desktop does for the apps of `start_with_hub` when it starts (the login). Nothing else
+    /// has this mode.
+    Background,
 }
 
 /// What came of it.
@@ -189,7 +193,7 @@ impl Launcher {
         let state = self.detector.look_one(entry).await;
         let mode = match ask {
             Request::Default => state.mode(),
-            Request::Native | Request::Setup => Mode::Native,
+            Request::Native | Request::Setup | Request::Background => Mode::Native,
             Request::Web => Mode::Web,
         };
         match mode {
@@ -300,6 +304,12 @@ impl Launcher {
                 if state.setup.is_some() {
                     return Ok(Outcome::SetupRequired);
                 }
+                if ask == Request::Background {
+                    // Its hub only: a page nobody asked for would open at every login.
+                    run(&["start"], Window::Default)?;
+                    self.wait_until_running(entry, flight);
+                    return Ok(Outcome::Started);
+                }
                 // One command for both cases: it starts the hub when it does not run and opens a paired page
                 // either way, so there is nothing to look at first (and nothing to race with).
                 run(&["start", "--open"], Window::Default)?;
@@ -307,6 +317,7 @@ impl Launcher {
                 Ok(Outcome::Started)
             }
             _ if ask == Request::Setup => Err(LaunchError::NotAvailable("setup")),
+            _ if ask == Request::Background => Err(LaunchError::NotAvailable("background")),
             Native::GuiExe { .. } => {
                 run(&[], Window::Default)?;
                 self.hold(flight, self.cfg.settle);

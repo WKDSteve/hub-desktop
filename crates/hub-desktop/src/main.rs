@@ -1,5 +1,6 @@
-//! `hub-desktop serve | start | open | stop | install | uninstall | --version`; without an argument (a
-//! double click, or the link that `install` makes) it starts the hub in the background and opens the browser.
+//! `hub-desktop serve | tray | start | open | stop | autostart | install | uninstall | --version`; without an
+//! argument (a double click, or the link that `install` makes) it starts the hub in the background (on Windows
+//! with its icon in the notification area) and opens the browser.
 //!
 //! The release build is a window program (appkit `docs/PROCESSES.md`, "A hub is a window program"): Windows
 //! opens no console window for the link or a double click, and from a terminal it attaches to the terminal's
@@ -7,6 +8,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use appkit_core::console::{self, Console};
+use appkit_hub::background::Autostart;
 use hub_desktop::app::{self, ServeOptions};
 use hub_desktop::background::{self, UninstallOptions};
 
@@ -16,9 +18,15 @@ const USAGE: &str = "usage:
                                            its own console window); a hub that runs already is not
                                            started twice, the browser opens on it
   hub-desktop serve [--port <1024-65535>]  run the hub until Ctrl-C
-  hub-desktop start [--open]               run the hub in the background (no window; log in the
-                                           config folder); --open also opens the browser
+  hub-desktop tray                         run the hub with its icon in the notification area
+                                           (Windows): open the page, open and stop the other hubs,
+                                           quit; it starts the hubs of start_with_hub in config.json
+  hub-desktop start [--open]               run the hub in the background (on Windows: tray; log in
+                                           the config folder); --open also opens the browser
   hub-desktop stop                         stop the hub that runs in the background
+  hub-desktop autostart on|off|status      start hub-desktop with your login; on takes over the
+                                           login entries of tasks, rules and testing (their hubs
+                                           then start with hub-desktop: start_with_hub)
   hub-desktop install [--shortcut]         copy this program to a fixed place (a build then does
                                            not fight the running hub for the file); the Start
                                            menu gets a link, --shortcut adds one
@@ -99,6 +107,20 @@ async fn run(args: Vec<String>, console: Console) -> Result<(), String> {
             background::uninstall(opts).await.map(|t| print!("{t}"))
         }
         Some("stop") if args.len() == 1 => background::stop().await.map(|t| print!("{t}")),
+        Some("autostart") if args.len() == 2 => {
+            let what = match args[1].as_str() {
+                "on" => Autostart::On,
+                "off" => Autostart::Off,
+                "status" => Autostart::Status,
+                _ => return Err(USAGE.to_owned()),
+            };
+            let dir = appkit_hub::instance::config_folder(
+                &hub_desktop::config::Env::from_process(),
+                &hub_desktop::IDENTITY,
+            )?;
+            hub_desktop::login::autostart(&dir, what, &hub_desktop::login::SystemLogin)
+                .map(|t| print!("{t}"))
+        }
         Some("open") if args.len() == 1 => app::open().await.map(|url| println!("{url}")),
         Some("open") if args.len() == 2 && args[1] == "--launch" => match app::open().await {
             Ok(url) => {
@@ -115,20 +137,49 @@ async fn run(args: Vec<String>, console: Console) -> Result<(), String> {
     }
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     // Before the first line is written.
     let console = console::attach_parent();
     console::report_panics("hub-desktop");
     let args: Vec<String> = std::env::args().skip(1).collect();
     let by_click = args.is_empty();
-    if let Err(message) = Box::pin(run(args, console)).await {
-        // stderr, or a message box when nobody reads it (the link of a window program).
-        console::report("hub-desktop", &message);
-        // In the console of a terminal the shell reads the same keys: only a console of its own waits.
-        if by_click && console == Console::Own {
-            wait_for_enter();
-        }
-        std::process::exit(1);
+    let rt = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => fail(&format!("no runtime: {e}"), false, console),
+    };
+    // The icon needs the main thread for the messages of the system; the hub runs on the runtime's.
+    let result = if args.len() == 1 && args[0] == "tray" {
+        tray(rt)
+    } else {
+        rt.block_on(Box::pin(run(args, console)))
+    };
+    if let Err(message) = result {
+        fail(&message, by_click, console);
     }
+}
+
+#[cfg(windows)]
+fn tray(rt: tokio::runtime::Runtime) -> Result<(), String> {
+    hub_desktop::tray::run(rt)
+}
+
+#[cfg(not(windows))]
+fn tray(_rt: tokio::runtime::Runtime) -> Result<(), String> {
+    Err(
+        "the icon in the notification area is built for Windows only: run `hub-desktop serve`"
+            .to_owned(),
+    )
+}
+
+fn fail(message: &str, by_click: bool, console: Console) -> ! {
+    // stderr, or a message box when nobody reads it (the link of a window program).
+    console::report("hub-desktop", message);
+    // In the console of a terminal the shell reads the same keys: only a console of its own waits.
+    if by_click && console == Console::Own {
+        wait_for_enter();
+    }
+    std::process::exit(1);
 }

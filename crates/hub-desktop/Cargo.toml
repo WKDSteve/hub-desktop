@@ -26,6 +26,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", default-features = false, features = ["sync", "rt", "rt-multi-thread", "net", "time", "macros", "io-util", "signal"] }
 
+# The icon in the notification area (`src/tray.rs`): the icon and its menu, and the loop of the system
+# messages they need, without a window and without a WebView. Windows only, as is the tray.
+[target.'cfg(windows)'.dependencies]
+tray-icon = { version = "0.26.1", default-features = false }
+winit = { version = "0.30.13", default-features = false }
+
 [dev-dependencies]
 appkit-scratch.workspace = true
 appkit-testkit.workspace = true

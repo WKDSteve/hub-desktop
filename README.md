@@ -59,7 +59,7 @@ needs none of the other apps to run.
 ```
 cd ui && pnpm install --frozen-lockfile && pnpm build && cd ..
 cargo build --release --locked
-target/release/hub-desktop            # starts the hub in the background and opens the browser
+target/release/hub-desktop            # starts the hub with its icon in the notification area and opens the browser
 ```
 
 The release build is a window program: the link and a double click open no console window, an error shows as a
@@ -68,6 +68,23 @@ does not wait for a window program, and `$LASTEXITCODE` is not the hub's); a scr
 inside a script, and when the output is captured). `hub-desktop serve` from a terminal ends when the terminal is
 closed; `start` puts the hub in the background with its log in the config folder (`hub.log`). A debug build
 (`cargo run`) stays a console program and runs the hub in its own window.
+
+## The icon in the notification area and the login
+
+On Windows the hub in the background (`start`, the link, a double click) is `hub-desktop tray`: the hub with an
+icon in the notification area, not a process without a window. A click on the icon opens the page; its menu has
+**Open hub**, one entry per installed app of the kit (Tasks, Rules, Testing, pult) with its state in words and
+**Open** / **Stop**, and **Quit hub** (the other hubs keep running). There is one icon for all of them: the other hubs
+show none.
+
+`hub-desktop autostart on` starts hub-desktop with your login, and with it the hubs you had set to start with the
+login: the login entries of tasks, rules and testing are taken over (each is named as it is moved) into
+`start_with_hub` of `config.json`, and their own entries are removed. hub-desktop then starts those hubs in the
+background (`<program> start`, no page) whenever it starts with its icon. Edit the list by hand to add or remove an
+app (`"start_with_hub": ["tasks", "rules"]`). `autostart off` removes the entry of hub-desktop and gives the apps none
+back (`<program> autostart on` of the app does); `autostart status` shows both. Without a page and without a paired
+phone, a hub of an app ends itself after ten minutes, as it always does when it was not started by its own login
+entry; set `keep_running` in that app's settings to keep it.
 
 `hub-desktop open --launch` opens a paired page for a hub that runs, `hub-desktop stop` ends it. Checks before a
 change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,

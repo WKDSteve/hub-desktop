@@ -86,6 +86,41 @@ async fn tasks_starts_as_its_own_hub_asks_with_start_open_in_its_own_folder() {
     );
 }
 
+/// The start with hub-desktop (the login): the hub of the app and no page.
+#[tokio::test]
+async fn a_hub_started_with_hub_desktop_gets_start_and_no_page() {
+    let machine = Machine::new("hub-launch-background");
+    let program = machine.tasks_program();
+    let (launcher, log) = launcher(&machine, vault_env(&machine), None, None);
+    assert_eq!(
+        launcher.launch("tasks", Request::Background).await,
+        Ok(Outcome::Started)
+    );
+    wait_for_starts(&program, 1);
+    assert_eq!(argv(&starts_of(&program)[0]), ["start"]);
+    assert!(opened(&log).is_empty());
+}
+
+/// Only an app of the kit has a hub to start in the background; an app that cannot be used yet is
+/// not started (its questions would open a console at the login).
+#[tokio::test]
+async fn only_a_hub_of_the_kit_that_can_be_used_is_started_in_the_background() {
+    let machine = Machine::new("hub-launch-background-other");
+    let tasks = machine.tasks_program();
+    let docmap = machine.program("Local/docmap-desktop/docmap-desktop.exe");
+    let (launcher, _) = launcher(&machine, machine.env(&[]), None, None);
+    assert_eq!(
+        launcher.launch("docmap", Request::Background).await,
+        Err(LaunchError::NotAvailable("background"))
+    );
+    assert_eq!(
+        launcher.launch("tasks", Request::Background).await,
+        Ok(Outcome::SetupRequired)
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(starts_of(&docmap).is_empty() && starts_of(&tasks).is_empty());
+}
+
 /// pult keeps no vault: a click starts it right away, with the arguments of every hub of the kit.
 #[tokio::test]
 async fn pult_starts_as_a_hub_without_any_setup() {
@@ -409,6 +444,7 @@ async fn a_program_only_ever_gets_one_of_the_argument_lists_of_the_code() {
             Request::Native,
             Request::Web,
             Request::Setup,
+            Request::Background,
         ] {
             let _ = launcher.launch(id, ask).await;
             tokio::time::sleep(Duration::from_millis(700)).await;
@@ -420,14 +456,17 @@ async fn a_program_only_ever_gets_one_of_the_argument_lists_of_the_code() {
             seen.insert(argv(&start));
         }
     }
-    let allowed: std::collections::BTreeSet<Vec<String>> =
-        [vec![], vec!["start".to_owned(), "--open".to_owned()]]
-            .into_iter()
-            .collect();
+    let allowed: std::collections::BTreeSet<Vec<String>> = [
+        vec![],
+        vec!["start".to_owned(), "--open".to_owned()],
+        vec!["start".to_owned()],
+    ]
+    .into_iter()
+    .collect();
     assert!(seen.is_subset(&allowed), "{seen:?}");
-    assert!(
-        seen.contains(&Vec::<String>::new()) && seen.len() == 2,
-        "{seen:?}"
+    assert_eq!(
+        seen, allowed,
+        "every list of the code is used once at least"
     );
 }
 
