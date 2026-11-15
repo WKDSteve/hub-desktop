@@ -117,12 +117,13 @@ when one fails. The section **Updates** shows where each one is, what came of it
 - **The web variant** (a clone of `tasks-web`, ...): `git pull --ff-only` in the clone, then the page is checked
   against the `SHA256SUMS` of the clone, as `start-tasks.cmd /update` does. A clone with local changes or on another
   branch than `main` is not touched (no stash, no reset, no rebase): the tile says why. An open page needs a reload.
-- **The program** (an app with a release): `gh` downloads `install.ps1`, `SHA256SUMS` and the file of the rolling
-  build `latest`, the hub checks the script and the file against `SHA256SUMS`, and only then runs the script, which
-  checks the file again and installs it for you. Tasks and Rules stop, replace and restart themselves in their
-  `install` (a failure leaves the old program and your autostart entry). AI Desktop must be closed first. Needs the
-  [GitHub CLI](https://cli.github.com) signed in (`gh auth login`; it also reaches the private repositories) and
-  Windows PowerShell.
+- **The program** (an app with a release): `gh` downloads `SHA256SUMS` and the file of the rolling build `latest`,
+  the hub checks the file against `SHA256SUMS` and its attestation (below), and only then runs it itself; no
+  PowerShell and no script of the release is involved. Tasks, Rules and Testing are asked `--version` and then
+  `install`, which stops, replaces and restarts them (a failure leaves the old program and your autostart entry).
+  Docmap and AI Desktop are setups: they run with their own window, so you see what is installed. AI Desktop must be
+  closed first. Needs the [GitHub CLI](https://cli.github.com) signed in (`gh auth login`; it also reaches the private
+  repositories).
 - **The attestation** of the program: after the sums, the hub asks `gh attestation verify` whether the file was built
   by the rolling workflow of its repository, and the update says what came of it. A file whose attestation does not
   verify is never run. One that could not be checked (a build from before attestations, no network, not signed in) is
@@ -137,6 +138,18 @@ when one fails. The section **Updates** shows where each one is, what came of it
 
 The page only names the app; what runs is decided by the catalog of the hub and what it found on the machine, never
 by the request.
+
+### The programs the hub starts
+
+| Program | Why | How long | How |
+| --- | --- | --- | --- |
+| the app of a tile (its program, its hub) | the click on the tile | outlives the hub (it is the app's) | `appkit_hub::launch`, with its own window where it has one |
+| `git` (on `PATH`) | update of a web variant: `symbolic-ref`, `status`, `rev-parse`, `pull --ff-only` | the call; at most 10 minutes | `appkit_core::child`: no window, ends with the hub, named in its log |
+| `gh` (on `PATH`) | update of a program: `release download`, `attestation verify` | the call; at most 10 minutes (the attestation 1 minute) | `appkit_core::child`, as `git` |
+| the checked file of a release | update of a program: `--version` and `install` of a program of the kit, or the setup with its window | the call; what it starts on purpose (the hub of the app, the app after a setup) stays | `appkit_core::child`, as `git` |
+| `<program> stop` of an app of the kit | **Stop** in the menu of its tile | the call | `appkit_hub::launch` |
+
+When a call runs out of time, it ends together with everything it started; nothing of an update is left running.
 
 ## Testing monitor
 

@@ -85,6 +85,19 @@ pub enum Hint {
     BuildYourself,
 }
 
+/// How the update of the hub installs the file of a release, once it matches `SHA256SUMS` (it runs it
+/// itself, never through a script).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Setup {
+    /// A program of the kit: `<file> --version`, then `<file> install`, which puts it in its place and brings
+    /// its hub back.
+    Program,
+    /// An NSIS setup, run as it is: its window shows what is installed.
+    Nsis,
+    /// An Inno Setup, run with its window, for the current user (`/CURRENTUSER /NORESTART`).
+    Inno,
+}
+
 /// The way to get an app: always a link to a page and a file name, never a script.
 #[derive(Debug, Clone, Copy)]
 pub struct Install {
@@ -93,6 +106,8 @@ pub struct Install {
     pub page: Option<&'static str>,
     /// The file to download from it.
     pub file: Option<&'static str>,
+    /// How an update installs `file`; none: the hub does not install it.
+    pub setup: Option<Setup>,
 }
 
 /// One app.
@@ -178,6 +193,7 @@ pub const CATALOG: &[Entry] = &[
             hint: Hint::Release,
             page: Some("https://github.com/WKDSteve/tasks-desktop/releases/tag/latest"),
             file: Some("tasks-hub-windows-x86_64.exe"),
+            setup: Some(Setup::Program),
         },
     },
     Entry {
@@ -200,6 +216,7 @@ pub const CATALOG: &[Entry] = &[
             hint: Hint::Release,
             page: Some("https://github.com/WKDSteve/rules-desktop/releases/tag/latest"),
             file: Some("rules-hub-windows-x86_64.exe"),
+            setup: Some(Setup::Program),
         },
     },
     Entry {
@@ -224,6 +241,7 @@ pub const CATALOG: &[Entry] = &[
             hint: Hint::Release,
             page: Some("https://github.com/WKDSteve/docmap-desktop/releases/latest"),
             file: Some("docmap-desktop-windows-x86_64-setup.exe"),
+            setup: Some(Setup::Nsis),
         },
     },
     Entry {
@@ -250,6 +268,7 @@ pub const CATALOG: &[Entry] = &[
             hint: Hint::Release,
             page: Some("https://github.com/WKDSteve/ai-desktop/releases/latest"),
             file: Some("ai-desktop-setup-x64.exe"),
+            setup: Some(Setup::Inno),
         },
     },
     Entry {
@@ -276,6 +295,7 @@ pub const CATALOG: &[Entry] = &[
             hint: Hint::Release,
             page: Some("https://github.com/WKDSteve/testing-desktop/releases/tag/latest"),
             file: Some("testing-hub-windows-x86_64.exe"),
+            setup: Some(Setup::Program),
         },
     },
     Entry {
@@ -303,6 +323,7 @@ pub const CATALOG: &[Entry] = &[
             hint: Hint::Release,
             page: Some("https://github.com/WKDSteve/streamtap/releases/latest"),
             file: None,
+            setup: None,
         },
     },
     Entry {
@@ -330,6 +351,7 @@ pub const CATALOG: &[Entry] = &[
             hint: Hint::Release,
             page: Some("https://github.com/WKDSteve/pult/releases/tag/latest"),
             file: None,
+            setup: None,
         },
     },
     // `takt-player` has no window yet: without an argument it plays a demo of three seconds in a console and
@@ -351,6 +373,7 @@ pub const CATALOG: &[Entry] = &[
             hint: Hint::Planned,
             page: None,
             file: None,
+            setup: None,
         },
     },
 ];

@@ -1,23 +1,27 @@
 //! Updating an app from the hub: the native build from its release, the web variant from its clone.
 //!
 //! What runs is decided by the catalog and the detection, never by a request: a request names an app
-//! (or all of them) and nothing else. The programs are three, found once when the hub starts: `git` and
-//! `gh` on the `PATH`, Windows PowerShell below `%SystemRoot%`. Each run is an argv with a working folder,
-//! no shell, no console input, and an end in time ([`UpdateConfig::step_timeout`]).
+//! (or all of them) and nothing else. The programs are `git` and `gh`, found once on the `PATH` when the hub
+//! starts, and the downloaded build itself once it is checked. Each run is a child of the hub through
+//! `appkit_core::child` ([`SystemRunner`]): an argv with a working folder, no shell, no console input or window,
+//! bound to the hub (it ends with the hub), named in its log, and ended with what it started when its time
+//! ([`UpdateConfig::step_timeout`]) is up. No PowerShell and no script of the release is run.
 //!
 //! - **Web variant** (a clone of `tasks-web`, ...): only a clone on `main` without local changes is touched,
 //!   and only by `git pull --ff-only` (no stash, no reset, no rebase). The page is then checked against the
 //!   `SHA256SUMS` of the clone, as `start-tasks.cmd /update` does.
 //! - **Native build** (an app with a release): only on the private machine ([`Role::installs`]). `gh`
-//!   downloads `install.ps1`, `SHA256SUMS` and the file of the catalog from the rolling build `latest` (the
-//!   channel the update badge compares with; `gh` brings its own sign-in for a private repository). The hub
-//!   checks the script and the file against `SHA256SUMS` and runs nothing that does not match. Then `gh
+//!   downloads `SHA256SUMS` and the file of the catalog from the rolling build `latest` (the channel the update
+//!   badge compares with; `gh` brings its own sign-in for a private repository). The hub checks the file
+//!   against `SHA256SUMS` and runs nothing that does not match. Then `gh
 //!   attestation verify` says whether the file was built by the rolling workflow of its repository
 //!   ([`verdict`]): a file whose attestation does not verify is never run; one that could not be checked (a
 //!   build from before attestations, no network, not signed in) is installed with a note, unless
 //!   [`UpdateConfig::require_attestation`] says otherwise. The hub is the one checker that was installed before
-//!   the release it checks; it writes no Sigstore of its own. The script checks the file again and installs it. An app of the kit stops, replaces and restarts itself in its
-//!   `install` (a copy beside, then a move: a failure leaves the old program); a program that serves a page
+//!   the release it checks; it writes no Sigstore of its own. Then the hub runs the checked file as the catalog
+//!   says ([`catalog::Setup`]): a program of the kit with `install`, which stops, replaces and restarts it (a copy
+//!   beside, then a move: a failure leaves the old program); a setup with its own window. What it starts on
+//!   purpose (the hub of the app, the app at the end of a setup) stays when it ends. A program that serves a page
 //!   (ai-desktop) and runs is refused, the hub cannot stop it.
 //!
 //! One update at a time, in a queue: "Update all" puts every app that has something to update into it, and
@@ -27,11 +31,12 @@ use std::collections::{BTreeMap, VecDeque};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use appkit_core::child::{self, Environment, Leftovers, ProcError, Start};
 use serde::Serialize;
 
-use crate::catalog::{self, Entry, Hint, Native};
+use crate::catalog::{self, Entry, Hint, Native, Setup};
 use crate::config::Env;
 use crate::detect::{AppState, Detector, Run};
 use crate::launch::Launcher;
@@ -84,9 +89,15 @@ pub fn verdict(ran: &Ran) -> Verdict {
     }
 }
 
-/// The script of a release (appkit `release-kit`), and the list of its sums.
-pub const INSTALL_SCRIPT: &str = "install.ps1";
+/// The list of the sums of a release (appkit `release-kit`).
 pub const SUMS_FILE: &str = "SHA256SUMS";
+
+/// How much one output stream of a step may write before the step is ended: a download or an install says a
+/// few lines.
+pub const MAX_OUTPUT: usize = 4 * 1024 * 1024;
+
+/// Who starts the steps, as the log of the hub names it.
+const CALLER: &str = "hub-desktop update";
 
 /// One program run of an update.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,6 +105,10 @@ pub struct Step {
     pub program: PathBuf,
     pub args: Vec<OsString>,
     pub cwd: PathBuf,
+    /// What happens to a process the step started and left running when it ended by itself: `End` (a call of
+    /// git or gh), `Keep` (an install, which brings the hub of its app back, or a setup that starts its app).
+    /// When the time is up, everything it started is ended either way.
+    pub leftovers: Leftovers,
 }
 
 impl Step {
@@ -102,7 +117,14 @@ impl Step {
             program: program.to_path_buf(),
             args: args.iter().map(|a| (*a).to_owned()).collect(),
             cwd: cwd.to_path_buf(),
+            leftovers: Leftovers::End,
         }
+    }
+
+    /// The same step, leaving running what it started on purpose.
+    fn keeping(mut self) -> Self {
+        self.leftovers = Leftovers::Keep;
+        self
     }
 
     /// The line a job shows for the step: the name of the program and its arguments, a path of the machine as
@@ -173,36 +195,11 @@ pub trait Runner: Send + Sync {
     }
 }
 
-/// The bytes 0x80 to 0xFF of code page 850, the OEM code page of a western European Windows. Windows PowerShell
-/// 5.1 writes into a pipe in it; the umlauts and `ß` are at the same places in 437 (US).
-const CP850_HIGH: &str = "ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜø£Ø×ƒáíóúñÑªº¿®¬½¼¡«»░▒▓│┤ÁÂÀ©╣║╗╝¢¥┐└┴┬├─┼ãÃ╚╔╩╦╠═╬¤ðÐÊËÈıÍÎÏ┘┌█▄¦Ì▀ÓßÔÒõÕµþÞÚÛÙýÝ¯´\u{ad}±‗¾¶§÷¸°¨·¹³²■\u{a0}";
-
-/// UTF-8 when the line is that (git and gh write it), else the OEM code page.
-fn decode(raw: &[u8]) -> std::borrow::Cow<'_, str> {
-    match std::str::from_utf8(raw) {
-        Ok(text) => text.into(),
-        Err(_) => raw
-            .iter()
-            .map(|&b| {
-                if b < 0x80 {
-                    char::from(b)
-                } else {
-                    CP850_HIGH
-                        .chars()
-                        .nth(usize::from(b - 0x80))
-                        .unwrap_or('\u{fffd}')
-                }
-            })
-            .collect::<String>()
-            .into(),
-    }
-}
-
 /// A line of output as the page gets it: text, without escape sequences and control characters (a tab
 /// is a space), at most [`MAX_LINE`] characters.
 #[must_use]
 pub fn clean_line(raw: &[u8]) -> String {
-    let text = decode(raw);
+    let text = String::from_utf8_lossy(raw);
     let mut out = String::new();
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
@@ -245,9 +242,50 @@ impl Tail {
     }
 }
 
-/// The programs of the machine, by `std::process::Command` with an argv: nothing of this process's console
-/// reaches them (stdin is the null device, the output goes into pipes), each in a process group of its own.
+/// The programs of the machine, as children of the hub through `appkit_core::child`: an argv, stdin empty, the
+/// output in pipes, no console window, bound to the hub (a job object on Windows, a process group elsewhere: a step
+/// whose time is up ends with everything it started, and a hub that ends leaves no step behind), its start named
+/// in the log of the hub.
 pub struct SystemRunner;
+
+impl SystemRunner {
+    /// The environment of a step: the hub's, and nobody answers a question (git and gh must fail instead of
+    /// asking). `PSModulePath` is not handed on: a program that starts Windows PowerShell would load the
+    /// modules of PowerShell 7 with it (a hub started from a pwsh terminal); git and gh do not read it.
+    fn environment() -> Environment {
+        let set = [
+            ("GIT_TERMINAL_PROMPT", "0"),
+            ("GH_PROMPT_DISABLED", "1"),
+            ("GH_NO_UPDATE_NOTIFIER", "1"),
+        ];
+        Environment::Inherited {
+            set: set
+                .iter()
+                .map(|(k, v)| ((*k).into(), (*v).into()))
+                .collect(),
+            remove: vec!["PSModulePath".into()],
+        }
+    }
+}
+
+/// Run `future` to its end on a thread of its own with a runtime of its own, so that a caller may block inside
+/// a runtime (`spawn_blocking`) and outside of one (a test).
+fn block_on<T: Send>(future: impl std::future::Future<Output = T> + Send) -> Result<T, String> {
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("update-step".to_owned())
+            .spawn_scoped(scope, || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map(|runtime| runtime.block_on(future))
+                    .map_err(|e| format!("no runtime for the step: {e}"))
+            })
+            .map_err(|e| format!("no thread for the step: {e}"))?
+            .join()
+            .map_err(|_| "the step broke off".to_owned())?
+    })
+}
 
 impl Runner for SystemRunner {
     fn run(&self, step: &Step, timeout: Duration) -> Result<Ran, String> {
@@ -260,9 +298,6 @@ impl Runner for SystemRunner {
         timeout: Duration,
         on_line: &(dyn Fn(String) + Send + Sync),
     ) -> Result<Ran, String> {
-        use std::io::{BufRead, BufReader, Read};
-        use std::process::{Command, Stdio};
-
         if !step.program.is_absolute() || !step.program.is_file() {
             return Err(format!(
                 "not started: {} is not an absolute path to a file",
@@ -275,85 +310,41 @@ impl Runner for SystemRunner {
                 step.cwd.display()
             ));
         }
-        let mut command = Command::new(&step.program);
-        command
-            .args(&step.args)
-            .current_dir(&step.cwd)
-            // Nobody answers a question: git and gh must fail instead of asking.
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("GH_PROMPT_DISABLED", "1")
-            .env("GH_NO_UPDATE_NOTIFIER", "1")
-            // A hub started from PowerShell 7 has its module path: Windows PowerShell would load the modules of 7
-            // and find no `Get-FileHash` (the install script fails). Without it, 5.1 makes its own (pwsh does the
-            // same when it starts powershell.exe); git and gh do not read it.
-            .env_remove("PSModulePath")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            // CREATE_NEW_PROCESS_GROUP: a Ctrl-C of the console of the hub does not reach the step. Never
-            // CREATE_NO_WINDOW (an invisible process is what an endpoint protection looks for).
-            command.creation_flags(0x0000_0200);
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            command.process_group(0);
-        }
-        let mut child = command
-            .spawn()
-            .map_err(|e| format!("could not start {}: {e}", step.program.display()))?;
-        let (send, lines) = std::sync::mpsc::channel::<String>();
-        let pipes: [Option<Box<dyn Read + Send>>; 2] = [
-            child
-                .stdout
-                .take()
-                .map(|p| Box::new(p) as Box<dyn Read + Send>),
-            child
-                .stderr
-                .take()
-                .map(|p| Box::new(p) as Box<dyn Read + Send>),
-        ];
-        for pipe in pipes.into_iter().flatten() {
-            let send = send.clone();
-            std::thread::spawn(move || {
-                for line in BufReader::new(pipe).split(b'\n') {
-                    let Ok(line) = line else { break };
-                    if send.send(clean_line(&line)).is_err() {
-                        break;
-                    }
-                }
-            });
-        }
-        drop(send);
-        let mut tail = Tail::default();
-        let end = Instant::now() + timeout;
-        let code = loop {
-            while let Ok(line) = lines.try_recv() {
-                on_line(line.clone());
+        let run = child::Run {
+            start: Start::new(CALLER, &step.program)
+                .args(&step.args)
+                .cwd(&step.cwd)
+                .env(Self::environment()),
+            stdin: Vec::new(),
+            timeout,
+            max_stdout: MAX_OUTPUT,
+            max_stderr: MAX_OUTPUT,
+            leftovers: step.leftovers,
+        };
+        let tail = Mutex::new(Tail::default());
+        let ended = block_on(child::run_lines(run, |_, line| {
+            let line = clean_line(line.as_bytes());
+            on_line(line.clone());
+            if let Ok(mut tail) = tail.lock() {
                 tail.push(line);
             }
-            match child.try_wait() {
-                Ok(Some(status)) => break status.code(),
-                Ok(None) if Instant::now() >= end => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    tail.push("(ended: the step took too long)".to_owned());
-                    break None;
-                }
-                Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-                Err(e) => return Err(e.to_string()),
+        }))?;
+        let mut tail = tail.into_inner().unwrap_or_default();
+        let code = match ended {
+            Ok(code) => code,
+            Err(ProcError::Spawn(e)) => {
+                return Err(format!("could not start {}: {e}", step.program.display()));
+            }
+            Err(failure) => {
+                let why = match failure {
+                    ProcError::Timeout(_) => "the step took too long",
+                    ProcError::TooLarge { .. } => "the step wrote too much",
+                    _ => "its output could not be read",
+                };
+                tail.push(format!("(ended: {why})"));
+                None
             }
         };
-        // What is still in the pipes. A program the step left running (a daemon of git) may hold them
-        // open: it is not waited for.
-        let grace = Instant::now() + Duration::from_millis(500);
-        while let Ok(line) = lines.recv_timeout(grace.saturating_duration_since(Instant::now())) {
-            on_line(line.clone());
-            tail.push(line);
-        }
         Ok(Ran {
             code,
             lines: tail.0.into(),
@@ -366,12 +357,10 @@ impl Runner for SystemRunner {
 pub struct Tools {
     pub git: Option<PathBuf>,
     pub gh: Option<PathBuf>,
-    pub powershell: Option<PathBuf>,
 }
 
 impl Tools {
-    /// `git` and `gh` in a folder of the `PATH` that is an absolute folder of this machine; Windows
-    /// PowerShell at its fixed place below `%SystemRoot%`.
+    /// `git` and `gh` in a folder of the `PATH` that is an absolute folder of this machine.
     #[must_use]
     pub fn find(env: &Env) -> Self {
         let dirs: Vec<PathBuf> = env
@@ -385,18 +374,9 @@ impl Tools {
                 .map(|d| d.join(&file))
                 .find(|f| f.is_file())
         };
-        let powershell = if cfg!(windows) {
-            env.path("SystemRoot")
-                .and_then(crate::paths::usable_root)
-                .map(|root| root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe"))
-                .filter(|f| f.is_file())
-        } else {
-            None
-        };
         Self {
             git: on_path("git"),
             gh: on_path("gh"),
-            powershell,
         }
     }
 }
@@ -474,11 +454,17 @@ impl Plan {
             if entry.install.file.is_none() {
                 return Err("no_release_file");
             }
+            // A setup of the catalog, and `install` only for a program of the kit.
+            match (entry.install.setup, entry.native) {
+                (Some(Setup::Program), Some(Native::AppKitHub { .. }))
+                | (Some(Setup::Nsis | Setup::Inno), _) => {}
+                _ => return Err("no_installer"),
+            }
             if cfg.tools.gh.is_none() {
                 return Err("no_gh");
             }
-            if cfg.tools.powershell.is_none() || cfg.work.is_none() {
-                return Err("no_powershell");
+            if cfg.work.is_none() {
+                return Err("no_work_folder");
             }
             Ok(())
         });
@@ -976,11 +962,11 @@ impl Updater {
 
     /// The rolling build of the release: download, check, install.
     async fn native(&self, entry: &'static Entry, state: &AppState) -> Outcome {
-        let (Some(gh), Some(powershell), Some(work), Some(file)) = (
+        let (Some(gh), Some(work), Some(file), Some(setup)) = (
             self.cfg.tools.gh.clone(),
-            self.cfg.tools.powershell.clone(),
             self.cfg.work.clone(),
             entry.install.file,
+            entry.install.setup,
         ) else {
             return Outcome::Failed("not_ready");
         };
@@ -1010,8 +996,6 @@ impl Updater {
                 "-R".as_ref(),
                 repo.as_ref(),
                 "-p".as_ref(),
-                INSTALL_SCRIPT.as_ref(),
-                "-p".as_ref(),
                 SUMS_FILE.as_ref(),
                 "-p".as_ref(),
                 file.as_ref(),
@@ -1029,39 +1013,54 @@ impl Updater {
         let Some(text) = read_sums(&dir) else {
             return Outcome::Failed("checksum_failed");
         };
-        for name in [INSTALL_SCRIPT, file] {
-            if sums::check(&dir, &text, name) != Ok(Check::Matches) {
-                self.say(
-                    id,
-                    format!("{name} does not match {SUMS_FILE}: nothing is run."),
-                );
-                return Outcome::Failed("checksum_failed");
-            }
-            self.say(id, format!("{name}: matches {SUMS_FILE}."));
+        if sums::check(&dir, &text, file) != Ok(Check::Matches) {
+            self.say(
+                id,
+                format!("{file} does not match {SUMS_FILE}: nothing is run."),
+            );
+            return Outcome::Failed("checksum_failed");
         }
-        let script = dir.join(INSTALL_SCRIPT);
+        self.say(id, format!("{file}: matches {SUMS_FILE}."));
         let build = dir.join(file);
         if let Err(code) = self.attest(id, &gh, &repo, &build, &dir).await {
             return Outcome::Failed(code);
         }
-        let sums = dir.join(SUMS_FILE);
-        let install = Step::new(
-            &powershell,
-            &[
-                "-NoProfile".as_ref(),
-                "-NonInteractive".as_ref(),
-                "-ExecutionPolicy".as_ref(),
-                "Bypass".as_ref(),
-                "-File".as_ref(),
-                script.as_os_str(),
-                "-File".as_ref(),
-                build.as_os_str(),
-                "-Sums".as_ref(),
-                sums.as_os_str(),
-            ],
-            &dir,
-        );
-        match self.step(id, "installing", install).await {
+        self.install(id, setup, &build, &dir).await
+    }
+
+    /// Run the checked file of a release, as its [`Setup`] says.
+    async fn install(&self, id: &'static str, setup: Setup, build: &Path, dir: &Path) -> Outcome {
+        let ran = match setup {
+            Setup::Program => {
+                // A file that does not run as a program is not asked to install itself.
+                match self
+                    .step(
+                        id,
+                        "checking",
+                        Step::new(build, &["--version".as_ref()], dir),
+                    )
+                    .await
+                {
+                    Ok(ran) if ran.ok() => {}
+                    _ => return Outcome::Failed("install_failed"),
+                }
+                // `install` puts the program in its place and brings the hub of the app back: that hub stays.
+                let install = Step::new(build, &["install".as_ref()], dir).keeping();
+                self.step(id, "installing", install).await
+            }
+            // A setup shows its own window (what is installed is seen), and the app it may start at its end
+            // stays.
+            Setup::Nsis => {
+                self.step(id, "installing", Step::new(build, &[], dir).keeping())
+                    .await
+            }
+            Setup::Inno => {
+                let args = ["/CURRENTUSER".as_ref(), "/NORESTART".as_ref()];
+                self.step(id, "installing", Step::new(build, &args, dir).keeping())
+                    .await
+            }
+        };
+        match ran {
             Ok(ran) if ran.ok() => Outcome::Installed,
             _ => Outcome::Failed("install_failed"),
         }
@@ -1167,21 +1166,6 @@ mod tests {
         assert_eq!(clean_line(b"\x1b[31mred\x1b[0m and \x1b=x"), "red and x");
         assert_eq!(clean_line(b"bell\x07 nul\x00 del\x7f"), "bell nul del");
         assert_eq!(clean_line("ausführbar".as_bytes()), "ausführbar");
-    }
-
-    /// Windows PowerShell 5.1 writes into a pipe in the OEM code page: "ausf\x81hrbaren" is "ausführbaren".
-    #[test]
-    fn a_line_that_is_no_utf8_is_read_as_the_oem_code_page() {
-        assert_eq!(
-            clean_line(b"ausf\x81hrbaren \x84\x94\x81 \x8e\x99\x9a \xe1 \xc4"),
-            "ausführbaren äöü ÄÖÜ ß ─"
-        );
-        assert_eq!(CP850_HIGH.chars().count(), 128);
-        assert_eq!(clean_line(&[0xff, b'a']), "\u{a0}a");
-        assert_eq!(
-            clean_line("é".repeat(400).as_bytes()).chars().count(),
-            MAX_LINE
-        );
     }
 
     #[test]

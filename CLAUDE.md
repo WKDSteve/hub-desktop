@@ -128,21 +128,25 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   (beide in `MUTATION_ROUTES`, Body `{}` wird nicht gelesen). Eine Warteschlange, ein Job nach dem anderen; "Update all"
   reiht jede App mit etwas Aktualisierbarem ein und macht nach einem Fehler weiter. Fortschritt holt die Seite per
   Polling (1 s), solange ein Job `queued`/`running` ist.
-- Programme nur drei, beim Start gefunden (`update::Tools::find`): `git`/`gh` aus einem absoluten `PATH`-Ordner,
-  `powershell.exe` unter `%SystemRoot%`. Ausgeführt über `update::Runner` (Programm `SystemRunner`: argv, stdin null,
-  Pipes, eigene Prozessgruppe, kein `CREATE_NO_WINDOW`, Ende nach `step_timeout` 10 min, ohne `PSModulePath`: mit dem
-  Wert von PowerShell 7 lädt Windows PowerShell 5.1 dessen Module und kennt kein `Get-FileHash`). Tests: Fake-Runner
-  (`tests/update_route.rs`), `SystemRunner` nur gegen `fake-app` (`--say`, `--err`, `--sleep`, `--exit`).
+- Programme: `git`/`gh` aus einem absoluten `PATH`-Ordner, beim Start gefunden (`update::Tools::find`), und die
+  geprüfte Release-Datei selbst; nie PowerShell oder ein Skript des Release. Ausgeführt über `update::Runner`
+  (Programm `SystemRunner` = `appkit_core::child::run_lines`: argv, stdin leer, Pipes, kein Fenster, an den Hub
+  gebunden, im Log benannt, Ende samt Enkeln nach `step_timeout` 10 min, je Strom höchstens `MAX_OUTPUT`; Umgebung
+  geerbt mit `GIT_TERMINAL_PROMPT=0`, `GH_PROMPT_DISABLED=1`, ohne `PSModulePath`). `Step::leftovers`: `End` für
+  git/gh, `Keep` für Install/Setup (der neu gestartete Hub der App bleibt). Tests: Fake-Runner
+  (`tests/update_route.rs`), `SystemRunner` nur gegen `fake-app` (`--say`, `--err`, `--sleep`, `--exit`, `--env`,
+  `--mark`, `--spawn`). Lint: `tools/check-process-starts.py` (aus appkit) mit `tools/process-starts.allow`.
 - Web-Teil: nur `<clone>/.git`, Branch `main`, `status --porcelain --untracked-files=no` leer, dann `pull --ff-only`,
   danach `<entry>` gegen `SHA256SUMS` des Klons (`sums.rs`, SHA-256 ohne Crate). Ohne `SHA256SUMS` oder ohne Zeile:
   Hinweis, kein Fehler (wie `start-tasks.cmd /update`). Die Klone brauchen `*.html -text` und `SHA256SUMS -text` in
   `.gitattributes` (sonst macht `core.autocrlf` CRLF daraus und die Summe passt nie).
 - Nativer Teil: nur `machine::Role::Private` (`NVIM_MACHINE_ROLE` leer/`default` ohne AzureAD-/`TRI-`-Hinweis; jeder
   andere Wert ist `role_unclear` und installiert nichts), nur Windows, nur `install.hint: release` mit `install.file`.
-  `gh release download latest -p install.ps1 -p SHA256SUMS -p <file>` in `<config>/updates/<id>-<pid>-<nanos>` (danach
-  weg), beide Dateien gegen `SHA256SUMS`, dann `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File
-  install.ps1 -File <file> -Sums SHA256SUMS`. Kit-Apps stoppen/ersetzen/starten sich im eigenen `install`; ein laufender
-  `LoopbackServer` (ai-desktop) ist `close_first`. Während des Installs hält der Updater den Flight des `Launcher`
+  `gh release download latest -p SHA256SUMS -p <file>` in `<config>/updates/<id>-<pid>-<nanos>` (danach weg), die Datei
+  gegen `SHA256SUMS`, Attestierung, dann je `catalog::Setup`: `Program` (nur `Native::AppKitHub`) `<file> --version`,
+  `<file> install`; `Nsis` die Datei ohne Argument, `Inno` mit `/CURRENTUSER /NORESTART` (Setups sichtbar, nie still,
+  Entscheidung 2026-11-14). Ohne passendes `Setup` `no_installer`. Kit-Apps stoppen/ersetzen/starten sich im eigenen
+  `install`; ein laufender `LoopbackServer` (ai-desktop) ist `close_first`. Während des Installs hält der Updater den Flight des `Launcher`
   (`reserve`): ein Klick bekommt `starting`.
 - Attestierung (nativer Teil, zwischen Summen und Install): `gh attestation verify <file> -R <repo> --signer-workflow
   <repo>/.github/workflows/rolling.yml`, Zeitlimit `attest_timeout` 60 s, Urteil in `update::verdict` (wie die

@@ -1,13 +1,15 @@
-//! Updates over HTTP, with a session and a runner that stands in for git, gh and PowerShell: what is run for a
-//! web variant and for a native build, what is refused (a dirty clone, another branch, the workstation, a file
-//! that does not match its sums), that "update all" goes on after a failure, and that the runner of the program
-//! collects the output, the exit code and ends a step whose time is up.
+//! Updates over HTTP, with a session and a runner that stands in for git, gh and the downloaded build: what is run
+//! for a web variant and for a native build (never PowerShell or a script), what is refused (a dirty clone, another
+//! branch, the workstation, a file that does not match its sums), that "update all" goes on after a failure, and
+//! that the runner of the program collects the output, the exit code and ends a step whose time is up together
+//! with what it started.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use appkit_core::authn::{ManualClock, Secret, CODE_BYTES, TOKEN_BYTES};
+use appkit_core::child::Leftovers;
 use appkit_hub::{Limits, RunningServer};
 use appkit_testkit::wire::{request, send, Reply};
 use hub_desktop::detect::Detector;
@@ -24,7 +26,8 @@ use serde_json::Value;
 mod common;
 use common::*;
 
-/// What the fake programs answer: by the program (`git`, `gh`, `powershell`) and the first argument.
+/// What the fake programs answer: by the program (`git`, `gh`, or `build`: the file of the release) and the first
+/// argument.
 type Answer = dyn Fn(&str, &Step) -> Ran + Send + Sync;
 
 struct FakeRunner {
@@ -32,6 +35,8 @@ struct FakeRunner {
     answer: Box<Answer>,
     /// Every step, as `<program> <args...>`.
     seen: Mutex<Vec<String>>,
+    /// Every step as it was asked for.
+    steps: Mutex<Vec<Step>>,
     /// Closed: a pull says a line and then waits until it is open again.
     gate: std::sync::atomic::AtomicBool,
 }
@@ -42,10 +47,8 @@ impl FakeRunner {
             "git"
         } else if Some(program) == self.tools.gh.as_deref() {
             "gh"
-        } else if Some(program) == self.tools.powershell.as_deref() {
-            "powershell"
         } else {
-            "other"
+            "build"
         }
     }
 }
@@ -62,6 +65,7 @@ impl Runner for FakeRunner {
             .lock()
             .unwrap()
             .push(format!("{name} {}", args.join(" ")));
+        self.steps.lock().unwrap().push(step.clone());
         Ok((self.answer)(name, step))
     }
 
@@ -181,7 +185,6 @@ impl Hub {
         let tools = Tools {
             git: Some(machine.touch("tools/git.exe")),
             gh: Some(machine.touch("tools/gh.exe")),
-            powershell: Some(machine.touch("tools/powershell.exe")),
         };
         let mut env = vec![("TASKS_VAULT", vault.display().to_string())];
         env.extend(setup.extra_env.iter().map(|(k, v)| (*k, v.clone())));
@@ -199,6 +202,7 @@ impl Hub {
             gate: std::sync::atomic::AtomicBool::new(true),
             answer,
             seen: Mutex::new(Vec::new()),
+            steps: Mutex::new(Vec::new()),
         });
         let updater = Arc::new(Updater::new(
             Arc::clone(&detector),
@@ -304,6 +308,20 @@ impl Hub {
 
     fn seen(&self) -> Vec<String> {
         self.runner.seen.lock().unwrap().clone()
+    }
+
+    /// The program of every step, as a path of the machine.
+    fn programs(&self) -> Vec<String> {
+        let steps = self.runner.steps.lock().unwrap();
+        steps
+            .iter()
+            .map(|s| s.program.display().to_string())
+            .collect()
+    }
+
+    fn leftovers(&self) -> Vec<Leftovers> {
+        let steps = self.runner.steps.lock().unwrap();
+        steps.iter().map(|s| s.leftovers).collect()
     }
 }
 
@@ -536,26 +554,24 @@ fn release(name: &str, step: &Step, tamper: bool) -> Option<Ran> {
         return Some(ok(&["Verification succeeded!"]));
     }
     if name == "gh" {
-        let dir = PathBuf::from(arg(step, 12));
-        let script = b"param()".to_vec();
+        let dir = PathBuf::from(arg(step, 10));
         let build = b"a build".to_vec();
-        let sums = format!(
-            "{}  install.ps1\n{}  tasks-hub-windows-x86_64.exe\n",
-            sums::hex_of(&script),
-            sums::hex_of(&build)
-        );
-        std::fs::write(dir.join("install.ps1"), &script).unwrap();
+        let sums = format!("{}  tasks-hub-windows-x86_64.exe\n", sums::hex_of(&build));
         let body: &[u8] = if tamper { b"another build" } else { &build };
         std::fs::write(dir.join("tasks-hub-windows-x86_64.exe"), body).unwrap();
         std::fs::write(dir.join("SHA256SUMS"), sums).unwrap();
         return Some(ok(&["downloaded"]));
     }
-    (name == "powershell").then(|| ok(&["installed tasks-hub"]))
+    (name == "build").then(|| match arg(step, 0).as_str() {
+        "--version" => ok(&["tasks-hub 1.0"]),
+        "install" => ok(&["installed tasks-hub"]),
+        _ => fail(&["unexpected"]),
+    })
 }
 
 #[cfg(windows)]
 #[tokio::test]
-async fn the_native_build_is_downloaded_checked_and_installed_by_the_script_of_its_release() {
+async fn the_native_build_is_downloaded_checked_and_installs_itself_without_powershell() {
     let hub = Hub::new(
         "hub-update-native",
         Setup {
@@ -573,7 +589,14 @@ async fn the_native_build_is_downloaded_checked_and_installed_by_the_script_of_i
     assert_eq!(part(&job, "native")["result"], "installed");
     assert_eq!(job["attestation"], "attested", "{job}");
     let seen = hub.seen();
-    assert_eq!(seen.len(), 3, "{seen:?}");
+    assert_eq!(seen.len(), 4, "{seen:?}");
+    assert!(
+        seen[0].starts_with(
+            "gh release download latest -R WKDSteve/tasks-desktop -p SHA256SUMS -p tasks-hub-windows-x86_64.exe -D "
+        ),
+        "{seen:?}"
+    );
+    assert!(seen[0].ends_with(" --clobber"), "{seen:?}");
     // Between the sums and the install: gh says who built the file.
     assert!(seen[1].starts_with("gh attestation verify "), "{seen:?}");
     assert!(
@@ -582,22 +605,29 @@ async fn the_native_build_is_downloaded_checked_and_installed_by_the_script_of_i
         ),
         "{seen:?}"
     );
-    let seen = [seen[0].clone(), seen[2].clone()];
+    // Then the checked build itself: it must run, and it installs itself. No shell, no script of the release.
+    assert_eq!(seen[2..], ["build --version", "build install"], "{seen:?}");
+    let programs = hub.programs();
     assert!(
-        seen[0].starts_with(
-            "gh release download latest -R WKDSteve/tasks-desktop -p install.ps1 -p SHA256SUMS -p tasks-hub-windows-x86_64.exe -D "
-        ),
+        programs[2..]
+            .iter()
+            .all(|p| p.ends_with(r"\tasks-hub-windows-x86_64.exe")),
+        "{programs:?}"
+    );
+    assert!(
+        seen.iter()
+            .all(|s| !s.to_lowercase().contains("powershell") && !s.contains(".ps1")),
         "{seen:?}"
     );
-    assert!(seen[0].ends_with(" --clobber"), "{seen:?}");
-    assert!(
-        seen[1].starts_with("powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "),
-        "{seen:?}"
-    );
-    assert!(seen[1].contains(r"\install.ps1 -File "), "{seen:?}");
-    assert!(
-        seen[1].contains(r"\tasks-hub-windows-x86_64.exe -Sums "),
-        "{seen:?}"
+    // The install leaves the hub of the app running that it brought back; git and gh leave nothing.
+    assert_eq!(
+        hub.leftovers(),
+        [
+            Leftovers::End,
+            Leftovers::End,
+            Leftovers::End,
+            Leftovers::Keep
+        ]
     );
     // The page is shown the steps by the names of their files, not by the folders of the machine.
     let shown = job["lines"].to_string();
@@ -607,7 +637,7 @@ async fn the_native_build_is_downloaded_checked_and_installed_by_the_script_of_i
         "{shown}"
     );
     assert!(
-        shown.contains("-File install.ps1 -File tasks-hub-windows-x86_64.exe -Sums SHA256SUMS"),
+        shown.contains("$ tasks-hub-windows-x86_64 install"),
         "{shown}"
     );
     assert!(
@@ -643,7 +673,7 @@ async fn a_build_that_does_not_match_its_sums_is_never_installed() {
     let job = hub.finished("tasks").await;
     assert_eq!(part(&job, "native")["result"], "checksum_failed", "{job}");
     assert!(
-        hub.seen().iter().all(|s| !s.starts_with("powershell")),
+        hub.seen().iter().all(|s| !s.starts_with("build")),
         "{:?}",
         hub.seen()
     );
@@ -693,7 +723,7 @@ async fn a_build_whose_attestation_does_not_verify_is_never_installed() {
         "{job}"
     );
     assert!(
-        hub.seen().iter().all(|s| !s.starts_with("powershell")),
+        hub.seen().iter().all(|s| !s.starts_with("build")),
         "{:?}",
         hub.seen()
     );
@@ -725,7 +755,7 @@ async fn a_build_without_an_attestation_is_installed_with_a_note_unless_one_is_r
         "{job}"
     );
     assert!(
-        hub.seen().iter().any(|s| s.starts_with("powershell")),
+        hub.seen().iter().any(|s| s.starts_with("build")),
         "{:?}",
         hub.seen()
     );
@@ -753,7 +783,7 @@ async fn a_build_without_an_attestation_is_installed_with_a_note_unless_one_is_r
     );
     assert_eq!(job["attestation"], "not_checked", "{job}");
     assert!(
-        hub.seen().iter().all(|s| !s.starts_with("powershell")),
+        hub.seen().iter().all(|s| !s.starts_with("build")),
         "{:?}",
         hub.seen()
     );
@@ -765,7 +795,7 @@ async fn a_build_without_an_attestation_is_installed_with_a_note_unless_one_is_r
 async fn a_failed_download_or_install_is_a_failure_of_the_native_part() {
     for (name, failing, code) in [
         ("hub-update-no-download", "gh", "download_failed"),
-        ("hub-update-no-install", "powershell", "install_failed"),
+        ("hub-update-no-install", "build", "install_failed"),
     ] {
         let hub = Hub::new(
             name,
@@ -837,18 +867,12 @@ async fn update_all_runs_one_app_after_the_other_and_goes_on_after_a_failure() {
                 };
             }
             if name == "gh" && arg(step, 0) == "release" {
-                let dir = PathBuf::from(arg(step, 12));
-                let script = b"param()".to_vec();
+                let dir = PathBuf::from(arg(step, 10));
                 let build = b"rules".to_vec();
-                std::fs::write(dir.join("install.ps1"), &script).unwrap();
                 std::fs::write(dir.join("rules-hub-windows-x86_64.exe"), &build).unwrap();
                 std::fs::write(
                     dir.join("SHA256SUMS"),
-                    format!(
-                        "{}  install.ps1\n{}  rules-hub-windows-x86_64.exe\n",
-                        sums::hex_of(&script),
-                        sums::hex_of(&build)
-                    ),
+                    format!("{}  rules-hub-windows-x86_64.exe\n", sums::hex_of(&build)),
                 )
                 .unwrap();
             }
@@ -900,6 +924,7 @@ fn the_system_runner_collects_the_output_and_the_exit_code() {
         .map(Into::into)
         .collect(),
         cwd: machine.path(""),
+        leftovers: Leftovers::End,
     };
     let ran = SystemRunner.run(&step, Duration::from_secs(20)).unwrap();
     assert_eq!(ran.code, Some(3), "{ran:?}");
@@ -919,6 +944,7 @@ fn the_system_runner_gives_a_line_before_the_step_ends() {
             .map(Into::into)
             .collect(),
         cwd: machine.path(""),
+        leftovers: Leftovers::End,
     };
     let started = std::time::Instant::now();
     let at: Mutex<Vec<(String, Duration)>> = Mutex::new(Vec::new());
@@ -934,8 +960,8 @@ fn the_system_runner_gives_a_line_before_the_step_ends() {
 }
 
 /// Windows PowerShell 5.1 that gets the `PSModulePath` of PowerShell 7 (the hub started from a pwsh terminal)
-/// loads the modules of 7 and has no `Get-FileHash`: the install script of a release fails. Without the variable
-/// it makes its own; git and gh do not read it.
+/// loads the modules of 7 and has no `Get-FileHash`. The update starts no PowerShell, but a setup may; git and gh
+/// do not read it.
 #[cfg(windows)]
 #[test]
 fn the_system_runner_hands_no_module_path_of_powershell_on() {
@@ -949,6 +975,7 @@ fn the_system_runner_hands_no_module_path_of_powershell_on() {
         program,
         args: ["--env", "PSModulePath"].iter().map(Into::into).collect(),
         cwd: machine.path(""),
+        leftovers: Leftovers::End,
     };
     let ran = SystemRunner.run(&step, Duration::from_secs(20)).unwrap();
     assert_eq!(ran.lines, ["PSModulePath=<unset>"], "{ran:?}");
@@ -962,6 +989,7 @@ fn the_system_runner_ends_a_step_whose_time_is_up() {
         program,
         args: ["--sleep", "20000"].iter().map(Into::into).collect(),
         cwd: machine.path(""),
+        leftovers: Leftovers::End,
     };
     let began = std::time::Instant::now();
     let ran = SystemRunner.run(&step, Duration::from_millis(300)).unwrap();
@@ -991,6 +1019,7 @@ fn the_system_runner_starts_only_an_absolute_program_in_an_absolute_folder() {
             program: program.clone(),
             args: Vec::new(),
             cwd: cwd.clone(),
+            leftovers: Leftovers::End,
         };
         assert!(
             SystemRunner.run(&step, Duration::from_secs(5)).is_err(),
@@ -998,4 +1027,116 @@ fn the_system_runner_starts_only_an_absolute_program_in_an_absolute_folder() {
         );
     }
     assert!(starts_of(&program).is_empty());
+}
+
+/// The answers of a release of a setup: the file of the catalog, matching its sums; the setup itself says it ran.
+#[cfg(windows)]
+fn setup_release(file: &'static str) -> Box<Answer> {
+    Box::new(move |name, step| match name {
+        "gh" if arg(step, 0) == "attestation" => ok(&["Verification succeeded!"]),
+        "gh" => {
+            let dir = PathBuf::from(arg(step, 10));
+            let build = b"a setup".to_vec();
+            std::fs::write(dir.join(file), &build).unwrap();
+            std::fs::write(
+                dir.join("SHA256SUMS"),
+                format!("{}  {file}\n", sums::hex_of(&build)),
+            )
+            .unwrap();
+            ok(&["downloaded"])
+        }
+        "build" => ok(&["set up"]),
+        _ => fail(&[]),
+    })
+}
+
+/// A setup runs as it is, with its window (not silently), and is never asked for `--version` or `install`.
+#[cfg(windows)]
+#[tokio::test]
+async fn a_setup_is_run_directly_with_its_window() {
+    for (id, file, program, args) in [
+        (
+            "docmap",
+            "docmap-desktop-windows-x86_64-setup.exe",
+            "Local/docmap-desktop/docmap-desktop.exe",
+            "build ",
+        ),
+        (
+            "ai",
+            "ai-desktop-setup-x64.exe",
+            "Local/Programs/ai-desktop/app/ai-desktop.exe",
+            "build /CURRENTUSER /NORESTART",
+        ),
+    ] {
+        let hub = Hub::new(
+            &format!("hub-update-setup-{id}"),
+            Setup {
+                tasks_web: false,
+                ..Setup::default()
+            },
+            setup_release(file),
+        )
+        .await;
+        hub.machine.touch(program);
+        assert_eq!(hub.of(id).await["native"], "ready", "{id}");
+        hub.post(&format!("/api/hub/apps/{id}/update"), "{}").await;
+        let job = hub.finished(id).await;
+        assert_eq!(part(&job, "native")["result"], "installed", "{id}: {job}");
+        let seen = hub.seen();
+        assert_eq!(seen.len(), 3, "{seen:?}");
+        assert_eq!(seen[2], args, "{id}");
+        assert!(
+            hub.programs()[2].ends_with(&format!(r"\{file}")),
+            "{:?}",
+            hub.programs()
+        );
+        // The app a setup may start at its end stays.
+        assert_eq!(hub.leftovers()[2], Leftovers::Keep, "{id}");
+        hub.server.shutdown().await;
+    }
+}
+
+/// A step whose time is up ends together with what it started: nothing of an update is left running.
+#[test]
+fn the_system_runner_ends_what_a_step_started_when_its_time_is_up() {
+    let machine = Machine::new("hub-runner-tree");
+    let program = machine.program(&format!("tools/fake{}", std::env::consts::EXE_SUFFIX));
+    let mark = machine.path("left-behind.mark");
+    let step = Step {
+        program,
+        args: vec![
+            "--spawn".into(),
+            mark.clone().into_os_string(),
+            "--sleep".into(),
+            "20000".into(),
+        ],
+        cwd: machine.path(""),
+        leftovers: Leftovers::Keep,
+    };
+    let ran = SystemRunner.run(&step, Duration::from_millis(500)).unwrap();
+    assert_eq!(ran.code, None, "{ran:?}");
+    // The process the step started would write its mark 1.5 s after it began.
+    std::thread::sleep(Duration::from_millis(2500));
+    assert!(!mark.exists(), "a process of the step outlived its time");
+}
+
+/// A step that ends by itself: what it started is ended (`End`, git and gh) or left running (`Keep`, an install
+/// that brings the hub of its app back).
+#[test]
+fn the_system_runner_keeps_what_a_step_started_only_when_the_step_says_so() {
+    let machine = Machine::new("hub-runner-leftovers");
+    let program = machine.program(&format!("tools/fake{}", std::env::consts::EXE_SUFFIX));
+    for (leftovers, stays) in [(Leftovers::End, false), (Leftovers::Keep, true)] {
+        let mark = machine.path(&format!("{leftovers:?}.mark"));
+        let step = Step {
+            program: program.clone(),
+            args: vec!["--spawn".into(), mark.clone().into_os_string()],
+            cwd: machine.path(""),
+            leftovers,
+        };
+        let ran = SystemRunner.run(&step, Duration::from_secs(20)).unwrap();
+        assert_eq!(ran.code, Some(0), "{ran:?}");
+        std::thread::sleep(Duration::from_millis(2500));
+        assert_eq!(mark.exists(), stays, "{leftovers:?}");
+    }
 }

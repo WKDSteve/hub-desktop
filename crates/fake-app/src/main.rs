@@ -5,7 +5,8 @@
 //!
 //! For the runner of the updates it also takes a few options, anywhere in its arguments: `--say <text>` prints a
 //! line to stdout, `--err <text>` one to stderr, `--sleep <ms>` waits, `--exit <code>` ends with that code,
-//! `--env <name>` prints `<name>=<value>` (or `<unset>`).
+//! `--env <name>` prints `<name>=<value>` (or `<unset>`), `--mark <file>` writes that file, `--spawn <file>` starts
+//! itself in the background (without waiting) to write `<file>` after 1.5 s: a process the step left behind.
 //! Every other argument is only logged.
 
 use std::io::Write;
@@ -37,6 +38,19 @@ fn main() {
                 value().parse().unwrap_or(0),
             )),
             "--exit" => code = value().parse().unwrap_or(1),
+            "--mark" => std::fs::write(value(), b"alive").expect("mark"),
+            "--spawn" => {
+                // The null device for its streams: it holds no pipe of the step, it only outlives it. Never waited
+                // for: a process left behind is what the tests of the update runner look for.
+                #[allow(clippy::zombie_processes)]
+                std::process::Command::new(&exe)
+                    .args(["--sleep", "1500", "--mark", &value()])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .expect("spawn");
+            }
             "--env" => println!(
                 "{}={}",
                 value(),

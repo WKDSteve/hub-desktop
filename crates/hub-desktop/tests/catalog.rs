@@ -56,3 +56,40 @@ fn the_vault_variables_are_the_ones_of_the_app() {
     assert_eq!(vault_vars("rules"), ["RULES_VAULT"]);
     assert_eq!(vault_vars("testing"), ["TESTING_REPOS_ROOT", "REPOS_DIR"]);
 }
+
+/// The update runs the file of a release itself: `install` only for a program of the kit, a setup for the others,
+/// and every file the update downloads says how it is installed.
+#[test]
+fn every_file_of_a_release_says_how_the_update_installs_it() {
+    use hub_desktop::catalog::{Hint, Setup};
+    for entry in catalog::CATALOG {
+        let install = entry.install;
+        match (install.setup, entry.native) {
+            (Some(Setup::Program), native) => {
+                assert!(
+                    matches!(native, Some(Native::AppKitHub { .. })),
+                    "{}: install is a command of the kit",
+                    entry.id
+                );
+            }
+            (Some(Setup::Nsis | Setup::Inno), native) => {
+                assert!(
+                    !matches!(native, Some(Native::AppKitHub { .. })),
+                    "{}: a program of the kit installs itself",
+                    entry.id
+                );
+            }
+            (None, _) => {}
+        }
+        assert_eq!(
+            install.setup.is_some(),
+            install.hint == Hint::Release && install.file.is_some(),
+            "{}",
+            entry.id
+        );
+    }
+    let setup = |id: &str| catalog::find(id).and_then(|e| e.install.setup);
+    assert_eq!(setup("tasks"), Some(Setup::Program));
+    assert_eq!(setup("docmap"), Some(Setup::Nsis));
+    assert_eq!(setup("ai"), Some(Setup::Inno));
+}
