@@ -68,9 +68,11 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 - `crates/hub-desktop/src/`: `lib.rs` (`IDENTITY`: App `hub-desktop`, Binary `hub-desktop`, Port 17610, `route_ns` `hub`),
   `server.rs` (Dummy-Runtime, Routen, `DATA_ROUTES` für die Matrix), `app.rs` (`serve`, `open`, Doppelklick),
   `background.rs` (`stop`/`install`/`uninstall` aus dem Kit), `ui.rs` + `build.rs` (die gebaute Oberfläche im Binary).
-- Ohne Argument läuft der Hub im Vordergrund (sichtbare Konsole; der Startmenü-Link startet ihn minimiert) und öffnet
-  den Browser gepairt; ein laufender Hub wird nicht ein zweites Mal gestartet. Kein `CREATE_NO_WINDOW`, kein versteckter
-  Hintergrundprozess als Standard (EDR).
+- Der Release-Build ist ein Fenster-Programm (`windows_subsystem = "windows"`, `appkit_core::console::attach_parent`
+  als Erstes in `main`, Fehler über `console::report`; Test `tests/window_program.rs`, nur mit `cargo test --release`
+  aussagekräftig, so in der CI). Ohne Argument (Link, Doppelklick) startet er den Hub im Hintergrund (`hub.log`) und
+  öffnet den Browser gepairt, wie `start --open`; ein Debug-Build (eigene Konsole) läuft im Vordergrund. Ein laufender
+  Hub wird nicht ein zweites Mal gestartet. PowerShell wartet in Skripten auf das Fenster-Programm, am Prompt nicht.
 - Neue Route: in `server::routes` **und** in `DATA_ROUTES`, sonst probiert die Matrix sie nie. Jede Route unter `/api/`
   braucht eine Sitzung, bis sie bewusst geöffnet wird (nur `hello` ist offen).
 - Der Start anderer Apps nur per argv über `appkit_hub::launch::spawn`, Programmpfade nur aus der Erkennung, nie aus

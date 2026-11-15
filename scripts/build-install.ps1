@@ -83,14 +83,16 @@ try {
     Invoke-Step 'cargo build --release --locked -p hub-desktop' { cargo build --release --locked -p hub-desktop }
 
     $exe = Join-Path $root 'target\release\hub-desktop.exe'
-    $version = (& $exe --version)
+    # Piped, so PowerShell waits: the release build is a window program, and `$x = (& $exe ...)` alone does not
+    # wait for one (it closes the pipe and leaves $LASTEXITCODE unset).
+    $version = (& $exe --version | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) { Exit-Build 'the program built does not run' }
     Write-Output "built $version ($exe)"
     if ($BuildOnly) { return }
 
     # `install` copies the program to its fixed place (%LOCALAPPDATA%\hub-desktop\bin).
     $label = (@('hub-desktop', 'install') + $InstallArgs) -join ' '
-    Invoke-Step $label { & $exe install @InstallArgs }
+    Invoke-Step $label { & $exe install @InstallArgs | Out-Host }
     Write-Output "installed $version"
 }
 finally {

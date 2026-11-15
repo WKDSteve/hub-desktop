@@ -133,7 +133,8 @@ try {
     Write-Check ($r.Code -eq 0) 'install from an archive'
     if ($r.Code -ne 0) { Write-Output $r.Text }
     Write-Check (Test-Path -LiteralPath $exe -PathType Leaf) 'the program is in the install folder'
-    $version = (& $exe --version)
+    # Piped, so PowerShell waits for a window program (the release build); `$x = (& $exe ...)` alone does not.
+    $version = (& $exe --version | Out-String).Trim()
     Write-Check ($LASTEXITCODE -eq 0 -and $version -match 'hub-desktop') 'it runs'
     Write-Check (-not (Test-Path -LiteralPath "$exe.new")) 'no .new file is left'
 

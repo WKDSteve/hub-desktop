@@ -257,7 +257,20 @@ async fn stop_web(web: Option<WebServer>) {
     }
 }
 
-/// What a double click does: the hub runs in this window (minimized by the link that starts it) and the
+/// What a double click on the window program does (the release build, and the link `install` makes): it
+/// has no window to run the hub in, so the hub goes into the background (log in the config folder) unless
+/// one runs, and the browser opens with a one-time link, as `start --open` does.
+///
+/// # Errors
+///
+/// A text for the person: the console of the terminal, or a message box.
+pub async fn click_in_background() -> Result<(), String> {
+    print!("{}", crate::background::start().await?);
+    let url = open().await?;
+    deliver(&url)
+}
+
+/// What a double click on a console program does (a debug build): the hub runs in this window and the
 /// browser opens with a one-time link. A hub that runs already is not started twice; the browser opens
 /// on it, so a second click finds the first.
 ///

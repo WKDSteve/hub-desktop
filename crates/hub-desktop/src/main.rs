@@ -1,13 +1,20 @@
 //! `hub-desktop serve | start | open | stop | install | uninstall | --version`; without an argument (a
-//! double click, or the link that `install` makes) it runs the hub in this window and opens the browser.
+//! double click, or the link that `install` makes) it starts the hub in the background and opens the browser.
+//!
+//! The release build is a window program (appkit `docs/PROCESSES.md`, "A hub is a window program"): Windows
+//! opens no console window for the link or a double click, and from a terminal it attaches to the terminal's
+//! console. A debug build stays a console program.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use appkit_core::console::{self, Console};
 use hub_desktop::app::{self, ServeOptions};
 use hub_desktop::background::{self, UninstallOptions};
 
 const USAGE: &str = "usage:
-  hub-desktop                              (no argument, as a double click) run the hub in this
-                                           window and open the browser; a hub that runs already is
-                                           not started twice, the browser opens on it
+  hub-desktop                              (no argument, as a double click) start the hub in the
+                                           background and open the browser (a debug build runs it in
+                                           its own console window); a hub that runs already is not
+                                           started twice, the browser opens on it
   hub-desktop serve [--port <1024-65535>]  run the hub until Ctrl-C
   hub-desktop start [--open]               run the hub in the background (no window; log in the
                                            config folder); --open also opens the browser
@@ -49,9 +56,11 @@ fn wait_for_enter() {
 /// The verb the arguments name. Apart from `main` so that its future lives on the heap: the main thread
 /// of Windows has 1 MB of stack, and the future of all the verbs together is too big for it in a debug
 /// build.
-async fn run(args: Vec<String>) -> Result<(), String> {
+async fn run(args: Vec<String>, console: Console) -> Result<(), String> {
     match args.first().map(String::as_str) {
-        None => app::click().await,
+        // A console of its own (a debug build) is a window the hub can run in; a window program has none.
+        None if console == Console::Own => app::click().await,
+        None => app::click_in_background().await,
         Some("help" | "--help" | "-h") => {
             println!("{USAGE}");
             Ok(())
@@ -108,11 +117,16 @@ async fn run(args: Vec<String>) -> Result<(), String> {
 
 #[tokio::main]
 async fn main() {
+    // Before the first line is written.
+    let console = console::attach_parent();
+    console::report_panics("hub-desktop");
     let args: Vec<String> = std::env::args().skip(1).collect();
     let by_click = args.is_empty();
-    if let Err(message) = Box::pin(run(args)).await {
-        eprintln!("hub-desktop: {message}");
-        if by_click {
+    if let Err(message) = Box::pin(run(args, console)).await {
+        // stderr, or a message box when nobody reads it (the link of a window program).
+        console::report("hub-desktop", &message);
+        // In the console of a terminal the shell reads the same keys: only a console of its own waits.
+        if by_click && console == Console::Own {
             wait_for_enter();
         }
         std::process::exit(1);

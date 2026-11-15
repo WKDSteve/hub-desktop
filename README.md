@@ -59,8 +59,15 @@ needs none of the other apps to run.
 ```
 cd ui && pnpm install --frozen-lockfile && pnpm build && cd ..
 cargo build --release --locked
-target/release/hub-desktop            # runs the hub in this window and opens the browser
+target/release/hub-desktop            # starts the hub in the background and opens the browser
 ```
+
+The release build is a window program: the link and a double click open no console window, an error shows as a
+message box. From a terminal it writes into the terminal's console, but the prompt comes back at once (the shell
+does not wait for a window program, and `$LASTEXITCODE` is not the hub's); a script waits for it (PowerShell does
+inside a script, and when the output is captured). `hub-desktop serve` from a terminal ends when the terminal is
+closed; `start` puts the hub in the background with its log in the config folder (`hub.log`). A debug build
+(`cargo run`) stays a console program and runs the hub in its own window.
 
 `hub-desktop open --launch` opens a paired page for a hub that runs, `hub-desktop stop` ends it. Checks before a
 change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,
