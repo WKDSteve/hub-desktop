@@ -478,6 +478,18 @@ export class App {
     }
   }
 
+  /** Switch the start with the login of an app; the tile shows what the machine says afterwards. */
+  async setAutostart(app: HubApp, on: boolean): Promise<void> {
+    try {
+      await this.hub.setAutostart(app.id, on);
+      await this.reload();
+      this.say('ok', on ? `${app.name} starts with your login.` : `${app.name} does not start with your login.`);
+    } catch {
+      await this.reload(false);
+      this.say('error', 'The start with the login could not be switched.');
+    }
+  }
+
   /** Keep a mode as the one a click opens. */
   async makeDefault(app: HubApp, mode: Mode): Promise<void> {
     try {

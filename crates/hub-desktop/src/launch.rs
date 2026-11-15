@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use appkit_hub::launch::{spawn, LaunchOpts, Window};
+use appkit_hub::launch::{spawn, spawn_with, LaunchOpts, Window};
 
 use crate::catalog::{self, Entry, Mode, Native};
 use crate::detect::{AppState, Detector, Run};
@@ -296,7 +296,7 @@ impl Launcher {
             spawn(&program, args, &LaunchOpts { cwd: &cwd, window }).map_err(LaunchError::Failed)
         };
         match native {
-            Native::AppKitHub { .. } => {
+            Native::AppKitHub { identity, .. } => {
                 if ask == Request::Setup {
                     // The questions of a first start: the program as a person starts it.
                     run(&[], Window::NewConsole)?;
@@ -312,8 +312,20 @@ impl Launcher {
                         drop(flight);
                         return Ok(Outcome::Running);
                     }
-                    // Its hub only: a page nobody asked for would open at every login.
-                    run(&["start"], Window::Default)?;
+                    // Its hub only: a page nobody asked for would open at every login. It is told to stay
+                    // without a page (`<APP>_STAY`, which its `start` passes on to the hub), as a hub that
+                    // its own login entry started.
+                    let stay = appkit_hub::background::stay_var(identity);
+                    spawn_with(
+                        &program,
+                        &["start"],
+                        &LaunchOpts {
+                            cwd: &cwd,
+                            window: Window::Default,
+                        },
+                        &[(stay.as_str(), "1")],
+                    )
+                    .map_err(LaunchError::Failed)?;
                     self.wait_until_running(entry, flight);
                     return Ok(Outcome::Started);
                 }

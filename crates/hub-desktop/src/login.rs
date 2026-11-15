@@ -4,13 +4,15 @@
 //! So that there is one icon in the notification area, not one program per app, `on` takes the login
 //! entries of the apps over: an app of [`TAKES_OVER`] whose own value is in the `Run` key is put into
 //! `start_with_hub` and its value is removed, in that order (a failure leaves a hub started twice, which
-//! its `start` answers with "already running", never none). `off` removes the value of hub-desktop
-//! only; it gives the apps no value back (each app can turn its own on again: `<binary> autostart on`).
+//! its `start` answers with "already running", never none). `off` removes the value of hub-desktop and
+//! gives each app of the list its own value back (the installed copy), so that what each app shows as
+//! its start with the login stays as it was; the list is kept for the next `on`. The state an app and
+//! its tile show is `appkit_hub::loginstate` (its own value, or the list while hub-desktop starts).
 //!
 //! The registry is reached through [`LoginEntries`]: the program passes [`SystemLogin`] (the kit's
 //! `reg.exe` calls), the tests a fake, so that no test ever touches the login of the machine.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use appkit_core::identity::AppIdentity;
 use appkit_hub::background::{Autostart, Background};
@@ -20,8 +22,9 @@ use crate::catalog;
 use crate::config;
 
 /// The apps whose own login entry `on` takes over: their value starts their hub (`<binary> start`). pult is
-/// not one: its value starts its window, which has an icon of its own.
-pub const TAKES_OVER: [&str; 3] = ["tasks", "rules", "testing"];
+/// not one: its value starts its window, which has an icon of its own. The kit holds the list, so that the
+/// apps switch their start with the login the same way (`appkit_hub::loginstate`).
+pub const TAKES_OVER: [&str; 3] = appkit_hub::loginstate::TAKEN_OVER;
 
 /// The login entries of the machine.
 pub trait LoginEntries {
@@ -39,6 +42,18 @@ pub trait LoginEntries {
     ///
     /// A text for the person at the terminal.
     fn remove(&self, identity: &'static AppIdentity) -> Result<(), String>;
+    /// Write the value of another app so that it starts `program`.
+    ///
+    /// # Errors
+    ///
+    /// A text for the person at the terminal.
+    fn give(&self, identity: &'static AppIdentity, program: &Path) -> Result<(), String>;
+    /// The program the value of another app names: its installed copy.
+    ///
+    /// # Errors
+    ///
+    /// The app is not installed.
+    fn program(&self, identity: &'static AppIdentity) -> Result<PathBuf, String>;
 }
 
 /// The login entries of this machine, through the kit.
@@ -64,6 +79,15 @@ impl LoginEntries for SystemLogin {
             uninstall_script: "",
         };
         appkit_hub::background::autostart_for(&other, Autostart::Off, Path::new("")).map(|_| ())
+    }
+
+    fn give(&self, identity: &'static AppIdentity, program: &Path) -> Result<(), String> {
+        use appkit_hub::loginstate::LoginEntries as _;
+        appkit_hub::loginstate::SystemLogin.set(identity, Some(program))
+    }
+
+    fn program(&self, identity: &'static AppIdentity) -> Result<PathBuf, String> {
+        appkit_hub::loginstate::installed_program(identity, &crate::config::Env::from_process())
     }
 }
 
@@ -112,12 +136,28 @@ pub fn autostart(dir: &Path, what: Autostart, login: &dyn LoginEntries) -> Resul
             out.push_str(&with_it(&file.app.start_with_hub));
         }
         Autostart::Off => {
-            if !file.app.start_with_hub.is_empty() {
-                out.push_str(&format!(
-                    "the hubs of {} do not start with your login either; to start one on its own: \
-                     `<program of the app> autostart on`\n",
-                    file.app.start_with_hub.join(", ")
-                ));
+            // What each app shows as its start with the login stays: the apps of the list get their own
+            // value back.
+            for id in &file.app.start_with_hub {
+                let Some(identity) = catalog::find(id).and_then(catalog::Entry::kit_identity)
+                else {
+                    continue;
+                };
+                if login.of(identity) == Some(true) {
+                    continue;
+                }
+                match login
+                    .program(identity)
+                    .and_then(|p| login.give(identity, &p))
+                {
+                    Ok(()) => out.push_str(&format!(
+                        "{id}: starts with your login on its own again ({})\n",
+                        identity.app
+                    )),
+                    Err(e) => out.push_str(&format!(
+                        "{id}: does not start with your login any more: {e}\n"
+                    )),
+                }
             }
         }
         Autostart::Status => out.push_str(&with_it(&file.app.start_with_hub)),
@@ -182,6 +222,19 @@ mod tests {
             }
             self.values.borrow_mut().remove(identity.app);
             Ok(())
+        }
+        fn give(&self, identity: &'static AppIdentity, program: &Path) -> Result<(), String> {
+            self.calls
+                .borrow_mut()
+                .push(format!("give {} {}", identity.app, program.display()));
+            self.values.borrow_mut().insert(identity.app);
+            Ok(())
+        }
+        fn program(&self, identity: &'static AppIdentity) -> Result<PathBuf, String> {
+            if self.stuck.contains(identity.app) {
+                return Err("not installed".to_owned());
+            }
+            Ok(PathBuf::from(format!("C:/apps/{}.exe", identity.binary)))
         }
     }
 
@@ -255,17 +308,63 @@ mod tests {
     }
 
     #[test]
-    fn off_removes_the_own_value_only_and_gives_the_apps_nothing_back() {
+    fn off_gives_the_apps_of_the_list_their_own_value_back_and_keeps_the_list() {
         let dir = Scratch::new("hub-login-off");
-        let login = FakeLogin::with(&["tasks-desktop"]);
+        let login = FakeLogin::with(&["tasks-desktop", "rules-desktop"]);
         autostart(dir.path(), Autostart::On, &login).unwrap();
+        // rules got its own value meanwhile (its own `autostart on`): it is not written twice.
+        login.values.borrow_mut().insert("rules-desktop");
+        login.calls.borrow_mut().clear();
         let out = autostart(dir.path(), Autostart::Off, &login).unwrap();
         assert!(!*login.own.borrow());
-        assert!(login.values.borrow().is_empty());
-        assert_eq!(list(dir.path()), ["tasks"]);
-        assert!(out.contains("tasks do not start with your login"), "{out}");
+        assert_eq!(
+            *login.values.borrow(),
+            ["rules-desktop", "tasks-desktop"]
+                .into_iter()
+                .collect::<BTreeSet<_>>()
+        );
+        assert_eq!(
+            *login.calls.borrow(),
+            ["own Off", "give tasks-desktop C:/apps/tasks-hub.exe"]
+        );
+        assert_eq!(list(dir.path()), ["tasks", "rules"]);
+        assert!(
+            out.contains("tasks: starts with your login on its own again"),
+            "{out}"
+        );
         let status = autostart(dir.path(), Autostart::Status, &login).unwrap();
         assert!(status.starts_with("own false"), "{status}");
+    }
+
+    #[test]
+    fn off_says_which_app_cannot_get_its_value_back() {
+        let dir = Scratch::new("hub-login-off-missing");
+        std::fs::write(
+            dir.path().join("config.json"),
+            r#"{"start_with_hub":["testing"]}"#,
+        )
+        .unwrap();
+        let login = FakeLogin {
+            stuck: ["testing-desktop"].into_iter().collect(),
+            ..FakeLogin::default()
+        };
+        let out = autostart(dir.path(), Autostart::Off, &login).unwrap();
+        assert!(
+            out.contains("testing: does not start with your login any more: not installed"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn the_names_of_hub_desktop_are_those_the_kit_writes_to() {
+        assert_eq!(crate::IDENTITY, appkit_hub::loginstate::HUB_DESKTOP);
+        for id in TAKES_OVER {
+            let identity = catalog::find(id)
+                .and_then(catalog::Entry::kit_identity)
+                .unwrap();
+            // The kit names an app in start_with_hub by its route_ns.
+            assert_eq!(identity.route_ns, id);
+        }
     }
 
     #[test]

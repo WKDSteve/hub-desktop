@@ -197,6 +197,9 @@ export class WebHub implements HubApi, Presence {
 
   async setMode(): Promise<void> {}
 
+  /** The web hub cannot look at a machine: its tiles have no switch for the login (`autostart` is never set). */
+  async setAutostart(): Promise<void> {}
+
   async stop(): Promise<StopResult> {
     throw new Error('the web hub starts and stops nothing');
   }

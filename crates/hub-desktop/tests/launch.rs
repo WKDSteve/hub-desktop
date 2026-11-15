@@ -78,6 +78,8 @@ async fn tasks_starts_as_its_own_hub_asks_with_start_open_in_its_own_folder() {
     let starts = starts_of(&program);
     assert_eq!(starts.len(), 1);
     assert_eq!(argv(&starts[0]), ["start", "--open"]);
+    // A click is no order to stay: the hub ends itself once its page is gone.
+    assert_eq!(starts[0]["stay"], serde_json::json!([]));
     // The working folder is the folder of the program, not the one of the hub.
     let cwd = std::fs::canonicalize(starts[0]["cwd"].as_str().unwrap()).unwrap();
     assert_eq!(
@@ -98,6 +100,11 @@ async fn a_hub_started_with_hub_desktop_gets_start_and_no_page() {
     );
     wait_for_starts(&program, 1);
     assert_eq!(argv(&starts_of(&program)[0]), ["start"]);
+    // It is told to stay without a page, as a hub its own login entry started.
+    assert_eq!(
+        starts_of(&program)[0]["stay"],
+        serde_json::json!(["TASKS_DESKTOP_STAY"])
+    );
     assert!(opened(&log).is_empty());
 }
 

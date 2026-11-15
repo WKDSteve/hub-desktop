@@ -141,13 +141,34 @@ pub async fn serve_until(
         .web_root
         .clone()
         .or_else(|| overlay.web_root.clone());
+    // The start with the login of an app: the one state of the kit, which the app reads and switches the same
+    // way (its own login entry, or `start_with_hub` of this hub while it starts with the login).
+    let reading = env.clone();
+    let writing = env.clone();
     let detector = Arc::new(
         Detector::new(env.clone(), web_root)
             .with_modes(chosen)
             .with_overlay(overlay)
-            .with_autostart(appkit_hub::background::autostart_of),
+            .with_autostart(move |identity| {
+                appkit_hub::loginstate::is_on(
+                    identity,
+                    &reading,
+                    &appkit_hub::loginstate::SystemLogin,
+                )
+            }),
     );
-    let prefs = Arc::new(Prefs::new(Some(dir.clone()), Arc::clone(&detector)));
+    let prefs = Arc::new(
+        Prefs::new(Some(dir.clone()), Arc::clone(&detector)).with_login(move |identity, on| {
+            appkit_hub::loginstate::set(
+                identity,
+                on,
+                || appkit_hub::loginstate::installed_program(identity, &writing),
+                &writing,
+                &appkit_hub::loginstate::SystemLogin,
+            )
+            .map(|_| ())
+        }),
+    );
     // The pages of the web variants have a listener (and an origin) of their own. When its port is taken
     // the hub runs without it: the apps start, the web mode says why it cannot.
     let web = match webserve::start(wanted_web_port(&env)?, Arc::clone(&detector)).await {

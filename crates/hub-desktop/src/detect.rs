@@ -29,12 +29,13 @@ pub const CACHE_TTL: Duration = Duration::from_secs(10);
 /// this size is no settings file.
 const MAX_FOREIGN_CONFIG: u64 = 64 * 1024;
 
-/// How the login entry of an app is read: `None` is "cannot be told". The program passes the kit's reader;
-/// the default tells nothing, so that a test never looks at the registry of the machine.
-pub type AutostartReader = fn(&'static AppIdentity) -> Option<bool>;
+/// How the start with the login of an app is read: `None` is "cannot be told". The program passes the kit's
+/// reader (`appkit_hub::loginstate::is_on`: its own entry, or `start_with_hub` while hub-desktop starts with
+/// the login); the default tells nothing, so that a test never looks at the registry of the machine.
+pub type AutostartReader = Arc<dyn Fn(&'static AppIdentity) -> Option<bool> + Send + Sync>;
 
-fn no_autostart(_: &'static AppIdentity) -> Option<bool> {
-    None
+fn no_autostart() -> AutostartReader {
+    Arc::new(|_| None)
 }
 
 /// Whether an app is running.
@@ -228,7 +229,7 @@ impl Detector {
             ttl,
             modes: RwLock::new(BTreeMap::new()),
             overlay: Overlay::default(),
-            autostart: no_autostart,
+            autostart: no_autostart(),
             cache: Mutex::new(None),
         }
     }
@@ -249,10 +250,13 @@ impl Detector {
         self
     }
 
-    /// How the login entry of an app is read (the kit's `autostart_of` in the program).
+    /// How the start with the login of an app is read (the kit's `loginstate::is_on` in the program).
     #[must_use]
-    pub fn with_autostart(mut self, reader: AutostartReader) -> Self {
-        self.autostart = reader;
+    pub fn with_autostart(
+        mut self,
+        reader: impl Fn(&'static AppIdentity) -> Option<bool> + Send + Sync + 'static,
+    ) -> Self {
+        self.autostart = Arc::new(reader);
         self
     }
 
@@ -306,7 +310,7 @@ impl Detector {
     /// read (a start does not need it, and it costs a program run).
     pub async fn look_one(&self, entry: &'static Entry) -> AppState {
         let roots = web_roots(self.web_root.as_deref(), &self.env);
-        let mut state = detect(entry, &self.env, &roots, no_autostart).await;
+        let mut state = detect(entry, &self.env, &roots, no_autostart()).await;
         state.chosen = self.chosen(entry.id);
         self.invalidate();
         state
@@ -322,7 +326,7 @@ impl Detector {
             .iter()
             .filter(|e| e.is_kit_hub() && !self.overlay.hides(e.id))
         {
-            let state = detect(entry, &self.env, &roots, no_autostart).await;
+            let state = detect(entry, &self.env, &roots, no_autostart()).await;
             if state.native.is_some() {
                 found.push(state);
             }
@@ -346,7 +350,7 @@ impl Detector {
             let env = Arc::clone(&self.env);
             let web = roots.clone();
             let chosen = self.chosen(entry.id);
-            let autostart = self.autostart;
+            let autostart = Arc::clone(&self.autostart);
             tasks.spawn(async move {
                 let mut state = detect(entry, &env, &web, autostart).await;
                 state.chosen = chosen;

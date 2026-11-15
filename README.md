@@ -80,11 +80,14 @@ show none.
 `hub-desktop autostart on` starts hub-desktop with your login, and with it the hubs you had set to start with the
 login: the login entries of tasks, rules and testing are taken over (each is named as it is moved) into
 `start_with_hub` of `config.json`, and their own entries are removed. hub-desktop then starts those hubs in the
-background (`<program> start`, no page) whenever it starts with its icon. Edit the list by hand to add or remove an
-app (`"start_with_hub": ["tasks", "rules"]`). `autostart off` removes the entry of hub-desktop and gives the apps none
-back (`<program> autostart on` of the app does); `autostart status` shows both. Without a page and without a paired
-phone, a hub of an app ends itself after ten minutes, as it always does when it was not started by its own login
-entry; set `keep_running` in that app's settings to keep it.
+background (`<program> start`, no page) whenever it starts with its icon, and those hubs stay without a page as if
+their own entry had started them. `autostart off` removes the entry of hub-desktop and gives each app of the list its
+own entry back, so that each still starts with your login; `autostart status` shows both.
+
+Whether an app starts with your login is one state, shown and switched in two places that always agree: the menu of
+its tile here ("Start at login", tasks, rules, testing and pult) and the app itself (its `autostart on|off` and the
+switch of its page). Switched on while hub-desktop starts with your login, an app goes into `start_with_hub`; otherwise
+it gets its own entry. Switched off, it leaves both.
 
 `hub-desktop open --launch` opens a paired page for a hub that runs, `hub-desktop stop` ends it. Checks before a
 change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,

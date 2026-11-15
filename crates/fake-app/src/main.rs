@@ -1,7 +1,8 @@
 //! A program that stands in for an app the hub starts. It appends one line of JSON (its argument list, its
 //! working folder, its process id) to `fake-app.log` in the folder of its own file, and ends. The log is next
 //! to the program, so that every test, which has a program of its own in a folder of its own, reads only its
-//! own starts.
+//! own starts. It also names the variables of its environment that end in `_STAY` (what hub-desktop sets for a hub it
+//! starts with itself).
 //!
 //! For the runner of the updates it also takes a few options, anywhere in its arguments: `--say <text>` prints a
 //! line to stdout, `--err <text>` one to stderr, `--sleep <ms>` waits, `--exit <code>` ends with that code,
@@ -19,6 +20,8 @@ fn main() {
         "argv": args,
         "cwd": std::env::current_dir().map(|d| d.display().to_string()).unwrap_or_default(),
         "pid": std::process::id(),
+        // The variables a starter set to tell a hub to stay (`<APP>_STAY`), by name.
+        "stay": stay_vars(),
     });
     let mut out = std::fs::OpenOptions::new()
         .create(true)
@@ -61,4 +64,14 @@ fn main() {
         rest.next();
     }
     std::process::exit(code);
+}
+
+/// The names of the variables that end in `_STAY`, sorted.
+fn stay_vars() -> Vec<String> {
+    let mut names: Vec<String> = std::env::vars_os()
+        .filter_map(|(name, _)| name.into_string().ok())
+        .filter(|name| name.ends_with("_STAY"))
+        .collect();
+    names.sort();
+    names
 }

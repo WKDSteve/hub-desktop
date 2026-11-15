@@ -4,7 +4,14 @@ import { App, type TokenStore } from './app.svelte';
 
 /** A fetch that answers like the hub, and keeps what it was asked. */
 function fakeHub(
-  options: { acceptCode?: string; token?: string; monitor?: () => Response; cases?: (path: string) => Response | Promise<Response> } = {},
+  options: {
+    acceptCode?: string;
+    token?: string;
+    monitor?: () => Response;
+    cases?: (path: string) => Response | Promise<Response>;
+    /** The start with the login of tasks, as the machine holds it; the switch writes it. */
+    login?: { on: boolean; refuse?: boolean };
+  } = {},
 ) {
   const asked: { path: string; auth: string | null }[] = [];
   const token = options.token ?? 'a'.repeat(64);
@@ -26,7 +33,12 @@ function fakeHub(
     if (path === '/api/hub/hello') {
       return json(200, { instance: 'i', version: '1.2.3', engine: { ready: false, problem: null } });
     }
-    if (path === '/api/hub/apps') return json(200, { apps: [{ id: 'tasks', name: 'Tasks' }] });
+    if (path === '/api/hub/apps') return json(200, { apps: [{ id: 'tasks', name: 'Tasks', ...(options.login ? { autostart: options.login.on } : {}) }] });
+    if (path === '/api/hub/apps/tasks/autostart' && options.login) {
+      if (options.login.refuse) return json(502, { error: { code: 'autostart_failed', message: 'no' } });
+      options.login.on = (JSON.parse(String(init?.body)) as { on: boolean }).on;
+      return json(200, { result: 'saved' });
+    }
     if (path === '/api/hub/monitor' && options.monitor) return options.monitor();
     if (path.startsWith('/api/hub/monitor/cases?') && options.cases) return options.cases(path);
     return json(404, { error: { code: 'not_found', message: path } });
@@ -158,6 +170,34 @@ describe('App', () => {
     answer = reply({ state: 'problem', problem: 'the export cannot be read' });
     await app.reload();
     expect(app.monitor).toEqual({ state: 'problem', problem: 'the export cannot be read' });
+  });
+});
+
+describe('the start with the login of a tile', () => {
+  it('switches what the machine holds and shows what it says afterwards', async () => {
+    const login = { on: false };
+    const { hub, token } = fakeHub({ login });
+    const app = new App(hub, memory({ 'hub-desktop.session': token }));
+    await app.start(null);
+    expect(app.apps[0]?.autostart).toBe(false);
+    const tile = app.apps[0]!;
+    await app.setAutostart(tile, true);
+    expect(login.on).toBe(true);
+    expect(app.apps[0]?.autostart).toBe(true);
+    // Switched off in the app itself: the next look shows it.
+    login.on = false;
+    await app.reload();
+    expect(app.apps[0]?.autostart).toBe(false);
+  });
+
+  it('says so when the switch fails and keeps what the machine says', async () => {
+    const login = { on: true, refuse: true };
+    const { hub, token } = fakeHub({ login });
+    const app = new App(hub, memory({ 'hub-desktop.session': token }));
+    await app.start(null);
+    await app.setAutostart(app.apps[0]!, false);
+    expect(app.apps[0]?.autostart).toBe(true);
+    expect(app.toast?.kind).toBe('error');
   });
 });
 

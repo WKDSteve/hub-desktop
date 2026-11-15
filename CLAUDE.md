@@ -112,9 +112,16 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 - `serve_until` endet auch auf `<program> stop` (Control-Route, `presence().asked_to_end()`); Test in `tests/cli.rs`.
 - `login.rs`: `autostart on|off|status` gegen `LoginEntries` (Programm `SystemLogin` über appkit, Tests ein Fake, nie die
   echte Registry). `on`: eigener Run-Wert, dann `start_with_hub` in `config.json`, dann die Run-Werte von
-  `TAKES_OVER` (tasks, rules, testing; nicht pult) entfernen. `off` gibt nichts zurück.
+  `TAKES_OVER` (= appkit `loginstate::TAKEN_OVER`: tasks, rules, testing; nicht pult) entfernen. `off` gibt den Apps
+  der Liste ihren eigenen Run-Wert zurück (installierte Kopie), die Liste bleibt für das nächste `on`.
 - `start_with_hub`: nur Kit-Hubs, je einmal; der Tray startet sie mit `Request::Background` (argv `["start"]`, keine
-  Seite, nicht bei `setup`).
+  Seite, nicht bei `setup`) über `launch::spawn_with` mit `<APP>_STAY=1`: der Hub bleibt ohne Seite (`has_order`).
+- Ein Stand (Entscheidung 15): ob eine App mit der Anmeldung startet, lesen und schalten Kachel und App gleich, über
+  appkit `loginstate` (`is_on`, `set`): eigener Run-Wert, oder `start_with_hub` solange hub-desktop selbst startet.
+  Kachel: Menüpunkt "Start at login" (`kind: 'check'`, nur bei `autostart` true/false), Route
+  `POST /api/hub/apps/{id}/autostart` `{ "on": bool }` (in `MUTATION_ROUTES`, nur Kit-Apps) über `Prefs::set_autostart`.
+  Leser und Schreiber hängt nur `app.rs` an (`with_autostart`, `Prefs::with_login`); die Tests geben eigene mit
+  Fake-Login und `HUB_DESKTOP_CONFIG_DIR` (`tests/autostart_route.rs`), nie die echte Registry.
 - Ein Kit-Hub, der noch ein Konsolenprogramm ist, bekommt aus dem Tray (Fenster-Programm ohne Konsole) ein eigenes
   Konsolenfenster: erst die Fenster-Programm-Builds der Apps (`hub-ist-fenster-programm-…`) machen das unsichtbar.
 
@@ -127,10 +134,9 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 - Stop: `POST /api/hub/apps/{id}/stop` (steht in `MUTATION_ROUTES`), nur für `Native::AppKitHub`, nur wenn der Hub der
   App läuft; das Programm der Erkennung wird mit dem einen Argument `stop` gestartet. Der Hub liest nie das Secret
   einer App und beendet nie selbst einen Prozess.
-- Autostart-Anzeige: `appkit_hub::background::autostart_of` (liest den Run-Key der fremden App über `reg.exe`, nur
-  lesend) wird nur in `app.rs` an den `Detector` gehängt (`with_autostart`); ohne sie, also in allen Tests, weiß der
-  Detector nichts (`None`) und liest nie die Registry. Die Kachel sagt „Starts at login“ / „No autostart“, bei `None`
-  nichts. Unter Linux/macOS gibt es keine Anzeige.
+- Autostart-Anzeige: appkit `loginstate::is_on` (der eine Stand, siehe "Tray und Autostart") wird nur in `app.rs` an
+  den `Detector` gehängt (`with_autostart`); ohne ihn, also in den meisten Tests, weiß der Detector nichts (`None`) und
+  liest nie die Registry. Die Kachel sagt „Starts at login“ / „No autostart“, bei `None` nichts.
 - Build: `GET /api/hub/apps` nennt je laufender Kit-App `build` (aus `hello.build`, appkit ab v0.29.0; nur 1 bis 40 Buchstaben/Ziffern, sonst `null`).
 - Update-Badge: Die Seite fragt `api.github.com` (`ui/src/lib/updates.ts`), der Hub nie (für den Badge; ein Update
   auf Knopfdruck holt die Release-Dateien über `gh`, siehe "Updates"). Nur auf Knopfdruck ("Check for updates"), höchstens

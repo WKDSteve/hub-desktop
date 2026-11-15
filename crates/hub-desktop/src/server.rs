@@ -177,13 +177,14 @@ fn key_of(query: Option<&str>) -> &str {
 
 /// The routes that change something (a `POST`, a session and a JSON body): `{id}` stands for an app. The
 /// tests ask each of them without a session, with a wrong content type and with a body that is not one.
-pub const MUTATION_ROUTES: [&str; 6] = [
+pub const MUTATION_ROUTES: [&str; 7] = [
     "apps/{id}/launch",
     "apps/{id}/mode",
     "rescan",
     "apps/{id}/stop",
     "apps/{id}/update",
     "update-all",
+    "apps/{id}/autostart",
 ];
 
 /// What a click sends: a mode, or nothing (the default of the app). Nothing else is read.
@@ -354,6 +355,56 @@ async fn choose_mode(
     }
 }
 
+/// What the switch of a tile sends: on or off. Nothing else is read.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AutostartBody {
+    on: bool,
+}
+
+/// `POST /api/hub/apps/{id}/autostart` `{ "on": bool }`: the app starts with the login, or not. The same state
+/// the app shows and switches itself (`appkit_hub::loginstate`); the tiles answer it afterwards in `autostart`.
+async fn switch_autostart(
+    State(core): State<Arc<Core<HubRuntime>>>,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Response {
+    let Ok(parsed) = serde_json::from_slice::<AutostartBody>(&body) else {
+        return appkit_hub::error_body(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "the body is not {\"on\": true | false}",
+        );
+    };
+    let prefs = Arc::clone(core.rt().prefs());
+    // The writer runs `reg.exe`: off the threads that answer requests.
+    let done = tokio::task::spawn_blocking(move || prefs.set_autostart(&id, parsed.on)).await;
+    match done {
+        Ok(Ok(())) => Json(json!({ "result": "saved" })).into_response(),
+        Ok(Err(PrefsError::UnknownApp)) => {
+            appkit_hub::error_body(StatusCode::NOT_FOUND, "not_found", "no such app")
+        }
+        Ok(Err(PrefsError::NotAvailable(_))) => appkit_hub::error_body(
+            StatusCode::CONFLICT,
+            "not_available",
+            "the start with the login of this app cannot be switched here",
+        ),
+        Ok(Err(PrefsError::Failed(why))) => {
+            eprintln!("autostart: {why}");
+            appkit_hub::error_body(
+                StatusCode::BAD_GATEWAY,
+                "autostart_failed",
+                "the start with the login could not be switched",
+            )
+        }
+        Err(_) => appkit_hub::error_body(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "autostart_failed",
+            "the start with the login could not be switched",
+        ),
+    }
+}
+
 /// `GET /api/hub/updates`: per listed app what can be updated on this machine (`ready` or why not) and its last
 /// update, with the last lines of what the steps printed.
 async fn updates(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
@@ -426,6 +477,10 @@ fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
         .route(
             &IDENTITY.route(MUTATION_ROUTES[5]),
             post(update_all).layer(DefaultBodyLimit::max(small)),
+        )
+        .route(
+            &IDENTITY.route(MUTATION_ROUTES[6]),
+            post(switch_autostart).layer(DefaultBodyLimit::max(small)),
         )
 }
 

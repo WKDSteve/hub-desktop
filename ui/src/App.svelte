@@ -72,6 +72,17 @@
         hint: canUpdateTile(tile.id) ? undefined : updateHint(tile.id),
         onselect: () => void app.update(tile),
       },
+      // The start with the login: the same state the app shows and switches itself. Only where it can be told.
+      ...(typeof tile.autostart === 'boolean'
+        ? [
+            {
+              kind: 'check' as const,
+              label: 'Start at login',
+              checked: tile.autostart,
+              onselect: () => void app.setAutostart(tile, !tile.autostart),
+            },
+          ]
+        : []),
     ];
   });
 

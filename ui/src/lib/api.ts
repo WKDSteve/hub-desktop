@@ -99,6 +99,8 @@ export interface HubApi {
   apps(): Promise<Apps>;
   launch(id: string, ask?: LaunchAsk): Promise<LaunchResult>;
   setMode(id: string, mode: Mode | null): Promise<void>;
+  /** Switch the start with the login of an app of the kit: the same state the app switches itself. */
+  setAutostart(id: string, on: boolean): Promise<void>;
   stop(id: string): Promise<StopResult>;
   rescan(): Promise<void>;
   /** The light of each repository of the testing export (the web hub has none). */
@@ -142,6 +144,11 @@ export class Hub extends HubClient implements HubApi {
   /** The mode a click opens for an app, kept by the hub; `null` goes back to the default of the app. */
   setMode(id: string, mode: Mode | null): Promise<void> {
     return this.post(this.route(`apps/${encodeURIComponent(id)}/mode`), { mode });
+  }
+
+  /** The app starts with the login (`true`) or not; the tile reads the state again afterwards (`autostart`). */
+  setAutostart(id: string, on: boolean): Promise<void> {
+    return this.post(this.route(`apps/${encodeURIComponent(id)}/autostart`), { on });
   }
 
   /** What the hub reads of the export folder of testing.nvim: nothing configured, a problem, or the rows. */
