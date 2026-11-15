@@ -22,7 +22,11 @@ const USAGE: &str = "usage:
                                            (Windows): open the page, open and stop the other hubs,
                                            quit; it starts the hubs of start_with_hub in config.json
   hub-desktop start [--open]               run the hub in the background (on Windows: tray; log in
-                                           the config folder); --open also opens the browser
+                                           the config folder); --open also opens the browser, and a
+                                           hub it started is stopped again when that fails.
+                                           Without an icon (not Windows) the hub ends itself 10
+                                           minutes after the last page closed, unless it starts with
+                                           your login or keep_running is set in config.json
   hub-desktop stop                         stop the hub that runs in the background
   hub-desktop autostart on|off|status      start hub-desktop with your login; on takes over the
                                            login entries of tasks, rules and testing (their hubs
@@ -74,25 +78,18 @@ async fn run(args: Vec<String>, console: Console) -> Result<(), String> {
             Ok(())
         }
         Some("serve") => match parse_port(&args[1..]) {
-            Ok(port) => app::serve(ServeOptions { port, open: false }).await,
+            Ok(port) => {
+                app::serve(ServeOptions {
+                    port,
+                    open: false,
+                    alone: true,
+                })
+                .await
+            }
             Err(e) => Err(e),
         },
-        Some("start") if args.len() == 1 || (args.len() == 2 && args[1] == "--open") => {
-            match background::start().await {
-                Ok(text) => {
-                    print!("{text}");
-                    if args.len() == 2 {
-                        match app::open().await {
-                            Ok(url) => app::deliver(&url),
-                            Err(e) => Err(e),
-                        }
-                    } else {
-                        Ok(())
-                    }
-                }
-                Err(e) => Err(e),
-            }
-        }
+        Some("start") if args.len() == 2 && args[1] == "--open" => app::start_and_open().await,
+        Some("start") if args.len() == 1 => background::start().await.map(|text| print!("{text}")),
         Some("install") if args.len() == 1 || (args.len() == 2 && args[1] == "--shortcut") => {
             background::install(background::install_options(args.len() == 2))
                 .await

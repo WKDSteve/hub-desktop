@@ -275,3 +275,75 @@ fn the_program_serves_a_web_variant_on_a_port_of_its_own() {
         assert!(!wrong.body.contains("a page"), "{wrong:?}");
     });
 }
+
+/// `serve` as `start` runs it where there is no icon (`HUB_DESKTOP_DETACHED`), with a short time alone and without the
+/// login entries of the machine (`HUB_DESKTOP_NO_LOGIN_SYNC`). Its output goes to `out`.
+fn serve_in_background(config: &Path, port: u16, detached: bool, out: &Path) -> Running {
+    let mut cmd = command(config, port);
+    cmd.arg("serve")
+        .env("HUB_DESKTOP_ALONE_SECS", "1")
+        .env("HUB_DESKTOP_NO_LOGIN_SYNC", "1")
+        .stdout(Stdio::from(std::fs::File::create(out).unwrap()))
+        .stderr(Stdio::null());
+    if detached {
+        cmd.env("HUB_DESKTOP_DETACHED", "1");
+    }
+    Running {
+        child: cmd.spawn().unwrap(),
+    }
+}
+
+/// A hub in the background without an icon that nobody opens ends itself: nobody would see or stop it.
+#[test]
+fn a_hub_in_the_background_without_an_icon_that_nobody_opens_ends_itself() {
+    let scratch = Scratch::new("hub-cli-alone");
+    let config = scratch.path();
+    let port = free_port();
+    let out = config.join("serve-out.txt");
+    let mut hub = serve_in_background(config, port, true, &out);
+    wait_for("the hub to write hub.json", || {
+        config.join("hub.json").is_file()
+    });
+    let end = Instant::now() + Duration::from_secs(30);
+    let status = loop {
+        if let Some(status) = hub.child.try_wait().unwrap() {
+            break status;
+        }
+        assert!(Instant::now() < end, "the hub left alone did not end");
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert!(status.success(), "{status:?}");
+    assert!(!config.join("hub.json").exists());
+    let said = std::fs::read_to_string(&out).unwrap();
+    assert!(said.contains("no page is connected"), "{said}");
+}
+
+/// An order to stay is the person's: `keep_running` keeps a hub in the background; a hub in a terminal (or the tray,
+/// whose icon shows it) is never left alone.
+#[test]
+fn a_hub_with_an_order_to_stay_and_a_hub_in_a_terminal_do_not_end_themselves() {
+    let kept = Scratch::new("hub-cli-alone-kept");
+    std::fs::write(kept.path().join("config.json"), r#"{"keep_running":true}"#).unwrap();
+    let terminal = Scratch::new("hub-cli-alone-terminal");
+    let mut first =
+        serve_in_background(kept.path(), free_port(), true, &kept.path().join("out.txt"));
+    let mut second = serve_in_background(
+        terminal.path(),
+        free_port(),
+        false,
+        &terminal.path().join("out.txt"),
+    );
+    wait_for("both hubs to write hub.json", || {
+        kept.path().join("hub.json").is_file() && terminal.path().join("hub.json").is_file()
+    });
+    // Several times the time alone.
+    std::thread::sleep(Duration::from_secs(5));
+    assert!(
+        first.child.try_wait().unwrap().is_none(),
+        "keep_running did not keep it"
+    );
+    assert!(
+        second.child.try_wait().unwrap().is_none(),
+        "the hub in a terminal ended"
+    );
+}

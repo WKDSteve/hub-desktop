@@ -98,6 +98,15 @@ From a checkout, `.\scripts\build-install.ps1` builds and installs for the curre
 install or remove in a Claude session and in an elevated one (`-AllowElevated` for a build machine); `-BuildOnly` works
 in either.
 
+### A hub in the background ends itself (without an icon)
+
+Where `start` has no icon to show (Linux, macOS: it runs `serve` in the background), nobody would see or stop a hub
+that is left over. It ends itself once no page has been connected for ten minutes (`HUB_DESKTOP_ALONE_SECS`, 1 to
+86400, sets another time), unless you gave it an order to stay: it starts with your login (`autostart on`), or
+`config.json` says `"keep_running": true`. A hub in a terminal (`serve`) and the tray on Windows, whose icon shows it,
+never end by themselves. When `start --open` or a double click started the hub and the page then cannot be opened, the
+hub is stopped again at once and the message says so; a hub that ran already is left as it is.
+
 ## License
 
 [MIT](LICENSE)

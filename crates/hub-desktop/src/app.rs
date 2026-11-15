@@ -34,6 +34,10 @@ pub struct ServeOptions {
     pub port: Option<u16>,
     /// Open the browser with a one-time pairing link once the hub runs (a double click does).
     pub open: bool,
+    /// A hub that `start` put in the background without an icon (`serve` where there is no tray) ends itself once
+    /// no page has been connected for a while and nothing asks it to stay (`background::left_alone`). The tray
+    /// passes `false`: its icon shows it, and it ends from its menu.
+    pub alone: bool,
 }
 
 /// The folder for `hub.json` and `control.secret`.
@@ -283,14 +287,50 @@ pub async fn serve_until(
     let presence = running.presence();
     tokio::select! {
         () = stop => {}
-        // `<program> stop` asks over the control route first; without this it ends the hub the hard way.
-        () = presence.asked_to_end() => {}
+        () = until_over(&running, &presence, &dir, &env, opts.alone) => {}
     }
     registry::remove_record(&dir);
     registry::remove_secret(&dir);
     running.shutdown().await;
     stop_web(web).await;
     Ok(())
+}
+
+/// Resolves when the hub is to end besides `stop`: `<program> stop` asked over the control route (without this it
+/// ends the hub the hard way), or, for a hub in the background without an icon (`alone`), being left alone. The
+/// settings are read then, not at the start: an order to stay (`keep_running`) may be new.
+async fn until_over(
+    running: &appkit_hub::RunningServer,
+    presence: &appkit_hub::presence::Presence,
+    dir: &std::path::Path,
+    env: &Env,
+    alone: bool,
+) {
+    if !alone || !appkit_hub::background::runs_detached(&crate::background::APP, env) {
+        return presence.asked_to_end().await;
+    }
+    let stay = || {
+        let keep_running = match config::load_file(dir) {
+            Ok(file) => file.keep_running.unwrap_or(false),
+            // Settings that cannot be read are no reason to go: the order may stand in them.
+            Err(e) => {
+                println!("the settings cannot be read, so the hub stays: {e}");
+                true
+            }
+        };
+        appkit_hub::background::has_order(
+            &crate::background::APP,
+            env,
+            keep_running,
+            running.paired_devices(),
+        )
+    };
+    tokio::select! {
+        () = presence.asked_to_end() => {}
+        () = appkit_hub::background::left_alone(&crate::background::APP, env, presence, stay) => {
+            println!("no page is connected and nothing asks the hub to stay: it ends");
+        }
+    }
 }
 
 /// The port of the listener of the web variants: `HUB_DESKTOP_WEB_PORT`, else the default.
@@ -321,9 +361,50 @@ async fn stop_web(web: Option<WebServer>) {
 ///
 /// A text for the person: the console of the terminal, or a message box.
 pub async fn click_in_background() -> Result<(), String> {
-    print!("{}", crate::background::start().await?);
-    let url = open().await?;
-    deliver(&url)
+    start_and_open().await
+}
+
+/// `start --open`, and the double click of the window program: the hub in the background, then the page. A hub this
+/// call started for the page does not stay behind when the page cannot be opened: nobody would see it (on Windows its
+/// icon would, but a start that failed to show anything is not what the person asked for). One that ran already is not
+/// this call's to stop.
+///
+/// # Errors
+///
+/// A text for the person at the terminal.
+pub async fn start_and_open() -> Result<(), String> {
+    let started = crate::background::start().await?;
+    print!("{started}");
+    open_or_stop(
+        &started,
+        async { open().await.and_then(|url| deliver(&url)) },
+        crate::background::stop,
+    )
+    .await
+}
+
+/// Open the page (`page`) of the hub that was just started or found (`started` is what the start printed); when it
+/// cannot be opened and the start started the hub, `stop` it again.
+///
+/// # Errors
+///
+/// Why the page was not opened, and what came of the stop.
+pub async fn open_or_stop<P, S, F>(started: &str, page: P, stop: S) -> Result<(), String>
+where
+    P: std::future::Future<Output = Result<(), String>>,
+    S: FnOnce() -> F,
+    F: std::future::Future<Output = Result<String, String>>,
+{
+    let Err(why) = page.await else {
+        return Ok(());
+    };
+    if !appkit_hub::background::started_now(started) {
+        return Err(why);
+    }
+    Err(match stop().await {
+        Ok(_) => format!("{why}; the hub that was started for the page is stopped again"),
+        Err(left) => format!("{why}; the hub that was started for the page still runs: {left}"),
+    })
 }
 
 /// What a double click on a console program does (a debug build): the hub runs in this window and the
@@ -343,6 +424,7 @@ pub async fn click() -> Result<(), String> {
     serve(ServeOptions {
         port: None,
         open: true,
+        alone: true,
     })
     .await
 }
@@ -456,6 +538,31 @@ pub fn launch(url: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    /// The hub a start started for the page is stopped again when the page cannot be opened; one that ran already, or a
+    /// page that opened, leaves the hub as it is.
+    #[tokio::test]
+    async fn a_hub_started_for_a_page_that_cannot_be_opened_is_stopped_again() {
+        use std::cell::Cell;
+        let stops = Cell::new(0);
+        let stop = || {
+            stops.set(stops.get() + 1);
+            async { Ok::<_, String>("stopped".to_owned()) }
+        };
+        let started = "the hub runs in the background (port 1, process 2)";
+        let failed = open_or_stop(started, async { Err("no browser".to_owned()) }, stop)
+            .await
+            .unwrap_err();
+        assert!(failed.contains("stopped again"), "{failed}");
+        assert_eq!(stops.get(), 1);
+        let running = "a hub is already running (port 1, process 2)";
+        let kept = open_or_stop(running, async { Err("no browser".to_owned()) }, stop)
+            .await
+            .unwrap_err();
+        assert_eq!(kept, "no browser");
+        open_or_stop(started, async { Ok(()) }, stop).await.unwrap();
+        assert_eq!(stops.get(), 1);
+    }
+
     use super::*;
 
     #[test]
@@ -498,6 +605,7 @@ mod tests {
         let given = ServeOptions {
             port: Some(22000),
             open: false,
+            alone: false,
         };
         assert_eq!(wanted_port(&given, &with_port, &env), Ok(22000));
     }

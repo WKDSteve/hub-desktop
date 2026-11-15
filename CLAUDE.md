@@ -110,6 +110,9 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 - `start` (und der Doppelklick des Release-Builds) startet `tray` über appkit `start_as(.., "tray", Program::Window)`:
   kein `CREATE_NO_WINDOW`, eigene Prozessgruppe, `hub.log`. Debug-Build: `Program::Console`. Andere Systeme: `serve`.
 - `serve_until` endet auch auf `<program> stop` (Control-Route, `presence().asked_to_end()`); Test in `tests/cli.rs`.
+  `ServeOptions::alone` (`serve`, Doppelklick des Debug-Builds): ein Hub mit `HUB_DESKTOP_DETACHED` (also `start` ohne
+  Tray) endet über appkit `left_alone`/`has_order` (`keep_running`, Login-Stand, gekoppelte Geräte); der Tray übergibt
+  `false`. `start --open`/Doppelklick: `app::open_or_stop` stoppt einen eben gestarteten Hub, wenn die Seite nicht aufgeht.
 - `login.rs`: `autostart on|off|status` gegen `LoginEntries` (Programm `SystemLogin` über appkit, Tests ein Fake, nie die
   echte Registry). `on`: eigener Run-Wert, dann `start_with_hub` in `config.json`, dann die Run-Werte von
   `TAKES_OVER` (= appkit `loginstate::TAKEN_OVER`: tasks, rules, testing; nicht pult) entfernen. `off` gibt den Apps
