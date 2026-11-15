@@ -512,6 +512,24 @@ async fn a_running_hub_is_asked_to_stop_with_stop_and_nothing_else() {
     assert_eq!(argv(&starts_of(&program)[0]), ["stop"]);
 }
 
+/// The start with hub-desktop leaves a hub that runs alone: no program is started for it.
+#[tokio::test]
+async fn a_hub_that_runs_is_not_started_again_with_hub_desktop() {
+    let machine = Machine::new("hub-launch-background-running");
+    let program = machine.tasks_program();
+    let port = fake_server(200, hello(None)).await;
+    write_hub_json(&machine.path("cfg-tasks"), port, "abc123");
+    let (launcher, _) = launcher(&machine, vault_env(&machine), None, None);
+    assert_eq!(
+        launcher.launch("tasks", Request::Background).await,
+        Ok(Outcome::Running)
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(starts_of(&program).is_empty());
+    // And the next start is not held up by it.
+    assert_eq!(launcher.stop("tasks").await, Ok(Outcome::Stopping));
+}
+
 #[tokio::test]
 async fn an_app_that_does_not_run_is_not_asked_to_stop() {
     let machine = Machine::new("hub-launch-stop-idle");

@@ -109,6 +109,8 @@ pub enum Outcome {
     Stopping,
     /// The app does not run: nothing was done.
     NotRunning,
+    /// The hub of the app runs already: nothing was done (a start in the background).
+    Running,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -305,6 +307,11 @@ impl Launcher {
                     return Ok(Outcome::SetupRequired);
                 }
                 if ask == Request::Background {
+                    // A hub that runs is left alone: no program is started for nothing.
+                    if state.run == Some(Run::Running) {
+                        drop(flight);
+                        return Ok(Outcome::Running);
+                    }
                     // Its hub only: a page nobody asked for would open at every login.
                     run(&["start"], Window::Default)?;
                     self.wait_until_running(entry, flight);

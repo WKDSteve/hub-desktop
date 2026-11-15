@@ -228,6 +228,7 @@ async fn launch(
                 Outcome::SetupRequired => "setup_required",
                 Outcome::Stopping => "stopping",
                 Outcome::NotRunning => "not_running",
+                Outcome::Running => "running",
             }
         }))
         .into_response(),
