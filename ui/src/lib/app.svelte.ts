@@ -106,8 +106,6 @@ export class App {
   /** The code of the last refused start of an app, until a look finds it better. */
   failed = $state<Record<string, string>>({});
   toast = $state<ToastMessage | null>(null);
-  /** The app whose setup the page is asking about. */
-  setupFor = $state<HubApp | null>(null);
   /** The testing export the hub reads, as it showed last. */
   monitor = $state<MonitorReading>(NOT_CONFIGURED);
   /** The repository of the monitor whose red cases are shown (one at a time), and what was read for it. */
@@ -444,7 +442,8 @@ export class App {
           this.say('ok', `Opened ${app.name}.`);
           break;
         case 'setup_required':
-          this.setupFor = app;
+          // An app that is not set up opens its page, where its first start is; a hub that answers this is older.
+          this.say('error', `${app.name} is not set up yet.`);
           break;
       }
     } catch (e) {

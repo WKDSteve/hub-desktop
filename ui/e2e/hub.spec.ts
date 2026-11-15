@@ -154,20 +154,12 @@ test('two tabs of the page start the app once', async ({ page, context, hub }) =
   expect(hub.starts('docmap')).toHaveLength(1);
 });
 
-test('an app that needs setup says so instead of opening a dead page, and its setup is one click', async ({ page, hub }) => {
+test('an app that needs setup opens its page, where its first start is, and no console', async ({ page, hub }) => {
   await hub.open(page);
   await tile(page, 'rules').click();
-  const dialog = page.getByRole('dialog', { name: /Rules needs to be set up/ });
-  await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText('no vault is set');
-  await page.waitForTimeout(500);
-  expect(hub.starts('rules')).toEqual([]);
-
-  await dialog.getByRole('button', { name: 'Open setup' }).click();
-  await until(() => hub.starts('rules').length === 1, 'the setup of rules');
-  // The program as a person starts it: no argument.
-  expect(hub.starts('rules')).toEqual([[]]);
-  await expect(dialog).toBeHidden();
+  await until(() => hub.starts('rules').length === 1, 'the start of rules');
+  expect(hub.starts('rules')).toEqual([['start', '--open']]);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
 test('something else on the port of ai-desktop is a refusal in words, and nothing starts', async ({ page, hub }) => {

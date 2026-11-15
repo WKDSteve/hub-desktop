@@ -86,7 +86,7 @@ pub enum Request {
     Default,
     Native,
     Web,
-    /// The first-start questions of an app: its program with no argument, in a console of its own.
+    /// The first start of an app of the kit: its page (`start --open`), where it asks for what it misses.
     Setup,
     /// The hub of an app of the kit in the background, without a page (`<program> start`): what
     /// hub-desktop does for the apps of `start_with_hub` when it starts (the login). Nothing else
@@ -297,16 +297,13 @@ impl Launcher {
         };
         match native {
             Native::AppKitHub { identity, .. } => {
-                if ask == Request::Setup {
-                    // The questions of a first start: the program as a person starts it.
-                    run(&[], Window::NewConsole)?;
-                    self.hold(flight, self.cfg.settle);
-                    return Ok(Outcome::Started);
-                }
-                if state.setup.is_some() {
-                    return Ok(Outcome::SetupRequired);
-                }
                 if ask == Request::Background {
+                    // An app that is not set up waits for a person: its first start is in its page, which nobody
+                    // asked for at the login.
+                    if state.setup.is_some() {
+                        drop(flight);
+                        return Ok(Outcome::SetupRequired);
+                    }
                     // A hub that runs is left alone: no program is started for nothing.
                     if state.run == Some(Run::Running) {
                         drop(flight);
@@ -329,8 +326,9 @@ impl Launcher {
                     self.wait_until_running(entry, flight);
                     return Ok(Outcome::Started);
                 }
-                // One command for both cases: it starts the hub when it does not run and opens a paired page
-                // either way, so there is nothing to look at first (and nothing to race with).
+                // One command for all cases: it starts the hub when it does not run and opens a paired page
+                // either way, so there is nothing to look at first (and nothing to race with). An app that is not
+                // set up (and `setup`, asked for) gets the same: its first start is in its page, never in a console.
                 run(&["start", "--open"], Window::Default)?;
                 self.wait_until_running(entry, flight);
                 Ok(Outcome::Started)

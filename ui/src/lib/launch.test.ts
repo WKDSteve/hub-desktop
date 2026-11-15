@@ -123,14 +123,14 @@ describe('launch', () => {
     expect(refused.app.failed['tasks']).toBe('port_busy');
   });
 
-  it('asks about the setup instead of opening a page that cannot work', async () => {
+  it('says so when the hub answers that an app is not set up (its first start is in its page)', async () => {
     const { app } = await ready({
       apps: [{ setup: 'no_vault' }],
       launch: () => new Response(JSON.stringify({ result: 'setup_required' }), { status: 200 }),
     });
     await app.launch(app.apps[0] as HubApp);
-    expect(app.setupFor?.id).toBe('tasks');
-    expect(app.toast).toBeNull();
+    expect(app.toast?.kind).toBe('error');
+    expect(app.toast?.text).toContain('not set up');
   });
 
   it('the tile says starting until the app runs, and not for ever', async () => {

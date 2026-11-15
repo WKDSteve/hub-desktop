@@ -171,20 +171,22 @@ async fn an_unknown_app_a_missing_one_and_a_foreign_program_on_a_port_are_answer
     hub.server.shutdown().await;
 }
 
+/// The first start of an app that is not set up is in its page: the tile and the mode `setup` open it.
 #[tokio::test]
-async fn setup_is_asked_as_a_mode_and_an_app_that_needs_it_says_so() {
+async fn setup_is_asked_as_a_mode_and_opens_the_page_of_the_app() {
     let hub = Hub::new("hub-route-setup", &[("TASKS_VAULT", String::new())]).await;
     let program = hub.machine.tasks_program();
-    let reply = hub.launch("tasks", "{}").await;
-    assert_eq!(reply.status, 200, "{reply:?}");
-    assert_eq!(reply.json()["result"], "setup_required");
     let setup = hub.launch("tasks", r#"{"mode":"setup"}"#).await;
+    assert_eq!(setup.status, 200, "{setup:?}");
     assert_eq!(setup.json()["result"], "started");
     let end = std::time::Instant::now() + Duration::from_secs(15);
     while starts_of(&program).is_empty() && std::time::Instant::now() < end {
         tokio::time::sleep(Duration::from_millis(30)).await;
     }
-    assert_eq!(starts_of(&program)[0]["argv"], serde_json::json!([]));
+    assert_eq!(
+        starts_of(&program)[0]["argv"],
+        serde_json::json!(["start", "--open"])
+    );
     hub.server.shutdown().await;
 }
 

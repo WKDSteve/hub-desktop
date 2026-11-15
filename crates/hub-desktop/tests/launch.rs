@@ -220,33 +220,30 @@ fn a_log_line_that_is_still_being_written_is_not_a_start_yet() {
     assert_eq!(starts_of(&program).len(), 1);
 }
 
+/// An app that is not set up opens its page, where its first start is (the vault, Neovim, the installation): the tile
+/// and `setup` start `start --open`, never the program in a console of its own.
 #[tokio::test]
-async fn an_app_that_needs_setup_is_not_started_but_its_setup_is() {
-    let machine = Machine::new("hub-launch-setup");
-    let program = machine.tasks_program();
-    // No vault: no settings, no variable.
-    let (launcher, _) = launcher(&machine, machine.env(&[]), None, None);
-    assert_eq!(
-        launcher.launch("tasks", Request::Default).await,
-        Ok(Outcome::SetupRequired)
-    );
-    assert_eq!(
-        launcher.launch("tasks", Request::Native).await,
-        Ok(Outcome::SetupRequired)
-    );
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(
-        starts_of(&program).is_empty(),
-        "nothing is started for an app that cannot work"
-    );
-
-    // The setup is the program as a person starts it: no argument.
-    assert_eq!(
-        launcher.launch("tasks", Request::Setup).await,
-        Ok(Outcome::Started)
-    );
-    wait_for_starts(&program, 1);
-    assert_eq!(argv(&starts_of(&program)[0]), Vec::<String>::new());
+async fn an_app_that_needs_setup_opens_its_page_for_the_first_start() {
+    for (n, ask) in [Request::Default, Request::Native, Request::Setup]
+        .into_iter()
+        .enumerate()
+    {
+        let machine = Machine::new(&format!("hub-launch-setup-{n}"));
+        let program = machine.tasks_program();
+        // No vault: no settings, no variable.
+        let (launcher, _) = launcher(&machine, machine.env(&[]), None, None);
+        assert_eq!(
+            launcher.launch("tasks", ask).await,
+            Ok(Outcome::Started),
+            "{ask:?}"
+        );
+        wait_for_starts(&program, 1);
+        assert_eq!(
+            argv(&starts_of(&program)[0]),
+            ["start", "--open"],
+            "{ask:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -446,12 +443,13 @@ async fn a_program_only_ever_gets_one_of_the_argument_lists_of_the_code() {
     };
     let (launcher, _) = launcher(&machine, env, None, Some(17611));
     for id in ["tasks", "docmap", "ai"] {
+        // The start in the background first: after any other the hub of the app counts as running or starting.
         for ask in [
+            Request::Background,
             Request::Default,
             Request::Native,
             Request::Web,
             Request::Setup,
-            Request::Background,
         ] {
             let _ = launcher.launch(id, ask).await;
             tokio::time::sleep(Duration::from_millis(700)).await;

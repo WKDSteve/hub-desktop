@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import Brand from 'appkit-ui/Brand.svelte';
   import { logoFor } from './lib/icons';
   import ContextMenu from 'appkit-ui/ContextMenu.svelte';
@@ -22,7 +22,6 @@
   const tabId = $derived(order.some((a) => a.id === focused) ? focused : (order[0]?.id ?? null));
 
   let filterBox: HTMLInputElement | undefined = $state();
-  let setup: HTMLDialogElement | undefined = $state();
 
   // The second action of a tile (concept 6.1): the mode a click does not open, and keeping it as the default.
   const registry = new ContextRegistry();
@@ -110,10 +109,6 @@
     };
   });
 
-  $effect(() => {
-    if (app.setupFor && setup && !setup.open) setup.showModal();
-  });
-
   // Bar and tab show one spoke per app on this machine. A filter changes neither: it only hides tiles.
   const mark = $derived(logoFor(app.apps.filter((a) => a.installed).length));
   $effect(() => {
@@ -177,16 +172,6 @@
     }
   }
 
-  async function openSetup(): Promise<void> {
-    const tile = app.setupFor;
-    setup?.close();
-    app.setupFor = null;
-    if (tile) await app.launch(tile, 'setup');
-    await tick();
-  }
-
-  const reason = (code: string | null): string =>
-    code === 'vault_not_a_directory' ? 'its vault is not a folder' : code === 'no_vault' ? 'no vault is set' : 'it is not set up';
 </script>
 
 <svelte:window onkeydown={onWindowKey} />
@@ -302,19 +287,6 @@
   labels={{ undo: 'Undo', dismiss: 'Dismiss the message' }}
 />
 
-<dialog bind:this={setup} class="setup" aria-labelledby="setup-title" onclose={() => (app.setupFor = null)}>
-  {#if app.setupFor}
-    <h2 id="setup-title">{app.setupFor.name} needs to be set up</h2>
-    <p>
-      {app.setupFor.name} cannot be opened yet: {reason(app.setupFor.setup)}. The setup opens a console window where
-      the app asks for what it needs.
-    </p>
-    <div class="actions">
-      <button type="button" class="primary" onclick={() => void openSetup()}>Open setup</button>
-      <button type="button" onclick={() => setup?.close()}>Close</button>
-    </div>
-  {/if}
-</dialog>
 
 <style>
   .brand-mark {
@@ -378,41 +350,5 @@
   }
   .none {
     color: var(--muted);
-  }
-  .setup {
-    max-width: 28rem;
-    color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-  }
-  .setup::backdrop {
-    background: var(--backdrop);
-  }
-  .actions {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: flex-end;
-  }
-  .actions button {
-    font: inherit;
-    color: var(--text);
-    background: var(--surface-2);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 0.25rem 0.8rem;
-    cursor: pointer;
-  }
-  .actions button:hover {
-    background: var(--line);
-  }
-  .actions .primary {
-    color: var(--accent-text);
-    background: var(--accent);
-    border-color: var(--accent);
-  }
-  .actions .primary:hover {
-    background: var(--accent-hover);
-    border-color: var(--accent-hover);
   }
 </style>

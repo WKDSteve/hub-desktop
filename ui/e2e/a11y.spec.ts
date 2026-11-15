@@ -142,16 +142,6 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
     });
 
-    test('with the dialog of the setup open', async ({ page, hub }) => {
-      await hub.open(page);
-      await page.locator('[data-tile="rules"]').click();
-      await expect(page.getByRole('dialog')).toBeVisible();
-      await showsThePointer(page.getByRole('dialog').getByRole('button', { name: 'Open setup' }));
-      await showsThePointer(page.getByRole('dialog').getByRole('button', { name: 'Close' }));
-      const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-      expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
-    });
-
     test('with a message shown and a tile that is starting', async ({ page, hub }) => {
       await hub.open(page);
       await page.locator('[data-tile="tasks"]').click();
