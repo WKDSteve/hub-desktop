@@ -114,17 +114,18 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   Tray) endet über appkit `left_alone`/`has_order` (`keep_running`, Login-Stand, gekoppelte Geräte); der Tray übergibt
   `false`. `start --open`/Doppelklick: `app::open_or_stop` stoppt einen eben gestarteten Hub, wenn die Seite nicht aufgeht.
 - `login.rs`: `autostart on|off|status` gegen `LoginEntries` (Programm `SystemLogin` über appkit, Tests ein Fake, nie die
-  echte Registry). `on`: eigener Run-Wert, dann `start_with_hub` in `config.json`, dann die Run-Werte von
+  echte Registry). `on`: eigener Login-Eintrag (seit appkit v0.60.0 `<app>.lnk` im Startup-Ordner, alte Run-Werte zählen und gehen), dann `start_with_hub` in `config.json`, dann die Einträge von
   `TAKES_OVER` (= appkit `loginstate::TAKEN_OVER`: tasks, rules, testing; nicht pult) entfernen. `off` gibt den Apps
-  der Liste ihren eigenen Run-Wert zurück (installierte Kopie), die Liste bleibt für das nächste `on`.
+  der Liste ihren eigenen Login-Eintrag zurück (installierte Kopie), die Liste bleibt für das nächste `on`.
 - `start_with_hub`: nur Kit-Hubs, je einmal; der Tray startet sie mit `Request::Background` (argv `["start"]`, keine
   Seite, nicht bei `setup`) über `launch::spawn_with` mit `<APP>_STAY=1`: der Hub bleibt ohne Seite (`has_order`).
 - Ein Stand (Entscheidung 15): ob eine App mit der Anmeldung startet, lesen und schalten Kachel und App gleich, über
-  appkit `loginstate` (`is_on`, `set`): eigener Run-Wert, oder `start_with_hub` solange hub-desktop selbst startet.
+  appkit `loginstate` (`is_on`, `set`): eigener Login-Eintrag, oder `start_with_hub` solange hub-desktop selbst startet.
   Kachel: Menüpunkt "Start at login" (`kind: 'check'`, nur bei `autostart` true/false), Route
   `POST /api/hub/apps/{id}/autostart` `{ "on": bool }` (in `MUTATION_ROUTES`, nur Kit-Apps) über `Prefs::set_autostart`.
   Leser und Schreiber hängt nur `app.rs` an (`with_autostart`, `Prefs::with_login`); die Tests geben eigene mit
-  Fake-Login und `HUB_DESKTOP_CONFIG_DIR` (`tests/autostart_route.rs`), nie die echte Registry.
+  Fake-Login und `HUB_DESKTOP_CONFIG_DIR` (`tests/autostart_route.rs`), nie die echte Registry. Was nur live geht:
+  Testblatt `TESTS/sheets/autostart-one-state.sheet.lua` (manuell).
 - Ein Kit-Hub, der noch ein Konsolenprogramm ist, bekommt aus dem Tray (Fenster-Programm ohne Konsole) ein eigenes
   Konsolenfenster: erst die Fenster-Programm-Builds der Apps (`hub-ist-fenster-programm-…`) machen das unsichtbar.
 
