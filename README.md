@@ -119,7 +119,9 @@ program is shown as "native only". The page cannot look at your machine: an app 
 yourself ("Mark as not present" in the menu of the tile), or all at once: **Choose the folder of the clones** (Chrome
 and Edge) opens the folder dialog, and every web variant whose page is not in the folder you pick is marked, the rest
 unmarked. The page reads only the names in that folder and keeps nothing of it but the marks. Build it with `cd ui && pnpm web:build`
-(`ui/dist-web/hub.html`).
+(`ui/dist-web/hub.html`). A tag `v*` (or a run by hand) of the workflow `web.yml` publishes it, with its sum, its
+README (`ui/web/hub-web/`) and the third-party notices (`ui/web/notices.mjs`), to
+[hub-web](https://github.com/WKDSteve/hub-web): clone that next to the other `*-web` repositories.
 
 ## Hide, order and stop
 

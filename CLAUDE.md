@@ -217,7 +217,11 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 - Dieselbe Oberfläche als eine HTML-Datei (`ui/index.web.html`, `src/main.web.ts`, `vite build --mode web`, gepackt von
   `ui/web/pack.mjs` mit `CSP_STRICT`). `src/web/hub.ts` (`WebHub`) beantwortet die Aufrufe des Hubs in der Seite: keine
   Erkennung, Web-Einträge sind Links `../<dir>/<datei>`, Programme "Native only", "fehlt" ist eine Markierung des
-  Betrachters (IndexedDB `hub-web`). Veröffentlicht wird nach `WKDSteve/hub-web` (`web.yml`, auf einem Tag).
+  Betrachters (IndexedDB `hub-web`). Veröffentlicht wird nach `WKDSteve/hub-web` (`web.yml`, auf einem Tag `v*` oder von
+  Hand), Branch `main`; der Workflow schreibt dort alles (`hub.html`, `SHA256SUMS`, README und `.gitattributes` aus
+  `ui/web/hub-web/`, `LICENSE`, `THIRD-PARTY-NOTICES.md`). Die Notices kommen aus `ui/web/notices.mjs` (Versionen aus
+  dem Lockfile, auch als Kommentar in `hub.html`); nach einem Svelte-Update `node web/notices.mjs` (aus `ui/`), sonst
+  ist `pnpm web:test` rot.
 - Ordnerwahl: "Choose the folder of the clones" (nur mit `showDirectoryPicker`, sonst kein Knopf) setzt die Marken aller
   Web-Varianten auf einmal: vorhanden ist, wessen `<dir>/<entry>` im gewählten Ordner liegt (`presentIn`, nur Namen, höchstens
   2000 Einträge je Ordner). Der Ordner selbst wird nicht gespeichert, nur die Marken; im Test ein Fake-Picker (`addInitScript`).

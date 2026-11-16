@@ -7,7 +7,9 @@
 # Runs on a tag (v*) and by hand. Like ci.yml it runs on the maintainer's self-hosted Windows runner, whose git
 # credentials push to hub-web: there is no deploy key and no secret in this workflow, and a workflow that anybody
 # else could trigger would have the maintainer's rights, which is why it has no `pull_request` trigger and no
-# `workflow_run`. The repository hub-web must exist (public, empty) before the first run.
+# `workflow_run`. The repository hub-web must exist (public, empty: `gh repo create WKDSteve/hub-web --public`)
+# before the first run; this workflow writes everything in it, the README and the license files included
+# (ui/web/hub-web/), on branch main.
 
 name: web
 
@@ -58,20 +60,32 @@ jobs:
           path: ui/test-results
           if-no-files-found: ignore
           retention-days: 14
-      # hub-web holds nothing but the built page and its sum. A page that did not change is not committed again.
+      - name: The notices next to the page are what the lockfile gives
+        working-directory: ui
+        run: node web/notices.mjs --check
+      # hub-web holds nothing but the built page, its sum, its README and the license files, all written from here. A
+      # page that did not change is not committed again. The first run finds an empty repository: its branch is set to
+      # main (whatever the runner's init.defaultBranch is), and the push names main.
       - name: Publish to hub-web
         run: |
           sha="$(git rev-parse --short HEAD)"
           publish="$RUNNER_TEMP/hub-web"
           rm -rf "$publish"
           git clone --quiet https://github.com/WKDSteve/hub-web "$publish"
+          if git -C "$publish" rev-parse --verify --quiet refs/remotes/origin/main >/dev/null; then
+            git -C "$publish" checkout --quiet -B main origin/main
+          else
+            git -C "$publish" symbolic-ref HEAD refs/heads/main
+          fi
           cp ui/dist-web/hub.html "$publish/hub.html"
+          cp ui/web/hub-web/README.md ui/web/hub-web/.gitattributes "$publish/"
+          cp ui/web/THIRD-PARTY-NOTICES.md LICENSE "$publish/"
           cd "$publish"
           sha256sum hub.html > SHA256SUMS
-          git add hub.html SHA256SUMS
+          git add hub.html SHA256SUMS README.md .gitattributes THIRD-PARTY-NOTICES.md LICENSE
           if git diff --cached --quiet; then
             echo "hub.html is the same as the published one"
           else
             git commit --quiet -m "hub.html, built from hub-desktop@$sha (${{ github.ref_name }})"
-            git push --quiet origin HEAD
+            git push --quiet origin HEAD:main
           fi

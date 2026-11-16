@@ -15,6 +15,7 @@
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { noticesText, readLock } from './notices.mjs';
 import { assemble as assemblePage, CSP_STRICT, readDist as readKitDist, verifyShell as verifyKitShell, writePage } from 'appkit-web/pack';
 
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,7 +25,7 @@ export const CSP = CSP_STRICT;
 
 /** The single file. */
 export function assemble({ css, js, build }) {
-  return assemblePage({ css, js, csp: CSP, title: 'Hub', comment: `hub-desktop web variant, build ${build}` });
+  return assemblePage({ css, js, csp: CSP, title: 'Hub', comment: `hub-desktop web variant, build ${build}\n\n${noticesText(readLock())}\n` });
 }
 
 /** What the page without the contents of its scripts and styles may not hold; empty when it is fine. */
