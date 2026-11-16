@@ -45,6 +45,11 @@ return {
     docs = "README.md",
   },
   {
+    id = "hub-desktop.autostart",
+    title = "The start with the login of each app is one state, switched in its tile and in the app; hubs started with hub-desktop stay",
+    docs = "README.md",
+  },
+  {
     id = "hub-desktop.button-states",
     title = "A button and a tile of the hub show rest, pointer and keyboard focus apart, light and dark",
     docs = "README.md",
