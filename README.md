@@ -170,15 +170,9 @@ by the request.
 
 ### The programs the hub starts
 
-| Program | Why | How long | How |
-| --- | --- | --- | --- |
-| the app of a tile (its program, its hub) | the click on the tile | outlives the hub (it is the app's) | `appkit_hub::launch`, with its own window where it has one |
-| `git` (on `PATH`) | update of a web variant: `symbolic-ref`, `status`, `rev-parse`, `pull --ff-only` | the call; at most 10 minutes | `appkit_core::child`: no window, ends with the hub, named in its log |
-| `gh` (on `PATH`) | update of a program: `release download`, `attestation verify` | the call; at most 10 minutes (the attestation 1 minute) | `appkit_core::child`, as `git` |
-| the checked file of a release | update of a program: `--version` and `install` of a program of the kit, or the setup with its window | the call; what it starts on purpose (the hub of the app, the app after a setup) stays | `appkit_core::child`, as `git` |
-| `<program> stop` of an app of the kit | **Stop** in the menu of its tile | the call | `appkit_hub::launch` |
-
-When a call runs out of time, it ends together with everything it started; nothing of an update is left running.
+Every program the hub starts (the apps, `git`, `gh`, the checked file of a release, the browser), with why, how
+long it lives and how it is started, is listed in [docs/PROCESSES.md](docs/PROCESSES.md). When an update call runs
+out of time, it ends together with everything it started; nothing of an update is left running.
 
 ## Testing monitor
 
