@@ -55,7 +55,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// build.
 pub const BUILD: Option<&str> = option_env!("HUB_DESKTOP_BUILD");
 
-/// The line `--version` prints: `hub-desktop 0.0.0`, and `hub-desktop 0.0.0 (build abc1234)` for a
+/// The line `--version` prints: `hub-desktop 0.1.0`, and `hub-desktop 0.1.0 (build abc1234)` for a
 /// rolling build. A release is exactly the first form (the release workflow compares it with the tag).
 #[must_use]
 pub fn version_line() -> String {
