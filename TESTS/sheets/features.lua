@@ -50,6 +50,11 @@ return {
     docs = "README.md",
   },
   {
+    id = "hub-desktop.window-program",
+    title = "Started from a link or a double click the hub opens no console window, and an error shows as a message box",
+    docs = "README.md",
+  },
+  {
     id = "hub-desktop.button-states",
     title = "A button and a tile of the hub show rest, pointer and keyboard focus apart, light and dark",
     docs = "README.md",

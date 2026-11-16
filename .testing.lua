@@ -37,6 +37,27 @@ return {
         },
         ready = { stdout = "^http://127%.0%.0%.1:%d+/#pair=%x+$", as = "link" },
       },
+      -- The release build (a window program) started the way a link starts it (testing.nvim `start = "link"`: no
+      -- standard handles, no console of a parent), against a config.json it cannot use in a folder of the run. The
+      -- start in the background gives up after 20 s and the program says so in a message box: its only window,
+      -- titled hub-desktop. Nothing is started that outlives the sheet (the hub in the background ends at once on the
+      -- config), and the person's settings and hub stay untouched (own folder, own ports, no browser).
+      ["link-start-error"] = {
+        build = { "cargo", "build", "--release", "-p", "hub-desktop", "--locked" },
+        prepare = { "python", "tools/sheet-write-file.py", "${temp}/cfg-hub/config.json", '{ "port": ' },
+        run = { "target/release/hub-desktop.exe" },
+        start = "link",
+        window = "hub-desktop",
+        window_ms = 90000,
+        env = {
+          HUB_DESKTOP_CONFIG_DIR = "${temp}/cfg-hub",
+          HUB_DESKTOP_PORT = "47393",
+          HUB_DESKTOP_WEB_PORT = "47394",
+          HUB_DESKTOP_NO_LAUNCH = "1",
+          HUB_DESKTOP_BROWSER_LOG = "${temp}/browser.log",
+          NVIM_MACHINE_ROLE = "workstation",
+        },
+      },
     },
   },
 }
