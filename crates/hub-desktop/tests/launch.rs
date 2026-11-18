@@ -282,6 +282,152 @@ async fn ai_that_runs_is_opened_in_the_browser_and_not_started_again() {
     assert!(starts_of(&program).is_empty());
 }
 
+/// A fake ai-desktop: `/health` says its app and instance, `/session/ticket` gives `ticket` only for
+/// `Bearer <secret>`. Every request line is kept, with whether it carried the secret.
+async fn fake_ai(
+    instance: &str,
+    secret: &str,
+    ticket: &str,
+) -> (u16, Arc<std::sync::Mutex<Vec<String>>>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let health = format!(
+        r#"{{"status":"ready","model_router_ready":true,"app":"ai-desktop","instance":"{instance}","backends":{{}}}}"#
+    );
+    let auth = format!("authorization: bearer {secret}");
+    let ticket = format!(r#"{{"ticket":"{ticket}","expires_in":120}}"#);
+    let log = Arc::clone(&seen);
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let (health, auth, ticket, log) = (
+                health.clone(),
+                auth.clone(),
+                ticket.clone(),
+                Arc::clone(&log),
+            );
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let n = stream.read(&mut buf).await.unwrap_or(0);
+                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                let line = text.lines().next().unwrap_or("").to_owned();
+                let with_secret = text.to_ascii_lowercase().contains(&auth);
+                log.lock()
+                    .unwrap()
+                    .push(format!("{line} secret={with_secret}"));
+                let (status, body) = if line.starts_with("GET /health ") {
+                    (200, health)
+                } else if line.starts_with("POST /session/ticket ") && with_secret {
+                    (200, ticket)
+                } else {
+                    (401, r#"{"error":{"message":"no"}}"#.to_owned())
+                };
+                let reply = format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(reply.as_bytes()).await;
+            });
+        }
+    });
+    (port, seen)
+}
+
+/// hub.json and control.secret of ai-desktop, in the folder the variable names.
+fn ai_files(dir: &Path, port: u16, instance: &str, secret: &str) {
+    appkit_core::registry::write_record(
+        dir,
+        &appkit_core::registry::HubRecord {
+            app: "ai-desktop".to_owned(),
+            port,
+            pid: 4242,
+            version: "0.0.87".to_owned(),
+            instance: instance.to_owned(),
+        },
+    )
+    .unwrap();
+    appkit_core::registry::write_secret(dir, secret).unwrap();
+}
+
+/// The tile opened the dashboard without a ticket, and it stayed "not signed in" (2026-11-18): it asks
+/// ai-desktop for a one-time ticket with its control secret, as a program of the family does.
+#[tokio::test]
+async fn ai_that_runs_is_opened_signed_in_with_a_ticket() {
+    let machine = Machine::new("hub-launch-ai-ticket");
+    machine.program("Local/Programs/ai-desktop/app/ai-desktop.exe");
+    let (port, seen) = fake_ai("inst1", "c0ffee", "0a1b2c").await;
+    let cfg = machine.path("cfg-ai");
+    ai_files(&cfg, port, "inst1", "c0ffee");
+    let env = machine.env(&[
+        ("AI_DESKTOP_PORT", port.to_string()),
+        ("AI_DESKTOP_CONFIG_DIR", cfg.display().to_string()),
+    ]);
+    let (launcher, browser) = launcher(&machine, env, None, None);
+    assert_eq!(
+        launcher.launch("ai", Request::Default).await,
+        Ok(Outcome::Opened)
+    );
+    assert_eq!(
+        opened(&browser),
+        [format!("http://127.0.0.1:{port}/#ticket=0a1b2c")]
+    );
+    let seen = seen.lock().unwrap().clone();
+    assert!(
+        seen.contains(&"POST /session/ticket HTTP/1.1 secret=true".to_owned()),
+        "{seen:?}"
+    );
+    // The secret goes only to the ticket route.
+    assert!(
+        seen.iter()
+            .filter(|l| l.ends_with("secret=true"))
+            .all(|l| l.starts_with("POST /session/ticket ")),
+        "{seen:?}"
+    );
+}
+
+/// The folder of the earlier name (loomai) is used while there is no ai-desktop folder, as ai-desktop does.
+#[tokio::test]
+async fn ai_finds_its_files_in_the_folder_of_its_earlier_name() {
+    let machine = Machine::new("hub-launch-ai-ticket-old");
+    machine.program("Local/Programs/ai-desktop/app/ai-desktop.exe");
+    let (port, _) = fake_ai("inst2", "beef", "ff00").await;
+    ai_files(&machine.path("Roaming/loomai"), port, "inst2", "beef");
+    let env = machine.env(&[("AI_DESKTOP_PORT", port.to_string())]);
+    let (launcher, browser) = launcher(&machine, env, None, None);
+    assert_eq!(
+        launcher.launch("ai", Request::Default).await,
+        Ok(Outcome::Opened)
+    );
+    assert_eq!(
+        opened(&browser),
+        [format!("http://127.0.0.1:{port}/#ticket=ff00")]
+    );
+}
+
+/// A hub.json of another start (a server that was killed, or another program on the port) gets no secret:
+/// the page opens as it is and says "not signed in" itself.
+#[tokio::test]
+async fn ai_of_another_instance_gets_no_secret_and_the_page_opens_without_a_ticket() {
+    let machine = Machine::new("hub-launch-ai-ticket-stale");
+    machine.program("Local/Programs/ai-desktop/app/ai-desktop.exe");
+    let (port, seen) = fake_ai("now", "c0ffee", "0a1b2c").await;
+    let cfg = machine.path("cfg-ai");
+    ai_files(&cfg, port, "before", "c0ffee");
+    let env = machine.env(&[
+        ("AI_DESKTOP_PORT", port.to_string()),
+        ("AI_DESKTOP_CONFIG_DIR", cfg.display().to_string()),
+    ]);
+    let (launcher, browser) = launcher(&machine, env, None, None);
+    assert_eq!(
+        launcher.launch("ai", Request::Default).await,
+        Ok(Outcome::Opened)
+    );
+    assert_eq!(opened(&browser), [format!("http://127.0.0.1:{port}/")]);
+    let seen = seen.lock().unwrap().clone();
+    assert!(seen.iter().all(|l| l.ends_with("secret=false")), "{seen:?}");
+}
+
 /// Acceptance 7: something else on the port of ai-desktop is no reason to start over it.
 #[tokio::test]
 async fn a_foreign_program_on_the_port_of_ai_is_a_port_busy_and_nothing_starts() {

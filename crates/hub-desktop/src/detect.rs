@@ -234,6 +234,12 @@ impl Detector {
         }
     }
 
+    /// The environment the detection reads (the launcher finds the config folder of a server in it).
+    #[must_use]
+    pub fn env(&self) -> &Env {
+        &self.env
+    }
+
     /// The chosen modes, from the settings.
     #[must_use]
     pub fn with_modes(self, modes: BTreeMap<String, Mode>) -> Self {

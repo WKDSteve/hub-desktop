@@ -34,7 +34,10 @@ needs none of the other apps to run.
 
 - **Installed apps** appear as tiles: `tasks-desktop`, `rules-desktop`, `testing-desktop`, `docmap-desktop`,
   `ai-desktop` and the apps that follow. One click starts the app (its own hub first, if it is not running) and
-  opens it, natively or as its web variant. Nothing else needs to be clicked.
+  opens it, natively or as its web variant. Nothing else needs to be clicked. The dashboard of ai-desktop opens
+  signed in: the hub reads ai-desktop's `hub.json` and `control.secret` (its config folder), checks on `/health`
+  that the server on the port is that instance, and only then asks it for a one-time ticket (`/#ticket=...`).
+  Without one (an older ai-desktop, a stale `hub.json`) the page opens as before and says it is not signed in.
 - **Apps that are not installed** appear darkened in a separate area, *Install or download*, with a
   link to the release page and its checksums. An app that does not exist yet (`Takt Player`) says it is planned.
 - **Updates** with one click per tile, or all at once with **Update all**: the program from its release, the web

@@ -60,7 +60,27 @@ pub enum Native {
         candidates: &'static [&'static str],
         port_var: &'static str,
         default_port: u16,
+        /// How its page is signed in; none: the page is opened as it is.
+        login: Option<TicketLogin>,
     },
+}
+
+/// A page that wants a one-time ticket in its address (`/#ticket=<hex>`), which a program with the control
+/// secret of the server asks for (ai-desktop, `docs/JOBS.md` "The login of the dashboard"). The server keeps
+/// `hub.json` and `control.secret` in its config folder in appkit's format. Without a ticket the page opens
+/// "not signed in", and its own help names only the server's console and a job.
+#[derive(Debug, Clone, Copy)]
+pub struct TicketLogin {
+    /// The `app` of its `hub.json` and of its `/health`.
+    pub app: &'static str,
+    /// The variables that name its config folder, first one first.
+    pub dir_vars: &'static [&'static str],
+    /// Its config folder below the roaming application data (`%APPDATA%`).
+    pub folder: &'static str,
+    /// The folder of an earlier name, used while `folder` does not exist (the server does the same).
+    pub old_folder: Option<&'static str>,
+    /// The route that gives a ticket for the control secret (POST).
+    pub route: &'static str,
 }
 
 /// The web variant of an app: one HTML file in a checkout of its own, below the web folder.
@@ -278,6 +298,13 @@ pub const CATALOG: &[Entry] = &[
             ],
             port_var: "AI_DESKTOP_PORT",
             default_port: AI_PORT,
+            login: Some(TicketLogin {
+                app: "ai-desktop",
+                dir_vars: &["AI_DESKTOP_CONFIG_DIR", "LOOMAI_CONFIG_DIR"],
+                folder: "ai-desktop",
+                old_folder: Some("loomai"),
+                route: "/session/ticket",
+            }),
         }),
         web: None,
         default_mode: Mode::Native,

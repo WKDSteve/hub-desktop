@@ -9,15 +9,23 @@
 //!
 //! One start at a time per app: while one is on its way, a click, a second click and a second tab get
 //! `starting` and no second program.
+//!
+//! The one secret the hub reads is the control secret of a server whose page wants a ticket (ai-desktop,
+//! `catalog::TicketLogin`), and it sends it only to that server, after `/health` named the instance of its
+//! `hub.json`. The secrets of the apps built on `appkit-hub` stay theirs.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use appkit_core::registry;
 use appkit_hub::launch::{spawn, spawn_with, LaunchOpts, Window};
+use serde_json::Value;
 
-use crate::catalog::{self, Entry, Mode, Native};
+use crate::catalog::{self, Entry, Mode, Native, TicketLogin};
+use crate::client;
+use crate::config::Env;
 use crate::detect::{AppState, Detector, Run};
 
 /// How the hub opens a page in the browser.
@@ -340,20 +348,20 @@ impl Launcher {
                 self.hold(flight, self.cfg.settle);
                 Ok(Outcome::Started)
             }
-            Native::LoopbackServer { .. } => {
+            Native::LoopbackServer { login, .. } => {
                 let port = state
                     .port
                     .ok_or_else(|| LaunchError::Failed("no port".to_owned()))?;
                 match state.run {
                     Some(Run::Running) => {
-                        self.open_page(port)?;
+                        self.open_page(*login, port).await?;
                         self.hold(flight, self.cfg.settle);
                         Ok(Outcome::Opened)
                     }
                     Some(Run::PortBusy) => Err(LaunchError::PortBusy),
                     _ => {
                         run(&[], Window::NewConsole)?;
-                        self.open_when_serving(entry, port, flight);
+                        self.open_when_serving(entry, port, *login, flight);
                         Ok(Outcome::Started)
                     }
                 }
@@ -361,10 +369,19 @@ impl Launcher {
         }
     }
 
-    fn open_page(&self, port: u16) -> Result<(), LaunchError> {
+    /// Open the page of a server, signed in when it wants a ticket and one can be had. Without one it opens
+    /// as it is and says "not signed in" itself: a missing ticket is no reason to open nothing.
+    async fn open_page(&self, login: Option<TicketLogin>, port: u16) -> Result<(), LaunchError> {
+        let mut url = format!("http://127.0.0.1:{port}/");
+        if let Some(login) = login
+            && let Ok(ticket) = ticket(&login, self.detector.env(), port).await
+        {
+            url.push_str("#ticket=");
+            url.push_str(&ticket);
+        }
         self.cfg
             .browser
-            .open(&format!("http://127.0.0.1:{port}/"), &[port])
+            .open(&url, &[port])
             .map_err(LaunchError::Failed)
     }
 
@@ -392,18 +409,96 @@ impl Launcher {
     }
 
     /// A program that serves a page: when it says `/health`, the page is opened in the browser.
-    fn open_when_serving(self: &Arc<Self>, entry: &'static Entry, port: u16, flight: Flight) {
+    fn open_when_serving(
+        self: &Arc<Self>,
+        entry: &'static Entry,
+        port: u16,
+        login: Option<TicketLogin>,
+        flight: Flight,
+    ) {
         let this = Arc::clone(self);
         tokio::spawn(async move {
             let end = tokio::time::Instant::now() + this.cfg.ready_timeout;
             while tokio::time::Instant::now() < end {
                 tokio::time::sleep(Duration::from_millis(250)).await;
                 if this.detector.look_one(entry).await.run == Some(Run::Running) {
-                    let _ = this.open_page(port);
+                    let _ = this.open_page(login, port).await;
                     break;
                 }
             }
             drop(flight);
         });
     }
+}
+
+/// The config folder of the server: the first variable that names one, else its folder below the roaming
+/// application data, or the folder of its earlier name while only that one exists (as the server decides).
+fn login_dir(login: &TicketLogin, env: &Env) -> Option<PathBuf> {
+    for var in login.dir_vars {
+        if let Some(dir) = env.path(var).filter(|d| !d.as_os_str().is_empty()) {
+            return Some(dir);
+        }
+    }
+    let base = env.path("APPDATA").or_else(|| {
+        env.path("USERPROFILE")
+            .map(|home| home.join("AppData").join("Roaming"))
+    })?;
+    let dir = base.join(login.folder);
+    if let Some(old) = login.old_folder.map(|name| base.join(name))
+        && !dir.is_dir()
+        && old.is_dir()
+    {
+        return Some(old);
+    }
+    Some(dir)
+}
+
+/// A one-time ticket for the page of the server on `port`. The control secret goes only to the process that
+/// says it is the server of `hub.json`: the same app and the same instance (a file left by a server that was
+/// killed, or another program on the port, gets nothing).
+async fn ticket(login: &TicketLogin, env: &Env, port: u16) -> Result<String, String> {
+    let dir = login_dir(login, env).ok_or("no config folder")?;
+    let record = registry::read_record(&dir)
+        .map_err(|e| e.to_string())?
+        .ok_or("no hub.json")?;
+    if record.app != login.app || record.port != port {
+        return Err("hub.json names another app or port".to_owned());
+    }
+    let health = client::request(port, "GET", "/health", &[], "")
+        .await
+        .map_err(|e| e.to_string())?;
+    let doc: Value = serde_json::from_str(&health.body).map_err(|_| "no JSON from /health")?;
+    if health.status != 200
+        || doc["app"].as_str() != Some(login.app)
+        || doc["instance"].as_str() != Some(record.instance.as_str())
+    {
+        return Err("the server on the port is not the one of hub.json".to_owned());
+    }
+    let secret = registry::read_secret(&dir)
+        .map_err(|e| e.to_string())?
+        .filter(|s| !s.is_empty())
+        .ok_or("no control secret")?;
+    let auth = format!("Bearer {secret}");
+    let reply = client::request(
+        port,
+        "POST",
+        login.route,
+        &[
+            ("Authorization", &auth),
+            ("Content-Type", "application/json"),
+        ],
+        "{}",
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    if reply.status != 200 {
+        return Err(format!("no ticket (HTTP {})", reply.status));
+    }
+    let doc: Value = serde_json::from_str(&reply.body).map_err(|_| "no JSON for the ticket")?;
+    let ticket = doc["ticket"].as_str().ok_or("no ticket in the answer")?;
+    // It goes into an address the browser opens: hex and nothing else.
+    if ticket.is_empty() || ticket.len() > 128 || !ticket.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("the ticket is not hex".to_owned());
+    }
+    Ok(ticket.to_owned())
 }
