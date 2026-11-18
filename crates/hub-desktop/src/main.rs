@@ -135,6 +135,10 @@ async fn run(args: Vec<String>, console: Console) -> Result<(), String> {
 }
 
 fn main() {
+    // First, before the runtime and the console: on Linux and macOS this program is also the watcher of the process
+    // group of each child it starts (started with `--appkit-child-watcher`, it only waits and never returns here);
+    // docs/PROCESSES.md of appkit.
+    appkit_core::child::watcher_main();
     // Before the first line is written.
     let console = console::attach_parent();
     console::report_panics("hub-desktop");
