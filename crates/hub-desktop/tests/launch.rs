@@ -386,17 +386,35 @@ async fn ai_that_runs_is_opened_signed_in_with_a_ticket() {
     );
 }
 
-/// The folder of the earlier name (loomai) is used while there is no ai-desktop folder, as ai-desktop does.
+/// Without the variable the files are in `%APPDATA%\ai-desktop`, as ai-desktop writes them; never in the folder
+/// of its earlier name (loomai), which only its config.json may still use.
 #[tokio::test]
-async fn ai_finds_its_files_in_the_folder_of_its_earlier_name() {
-    let machine = Machine::new("hub-launch-ai-ticket-old");
+async fn ai_finds_its_files_below_appdata_and_never_in_the_folder_of_its_earlier_name() {
+    let machine = Machine::new("hub-launch-ai-ticket-appdata");
     machine.program("Local/Programs/ai-desktop/app/ai-desktop.exe");
-    let (port, _) = fake_ai("inst2", "beef", "ff00").await;
+    let (port, seen) = fake_ai("inst2", "beef", "ff00").await;
     ai_files(&machine.path("Roaming/loomai"), port, "inst2", "beef");
     let env = machine.env(&[("AI_DESKTOP_PORT", port.to_string())]);
-    let (launcher, browser) = launcher(&machine, env, None, None);
+    let (first, browser) = launcher(&machine, env.clone(), None, None);
     assert_eq!(
-        launcher.launch("ai", Request::Default).await,
+        first.launch("ai", Request::Default).await,
+        Ok(Outcome::Opened)
+    );
+    assert_eq!(opened(&browser), [format!("http://127.0.0.1:{port}/")]);
+    assert!(
+        seen.lock()
+            .unwrap()
+            .iter()
+            .all(|l| l.ends_with("secret=false")),
+        "the loomai folder is not read"
+    );
+
+    ai_files(&machine.path("Roaming/ai-desktop"), port, "inst2", "beef");
+    // A launcher of its own (no start of the first on its way); the same browser log, read afresh.
+    let (second, browser) = launcher(&machine, env, None, None);
+    std::fs::remove_file(&browser).ok();
+    assert_eq!(
+        second.launch("ai", Request::Default).await,
         Ok(Outcome::Opened)
     );
     assert_eq!(

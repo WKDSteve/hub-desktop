@@ -73,12 +73,11 @@ pub enum Native {
 pub struct TicketLogin {
     /// The `app` of its `hub.json` and of its `/health`.
     pub app: &'static str,
-    /// The variables that name its config folder, first one first.
-    pub dir_vars: &'static [&'static str],
-    /// Its config folder below the roaming application data (`%APPDATA%`).
+    /// The variable that names the folder of its `hub.json`.
+    pub dir_var: &'static str,
+    /// That folder below the roaming application data (`%APPDATA%`) when the variable names none. Only this
+    /// one: ai-desktop writes `hub.json` and `control.secret` never into the folder of its earlier name.
     pub folder: &'static str,
-    /// The folder of an earlier name, used while `folder` does not exist (the server does the same).
-    pub old_folder: Option<&'static str>,
     /// The route that gives a ticket for the control secret (POST).
     pub route: &'static str,
 }
@@ -300,9 +299,8 @@ pub const CATALOG: &[Entry] = &[
             default_port: AI_PORT,
             login: Some(TicketLogin {
                 app: "ai-desktop",
-                dir_vars: &["AI_DESKTOP_CONFIG_DIR", "LOOMAI_CONFIG_DIR"],
+                dir_var: "AI_DESKTOP_CONFIG_DIR",
                 folder: "ai-desktop",
-                old_folder: Some("loomai"),
                 route: "/session/ticket",
             }),
         }),

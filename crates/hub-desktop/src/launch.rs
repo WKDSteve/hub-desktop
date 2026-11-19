@@ -431,26 +431,18 @@ impl Launcher {
     }
 }
 
-/// The config folder of the server: the first variable that names one, else its folder below the roaming
-/// application data, or the folder of its earlier name while only that one exists (as the server decides).
+/// The folder of the server's `hub.json` and `control.secret`, decided as the server decides it
+/// (ai-desktop `family::config_dir`): the variable, else its folder below `%APPDATA%`.
 fn login_dir(login: &TicketLogin, env: &Env) -> Option<PathBuf> {
-    for var in login.dir_vars {
-        if let Some(dir) = env.path(var).filter(|d| !d.as_os_str().is_empty()) {
-            return Some(dir);
-        }
-    }
-    let base = env.path("APPDATA").or_else(|| {
-        env.path("USERPROFILE")
-            .map(|home| home.join("AppData").join("Roaming"))
-    })?;
-    let dir = base.join(login.folder);
-    if let Some(old) = login.old_folder.map(|name| base.join(name))
-        && !dir.is_dir()
-        && old.is_dir()
+    if let Some(dir) = env
+        .path(login.dir_var)
+        .filter(|d| !d.as_os_str().is_empty())
     {
-        return Some(old);
+        return Some(dir);
     }
-    Some(dir)
+    env.path("APPDATA")
+        .filter(|d| !d.as_os_str().is_empty())
+        .map(|base| base.join(login.folder))
 }
 
 /// A one-time ticket for the page of the server on `port`. The control secret goes only to the process that
