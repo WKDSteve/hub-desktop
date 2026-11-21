@@ -59,4 +59,9 @@ return {
     title = "A button and a tile of the hub show rest, pointer and keyboard focus apart, light and dark",
     docs = "README.md",
   },
+  {
+    id = "hub-desktop.ci-watcher",
+    title = "The CI watcher writes the verdict of the hosted CI into finished tasks; the tray starts a waiting runner",
+    docs = "README.md",
+  },
 }
