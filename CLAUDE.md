@@ -279,3 +279,9 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   zählen, nicht nur das Ergebnis ansehen).
 - Nach `pnpm build` ist das eingebettete Binary alt: `touch crates/hub-desktop/src/ui.rs`, dann bauen, dann testen.
 - Neue Abhängigkeiten nur nach Rückfrage; Rust-Library-Code ohne `unwrap()`/`expect()` (Fehler über `Result`).
+
+## Web platform
+- Browser Support: Baseline Widely available (`.mwgrc`, `browserslist` in `ui/package.json`). Newer features only behind feature detection with a fallback; polyfills only via dynamic `import()`.
+- Before writing or changing HTML, CSS or client-side JS, use the `modern-web-guidance` skill (`search` → `retrieve` → verify). Not for Rust, backend, CI or build config.
+- For open-ended modernisation: `npx -y modern-web-guidance@latest legacy-scan ui/src --json`, check each finding against `keepWhen`/`dropWhen`.
+- Rules: rules-vault ruleset `web` (plus the app rules `WEB-*` in ruleset `native`).
