@@ -281,7 +281,7 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 - Neue Abhängigkeiten nur nach Rückfrage; Rust-Library-Code ohne `unwrap()`/`expect()` (Fehler über `Result`).
 
 ## Web platform
-- Browser Support: Baseline Widely available (`.mwgrc`, `browserslist` in `ui/package.json`). Newer features only behind feature detection with a fallback; polyfills only via dynamic `import()`.
+- Browser Support: Baseline Widely available (`.mwgrc`, `browserslist` in `ui/package.json`). Newer features only behind feature detection with a fallback; polyfills where browsers still in use need them (rather one too many), run only after the check: dynamic `import()`, or bundled in a `file://` page (rules-vault `BASE-02`).
 - Before writing or changing HTML, CSS or client-side JS, use the `modern-web-guidance` skill (`search` → `retrieve` → verify). Not for Rust, backend, CI or build config.
 - For open-ended modernisation: `npx -y modern-web-guidance@latest legacy-scan ui/src --json`, check each finding against `keepWhen`/`dropWhen`.
 - Rules: rules-vault ruleset `web` (plus the app rules `WEB-*` in ruleset `native`).
