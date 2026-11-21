@@ -284,16 +284,41 @@ pub async fn serve_until(
         launcher: Arc::clone(&launcher),
         start_with_hub: file.app.start_with_hub.clone(),
     });
+    let watching = start_ci_watch(file.app.ci_watch, &env);
     let presence = running.presence();
     tokio::select! {
         () = stop => {}
         () = until_over(&running, &presence, &dir, &env, opts.alone) => {}
+    }
+    if let Some(watching) = watching {
+        watching.abort();
     }
     registry::remove_record(&dir);
     registry::remove_secret(&dir);
     running.shutdown().await;
     stop_web(web).await;
     Ok(())
+}
+
+/// The CI watcher (`ciwatch.rs`), when `config.json` turns it on (`ci_watch: true`) and its programs are there; a
+/// missing one is a note, not a reason to stop the hub.
+fn start_ci_watch(on: bool, env: &Env) -> Option<tokio::task::JoinHandle<()>> {
+    if !on {
+        return None;
+    }
+    match crate::ciwatch::Programs::find(env) {
+        Ok(programs) => Some(tokio::spawn(crate::ciwatch::watch(
+            Arc::new(crate::ciwatch::Watcher::default()),
+            Arc::new(crate::ciwatch::SystemAsk),
+            programs,
+            crate::ciwatch::FIRST_ROUND,
+            crate::ciwatch::EVERY,
+        ))),
+        Err(why) => {
+            eprintln!("note: the CI watcher does not run: {why}");
+            None
+        }
+    }
 }
 
 /// Resolves when the hub is to end besides `stop`: `<program> stop` asked over the control route (without this it

@@ -35,6 +35,11 @@ pub struct HubSettings {
     /// `autostart on` fills it with the apps that had a login entry of their own.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub start_with_hub: Vec<String>,
+    /// The CI watcher (`ciwatch.rs`) writes the verdict of the hosted CI into the finished tasks whose `ci` is
+    /// `pending` or `red`, through the tasks command. Off unless set: a hub started by a test (a folder of its own,
+    /// the environment of the person) must never write into the person's vault.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ci_watch: bool,
 }
 
 /// The choices for updates (`update` in `config.json`).
@@ -239,6 +244,15 @@ mod tests {
             r#"{"start_with_hub":"tasks"}"#,
             r#"{"start_with_hub":[{"program":"C:/x.exe"}]}"#,
         ] {
+            assert!(tiles(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_ci_watcher_is_off_unless_the_file_turns_it_on() {
+        assert!(!tiles("{}").unwrap().ci_watch);
+        assert!(tiles(r#"{"ci_watch":true}"#).unwrap().ci_watch);
+        for bad in [r#"{"ci_watch":"yes"}"#, r#"{"ci_watch":{"vault":"C:/v"}}"#] {
             assert!(tiles(bad).is_err(), "{bad}");
         }
     }

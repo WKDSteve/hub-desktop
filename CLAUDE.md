@@ -212,6 +212,21 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   "Red cases" nur an Zeilen mit rotem lokalem Ergebnis.
 - Offen: Lauf starten über den Einstieg von testing-desktop (gibt es noch nicht).
 
+## CI-Beobachter (`ciwatch.rs`)
+
+- Schreibt das Urteil der gehosteten CI in erledigte Tasks mit `ci: pending` (oder `red`), nur über die tasks-CLI
+  (`tasks set <id> ci=green|red --by=hub-desktop`), nie in eine Datei. Nur mit `ci_watch: true` in `config.json`:
+  ein Hub eines Tests hat die Umgebung der Person (`REPOS_DIR`, `TASKS_VAULT`) und darf ihren Vault nie schreiben.
+  Erste Runde 60 s nach dem Start, dann alle 5 min (`FIRST_ROUND`, `EVERY`), in `spawn_blocking`.
+- Eine Runde: `tasks list --done --ci=pending,red --format=ids` (leer: fertig), dann `tasks call finished` seitenweise
+  bis alle IDs gefunden sind (`commits`), je Repo `testing ci remote --json <$REPOS_DIR/repo>`, je Commit
+  `git cat-file -e <kopf>^{commit}` und `git merge-base --is-ancestor`. Grün: im Kopf enthalten und `success`; rot:
+  enthalten und `failure`/`rejected`; alles andere pending. `queued`/`waiting_runner` über 30 min ist ein Hinweis, nie rot.
+- Programme nur per argv aus `Programs::find` (nvim und git auf dem PATH, `$REPOS_DIR/tasks.nvim/scripts/tasks.lua`,
+  `$REPOS_DIR/testing.nvim/scripts/testing.lua`, Vault aus `TASKS_VAULT`), über `appkit_core::child::run`
+  (`SystemAsk`). Tests: Fake-`Ask` in `tests/ciwatch.rs`, nie die echten Programme.
+- Offen: Anzeige der Hinweise auf der Seite und im Tray (Entscheidung zu Ort und Takt steht aus).
+
 ## Web-Hub (`hub.html`, M1W)
 
 - Dieselbe Oberfläche als eine HTML-Datei (`ui/index.web.html`, `src/main.web.ts`, `vite build --mode web`, gepackt von

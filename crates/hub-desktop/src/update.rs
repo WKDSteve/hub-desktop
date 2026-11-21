@@ -270,7 +270,9 @@ impl SystemRunner {
 
 /// Run `future` to its end on a thread of its own with a runtime of its own, so that a caller may block inside
 /// a runtime (`spawn_blocking`) and outside of one (a test).
-fn block_on<T: Send>(future: impl std::future::Future<Output = T> + Send) -> Result<T, String> {
+pub(crate) fn block_on<T: Send>(
+    future: impl std::future::Future<Output = T> + Send,
+) -> Result<T, String> {
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .name("update-step".to_owned())
@@ -363,22 +365,24 @@ impl Tools {
     /// `git` and `gh` in a folder of the `PATH` that is an absolute folder of this machine.
     #[must_use]
     pub fn find(env: &Env) -> Self {
-        let dirs: Vec<PathBuf> = env
-            .get("PATH")
-            .map(|p| std::env::split_paths(p).collect())
-            .unwrap_or_default();
-        let on_path = |name: &str| {
-            let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
-            dirs.iter()
-                .filter_map(|d| crate::paths::usable_root(d.clone()))
-                .map(|d| d.join(&file))
-                .find(|f| f.is_file())
-        };
         Self {
-            git: on_path("git"),
-            gh: on_path("gh"),
+            git: on_path(env, "git"),
+            gh: on_path(env, "gh"),
         }
     }
+}
+
+/// The program `name` (with the suffix of programs of this system) in the first folder of the `PATH` that is an
+/// absolute folder of this machine and has it.
+pub(crate) fn on_path(env: &Env, name: &str) -> Option<PathBuf> {
+    let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
+    env.get("PATH")
+        .map(|p| std::env::split_paths(p).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(crate::paths::usable_root)
+        .map(|d| d.join(&file))
+        .find(|f| f.is_file())
 }
 
 /// What an update may do on this machine.

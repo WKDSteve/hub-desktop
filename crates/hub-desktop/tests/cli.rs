@@ -375,3 +375,42 @@ fn the_program_is_the_watcher_of_its_childrens_groups() {
     assert!(out.status.success(), "{out:?}");
     assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{out:?}");
 }
+
+/// The CI watcher runs only when `config.json` turns it on: a hub of a test, with the environment of the person,
+/// never writes into the person's vault. Turned on without its programs (here no checkout of tasks.nvim below
+/// `REPOS_DIR`), it is a note and the hub runs on.
+#[test]
+fn the_ci_watcher_starts_only_when_the_settings_turn_it_on() {
+    for on in [false, true] {
+        let scratch = Scratch::new("hub-cli-ciwatch");
+        let config = scratch.path();
+        let repos = config.join("repos");
+        std::fs::create_dir_all(&repos).unwrap();
+        if on {
+            std::fs::write(config.join("config.json"), r#"{"ci_watch":true}"#).unwrap();
+        }
+        let err = config.join("serve-err.txt");
+        let mut cmd = command(config, free_port());
+        cmd.arg("serve")
+            .env("HUB_DESKTOP_NO_LOGIN_SYNC", "1")
+            .env("REPOS_DIR", &repos)
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(std::fs::File::create(&err).unwrap()));
+        let _hub = Running {
+            child: cmd.spawn().unwrap(),
+        };
+        wait_for("the hub to write hub.json", || {
+            config.join("hub.json").is_file()
+        });
+        let note = "note: the CI watcher does not run: no checkout of tasks.nvim in REPOS_DIR";
+        if on {
+            wait_for("the note of the CI watcher", || {
+                std::fs::read_to_string(&err).is_ok_and(|t| t.contains(note))
+            });
+        } else {
+            std::thread::sleep(Duration::from_millis(500));
+            let said = std::fs::read_to_string(&err).unwrap();
+            assert!(!said.contains("CI watcher"), "{said}");
+        }
+    }
+}

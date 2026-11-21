@@ -7,6 +7,7 @@
 pub mod app;
 pub mod background;
 pub mod catalog;
+pub mod ciwatch;
 pub mod config;
 pub mod detect;
 pub mod launch;
