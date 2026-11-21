@@ -242,12 +242,14 @@ pub struct Watched {
     pub commits: Vec<(String, String)>,
 }
 
-/// A repository name of `repo@sha`: letters, digits, `.`, `_`, `-`, not `.` or `..`.
+/// A repository name of `repo@sha` (or of a runner): letters, digits, `.`, `_`, `-`, not `.` or `..`, and not
+/// starting with `-` (it goes into an argv: `runners.ps1 ensure -NoGuard` would be a switch, not a name).
 pub(crate) fn plain_repo(repo: &str) -> bool {
     !repo.is_empty()
         && repo.len() <= 100
         && repo != "."
         && repo != ".."
+        && !repo.starts_with('-')
         && repo
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
@@ -811,6 +813,13 @@ pub async fn watch(
     tick: Duration,
     minute: Duration,
 ) {
+    // Switched off already: the page says so from the start, not only after the first wait.
+    if !settings().on
+        && let Ok(mut seen) = watcher.seen.lock()
+        && *seen == Seen::Waiting
+    {
+        *seen = Seen::Off(OFF_BY_SETTINGS);
+    }
     tokio::time::sleep(first).await;
     let mut last: Option<tokio::time::Instant> = None;
     loop {
@@ -980,8 +989,11 @@ mod tests {
         assert!(!plain_id("a/b/c"));
         assert!(!plain_id("a/--force"));
         assert!(plain_repo("tasks.nvim"));
+        assert!(plain_repo("hub-desktop"));
         assert!(!plain_repo(".."));
         assert!(!plain_repo("a/b"));
+        assert!(!plain_repo("-NoGuard"));
+        assert!(!plain_repo("--force"));
     }
 
     #[test]

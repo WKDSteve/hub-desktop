@@ -370,6 +370,7 @@ mod tests {
                     tasks.nvim     local=stopped  github=offline\n\
                     env: tasks.nvim lacks CARGO_BUILD_JOBS\n\
                     ../evil        local=stopped  github=online\n\
+                    -NoGuard       local=stopped  github=online\n\
                     weird          local=maybe    github=online\n\
                     rules.nvim     local=stopped  github=whatever\n";
         let got = parse_status(&answer(1, text)).unwrap();

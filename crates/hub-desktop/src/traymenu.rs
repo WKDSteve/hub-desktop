@@ -317,7 +317,13 @@ mod tests {
             action(&runner_id("tasks.nvim")),
             Some(Action::StartRunner("tasks.nvim".into()))
         );
-        for nothing in ["runner:", "runner:../x", "runner:a/b", "runner:a b"] {
+        for nothing in [
+            "runner:",
+            "runner:../x",
+            "runner:a/b",
+            "runner:a b",
+            "runner:-NoGuard",
+        ] {
             assert_eq!(action(nothing), None, "{nothing:?}");
         }
     }

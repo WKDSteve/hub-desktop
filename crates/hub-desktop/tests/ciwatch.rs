@@ -636,3 +636,34 @@ async fn the_watcher_follows_its_settings_without_a_new_start() {
     });
     task.abort();
 }
+
+/// Switched off already when the hub starts: the page says so at once, not "no round yet" for the first wait.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_watcher_switched_off_says_so_before_its_first_wait_ends() {
+    let place = place();
+    let fake = std::sync::Arc::new(Fake::new(world(&[], "success")));
+    let watcher = std::sync::Arc::new(ciwatch::Watcher::default());
+    let task = tokio::spawn(ciwatch::watch(
+        std::sync::Arc::clone(&watcher),
+        std::sync::Arc::clone(&fake) as std::sync::Arc<dyn Ask>,
+        place.programs.clone(),
+        std::sync::Arc::new(|| ciwatch::Schedule {
+            on: false,
+            interval_min: 5,
+        }),
+        Duration::from_secs(60),
+        Duration::from_millis(5),
+        Duration::from_millis(10),
+    ));
+    let end = std::time::Instant::now() + Duration::from_secs(5);
+    while watcher.seen() != ciwatch::Seen::Off(ciwatch::OFF_BY_SETTINGS) {
+        assert!(
+            std::time::Instant::now() < end,
+            "still {:?}",
+            watcher.seen()
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    task.abort();
+    assert!(fake.calls().is_empty());
+}
