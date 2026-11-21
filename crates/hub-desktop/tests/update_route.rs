@@ -225,6 +225,7 @@ impl Hub {
             prefs: Arc::new(Prefs::new(Some(machine.path("cfg-hub")), detector)),
             monitor: Arc::new(Monitor::new(None)),
             updater,
+            ci: Arc::new(hub_desktop::ciwatch::Watcher::off("a test")),
         })
         .await
         .unwrap();

@@ -11,25 +11,46 @@
     title,
     where,
   } from './lib/monitor';
+  import { type CiView, ciLines, ciStatus } from './lib/ci';
 
   let {
     monitor,
+    ci = { state: 'none' },
     open = null,
     cases = { state: 'loading' },
     ontoggle = () => {},
   }: {
     monitor: MonitorReading;
+    /** What the CI watcher of the hub is at; its hints show the section even without an export folder. */
+    ci?: CiView;
     /** The key of the repository whose red cases are shown. */
     open?: string | null;
     cases?: CasesView;
     ontoggle?: (key: string) => void;
   } = $props();
+
+  const hints = $derived(ciLines(ci));
+  const status = $derived(ciStatus(ci));
 </script>
 
-{#if monitor.state !== 'not_configured'}
+{#if monitor.state !== 'not_configured' || hints.length > 0}
   <section aria-labelledby="testing-heading" data-monitor>
     <h2 id="testing-heading">Testing</h2>
-    {#if monitor.state === 'problem'}
+    {#if status}
+      <div class="ci" data-ci={ci.state}>
+        <p class="stamp" role="status">{status}</p>
+        {#if hints.length > 0}
+          <ul class="ci-hints" aria-label="Hints of the CI watcher">
+            {#each hints as hint, i (i)}
+              <li class="ci-hint"><span aria-hidden="true">!</span> {hint}</li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
+    {#if monitor.state === 'not_configured'}
+      <!-- Only the hints of the CI watcher: there is no export folder. -->
+    {:else if monitor.state === 'problem'}
       <p class="none" role="status">The testing export cannot be shown: {monitor.problem}.</p>
     {:else}
       <p class="stamp">{stamped(monitor.generated_at)}</p>
@@ -113,6 +134,21 @@
   }
   .stamp {
     margin: 0 0 0.5rem;
+  }
+  .ci-hints {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0.75rem;
+    display: grid;
+    gap: 0.25rem;
+  }
+  .ci-hint {
+    padding: 0.3rem 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--warn);
+    border-radius: var(--radius);
+    overflow-wrap: anywhere;
   }
   .rows {
     list-style: none;

@@ -2,6 +2,7 @@
 // kit's; this file is the routes of the hub.
 
 import { ApiError, HubClient, type Hello } from 'appkit-ui/client';
+import { type CiView, isCiView } from './ci';
 import type { CasesReading, MonitorReading } from './monitor';
 
 export { ApiError, type Hello };
@@ -107,6 +108,10 @@ export interface HubApi {
   monitor(): Promise<MonitorReading>;
   /** The red cases of the last run of one repository of the export. */
   monitorCases(key: string): Promise<CasesReading>;
+  /** What the CI watcher is at, and the hints of its last round (the web hub has none). */
+  ci(): Promise<CiView>;
+  /** Switch the CI watcher and set its interval in minutes (`config.json`). */
+  saveCi(on: boolean, intervalMin: number): Promise<void>;
   /** What can be updated of each app here, and its last update (the web hub has none). */
   updates(): Promise<{ apps: UpdateInfo[] }>;
   /** Queue an update of one app; what runs is the hub's to decide. */
@@ -165,6 +170,18 @@ export class Hub extends HubClient implements HubApi {
     if (doc.state === 'not_configured' || doc.state === 'problem') return doc;
     if (doc.state === 'ready' && Array.isArray(doc.cases)) return doc;
     throw new ApiError(502, 'bad_reply', 'unexpected answer');
+  }
+
+  /** What the CI watcher of the hub is at: off (why), before its first round, or its last round. */
+  async ci(): Promise<CiView> {
+    const doc = await this.json<unknown>(this.route('ci'));
+    if (isCiView(doc)) return doc;
+    throw new ApiError(502, 'bad_reply', 'unexpected answer');
+  }
+
+  /** The watcher reads them before its next round, without a new start of the hub. */
+  saveCi(on: boolean, intervalMin: number): Promise<void> {
+    return this.post(this.route('ci/settings'), { on, interval_min: intervalMin });
   }
 
   async updates(): Promise<{ apps: UpdateInfo[] }> {

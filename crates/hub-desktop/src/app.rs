@@ -92,6 +92,8 @@ pub struct Ready {
     pub launcher: Arc<Launcher>,
     /// The apps whose hub starts with hub-desktop (`start_with_hub` of `config.json`).
     pub start_with_hub: Vec<String>,
+    /// What the CI watcher is at (the icon counts its hints).
+    pub ci: Arc<crate::ciwatch::Watcher>,
 }
 
 /// Run the server until Ctrl-C, or until `<program> stop` asks it to end.
@@ -191,6 +193,7 @@ pub async fn serve_until(
         LaunchConfig::new(web.as_ref().map(|w| w.addr().port()), browser),
     ));
     let monitor = Arc::new(Monitor::new(file.app.testing_export.clone()));
+    let (ci, ci_programs) = ci_watcher(&env);
     // What an update may do here: the role of the machine and the programs are read once, now.
     let updater = Arc::new(Updater::new(
         Arc::clone(&detector),
@@ -212,6 +215,7 @@ pub async fn serve_until(
         prefs: Arc::clone(&prefs),
         monitor: Arc::clone(&monitor),
         updater: Arc::clone(&updater),
+        ci: Arc::clone(&ci),
     };
     // The port is part of the origin, so the wanted one is tried first. When it is taken the server
     // still starts, on another port, and says so: the page then has another origin.
@@ -283,8 +287,19 @@ pub async fn serve_until(
         detector: Arc::clone(&detector),
         launcher: Arc::clone(&launcher),
         start_with_hub: file.app.start_with_hub.clone(),
+        ci: Arc::clone(&ci),
     });
-    let watching = start_ci_watch(file.app.ci_watch, &env);
+    let watching = ci_programs.map(|programs| {
+        tokio::spawn(crate::ciwatch::watch(
+            Arc::clone(&ci),
+            Arc::new(crate::ciwatch::SystemAsk),
+            programs,
+            ci_settings(Arc::clone(&prefs)),
+            crate::ciwatch::FIRST_ROUND,
+            crate::ciwatch::TICK,
+            crate::ciwatch::MINUTE,
+        ))
+    });
     let presence = running.presence();
     tokio::select! {
         () = stop => {}
@@ -300,25 +315,41 @@ pub async fn serve_until(
     Ok(())
 }
 
-/// The CI watcher (`ciwatch.rs`), when `config.json` turns it on (`ci_watch: true`) and its programs are there; a
-/// missing one is a note, not a reason to stop the hub.
-fn start_ci_watch(on: bool, env: &Env) -> Option<tokio::task::JoinHandle<()>> {
-    if !on {
-        return None;
-    }
-    match crate::ciwatch::Programs::find(env) {
-        Ok(programs) => Some(tokio::spawn(crate::ciwatch::watch(
-            Arc::new(crate::ciwatch::Watcher::default()),
-            Arc::new(crate::ciwatch::SystemAsk),
-            programs,
-            crate::ciwatch::FIRST_ROUND,
-            crate::ciwatch::EVERY,
-        ))),
+/// The CI watcher (`ciwatch.rs`) and, when it may run, its programs: never for a test (`ciwatch::allowed`). Whether
+/// it is switched on and how often it runs, it reads from `config.json` before every round ([`ci_settings`]). A
+/// missing program is a note, not a reason to stop the hub; the page says why it does not run.
+fn ci_watcher(
+    env: &Env,
+) -> (
+    Arc<crate::ciwatch::Watcher>,
+    Option<crate::ciwatch::Programs>,
+) {
+    let found = crate::ciwatch::allowed(env).and_then(|()| crate::ciwatch::Programs::find(env));
+    match found {
+        Ok(programs) => (Arc::new(crate::ciwatch::Watcher::default()), Some(programs)),
         Err(why) => {
             eprintln!("note: the CI watcher does not run: {why}");
-            None
+            (Arc::new(crate::ciwatch::Watcher::off(why)), None)
         }
     }
+}
+
+/// The settings of the CI watcher, read from `config.json` each time; a note (an interval outside the bounds, a file
+/// that cannot be read) is said once, when it changes.
+fn ci_settings(prefs: Arc<Prefs>) -> crate::ciwatch::Settings {
+    let said = std::sync::Mutex::new(None::<String>);
+    Arc::new(move || {
+        let (schedule, note) = prefs.ci_schedule();
+        if let Ok(mut said) = said.lock()
+            && *said != note
+        {
+            if let Some(note) = &note {
+                eprintln!("note: {note}");
+            }
+            *said = note;
+        }
+        schedule
+    })
 }
 
 /// Resolves when the hub is to end besides `stop`: `<program> stop` asked over the control route (without this it

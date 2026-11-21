@@ -1,9 +1,10 @@
 //! What the menu of the icon in the notification area shows and what its entries do, apart from the
 //! icon itself (`tray.rs`, Windows), so that it can be tested everywhere.
 //!
-//! The menu: "Open hub", one submenu per installed app of the kit (its state, "Open", "Stop"), "Quit hub".
-//! An entry is known by its id, a word written here (`open-hub`, `open:<app>`, `stop:<app>`, `quit`); an
-//! id that is not one of these, or that names no app of the catalog with a hub of the kit, does nothing.
+//! The menu: "Open hub", "CI: n hints" when the CI watcher has some (it opens the page, which names them), one
+//! submenu per installed app of the kit (its state, "Open", "Stop"), "Quit hub". An entry is known by its id, a
+//! word written here (`open-hub`, `ci-hints`, `open:<app>`, `stop:<app>`, `quit`); an id that is not one of these,
+//! or that names no app of the catalog with a hub of the kit, does nothing.
 
 use crate::catalog;
 use crate::detect::{AppState, Run};
@@ -12,6 +13,18 @@ use crate::detect::{AppState, Run};
 pub const OPEN_HUB: &str = "open-hub";
 /// The id of "Quit hub".
 pub const QUIT: &str = "quit";
+/// The id of "CI: n hints" (it opens the page: the hints are in its section "Testing").
+pub const CI_HINTS: &str = "ci-hints";
+
+/// The line of the hints of the CI watcher; none when it has none.
+#[must_use]
+pub fn ci_label(hints: usize) -> Option<String> {
+    match hints {
+        0 => None,
+        1 => Some("CI: 1 hint".to_owned()),
+        n => Some(format!("CI: {n} hints")),
+    }
+}
 
 /// One app of the kit in the menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,7 +110,7 @@ pub fn stop_id(app: &str) -> String {
 pub fn action(id: &str) -> Option<Action> {
     let kit = |app: &str| catalog::find(app).filter(|e| e.is_kit_hub()).map(|e| e.id);
     match id {
-        OPEN_HUB => Some(Action::OpenHub),
+        OPEN_HUB | CI_HINTS => Some(Action::OpenHub),
         QUIT => Some(Action::Quit),
         _ => {
             if let Some(app) = id.strip_prefix("open:") {
@@ -165,9 +178,17 @@ mod tests {
     }
 
     #[test]
+    fn the_hints_of_the_ci_watcher_are_a_line_only_when_there_are_some() {
+        assert_eq!(ci_label(0), None);
+        assert_eq!(ci_label(1).as_deref(), Some("CI: 1 hint"));
+        assert_eq!(ci_label(3).as_deref(), Some("CI: 3 hints"));
+    }
+
+    #[test]
     fn an_entry_does_what_its_id_says_for_a_hub_of_the_kit_only() {
         assert_eq!(action(OPEN_HUB), Some(Action::OpenHub));
         assert_eq!(action(QUIT), Some(Action::Quit));
+        assert_eq!(action(CI_HINTS), Some(Action::OpenHub));
         assert_eq!(action(&open_id("tasks")), Some(Action::Open("tasks")));
         assert_eq!(action(&stop_id("rules")), Some(Action::Stop("rules")));
         for nothing in [

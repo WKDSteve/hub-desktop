@@ -18,6 +18,14 @@ use hub_desktop::update::Updater;
 
 /// The control secret of the hub that `start_with_secret` makes, as the bearer credential of a program.
 async fn start_with_monitor(monitor: Monitor) -> (appkit_hub::RunningServer, String) {
+    start_with(monitor, hub_desktop::ciwatch::Watcher::off("a test"), None).await
+}
+
+async fn start_with(
+    monitor: Monitor,
+    ci: hub_desktop::ciwatch::Watcher,
+    settings: Option<std::path::PathBuf>,
+) -> (appkit_hub::RunningServer, String) {
     let control = Secret::generate(TOKEN_BYTES).unwrap();
     let detector = Arc::new(Detector::new(
         Env::from_pairs([("APPDATA", "C:/none")]),
@@ -37,9 +45,10 @@ async fn start_with_monitor(monitor: Monitor) -> (appkit_hub::RunningServer, Str
         ui: Arc::new(UiFiles::none()),
         detector: Arc::clone(&detector),
         launcher: Arc::clone(&launcher),
-        prefs: Arc::new(Prefs::new(None, Arc::clone(&detector))),
+        prefs: Arc::new(Prefs::new(settings, Arc::clone(&detector))),
         monitor: Arc::new(monitor),
         updater: Arc::new(Updater::disabled(Arc::clone(&detector), launcher)),
+        ci: Arc::new(ci),
     })
     .await
     .expect("the hub starts");
@@ -169,6 +178,147 @@ async fn every_route_the_matrix_tries_exists_and_answers_with_a_session() {
     )
     .await;
     assert_eq!(nope.status, 404, "{nope:?}");
+    server.shutdown().await;
+}
+
+/// `ci` shows what the watcher of the hub is at: off with its reason, or its last round with the hints.
+#[tokio::test]
+async fn the_ci_route_shows_what_the_watcher_is_at() {
+    use hub_desktop::ciwatch::{Hint, Round, Seen, Watcher, OFF_IN_TESTS};
+    let defaults =
+        serde_json::json!({"on": true, "interval_min": 5, "min": 1, "max": 60, "default": 5});
+    let mut round = Round::default();
+    round.hints.insert(Hint::Queued {
+        repo: "tasks.nvim".into(),
+        minutes: 31,
+    });
+    for (watcher, want) in [
+        (
+            Watcher::off(OFF_IN_TESTS),
+            serde_json::json!({"state": "off", "why": OFF_IN_TESTS, "settings": defaults.clone()}),
+        ),
+        (
+            Watcher::new(Seen::Ran { at: 9, round }),
+            serde_json::json!({"state": "ran", "at": 9, "written": [], "not_written": [],
+                "hints": [{"kind": "queued", "repo": "tasks.nvim", "minutes": 31}], "problem": null,
+                "settings": defaults}),
+        ),
+    ] {
+        let (server, control) = start_with(Monitor::new(None), watcher, None).await;
+        let session = session_for(&server, &control).await;
+        let host = format!("127.0.0.1:{}", server.addr().port());
+        let reply = send(
+            server.addr(),
+            request(
+                "GET",
+                &hub_desktop::IDENTITY.route("ci"),
+                &[("Host", host.as_str()), ("Authorization", session.as_str())],
+                b"",
+            ),
+        )
+        .await;
+        assert_eq!(reply.status, 200, "{reply:?}");
+        assert_eq!(reply.json(), want);
+        server.shutdown().await;
+    }
+}
+
+/// `ci/settings` writes the switch and the interval of the CI watcher into `config.json` (keeping what else is in
+/// it), and `ci` shows them; an interval outside 1 to 60, or a body of another shape, changes nothing.
+#[tokio::test]
+async fn the_options_of_the_ci_watcher_are_saved_into_the_settings_file() {
+    let machine = appkit_scratch::Scratch::new("hub-ci-settings");
+    let dir = machine.path().to_path_buf();
+    std::fs::write(dir.join("config.json"), r#"{"keep_running":true}"#).unwrap();
+    let (server, control) = start_with(
+        Monitor::new(None),
+        hub_desktop::ciwatch::Watcher::off("a test"),
+        Some(dir.clone()),
+    )
+    .await;
+    let session = session_for(&server, &control).await;
+    let host = format!("127.0.0.1:{}", server.addr().port());
+    let origin = format!("http://{host}");
+    let save = |body: &'static str| {
+        let (host, origin, session) = (host.clone(), origin.clone(), session.clone());
+        let addr = server.addr();
+        async move {
+            let length = body.len().to_string();
+            send(
+                addr,
+                request(
+                    "POST",
+                    &hub_desktop::IDENTITY.route("ci/settings"),
+                    &[
+                        ("Host", host.as_str()),
+                        ("Origin", origin.as_str()),
+                        ("Authorization", session.as_str()),
+                        ("Content-Type", "application/json"),
+                        ("Content-Length", length.as_str()),
+                    ],
+                    body.as_bytes(),
+                ),
+            )
+            .await
+        }
+    };
+    let file = || -> serde_json::Value {
+        serde_json::from_str(&std::fs::read_to_string(dir.join("config.json")).unwrap()).unwrap()
+    };
+    let shown = || {
+        let (host, session) = (host.clone(), session.clone());
+        let addr = server.addr();
+        async move {
+            send(
+                addr,
+                request(
+                    "GET",
+                    &hub_desktop::IDENTITY.route("ci"),
+                    &[("Host", host.as_str()), ("Authorization", session.as_str())],
+                    b"",
+                ),
+            )
+            .await
+            .json()["settings"]
+                .clone()
+        }
+    };
+
+    let reply = save(r#"{"on":false,"interval_min":12}"#).await;
+    assert_eq!(reply.status, 200, "{reply:?}");
+    assert_eq!(reply.json(), serde_json::json!({"result": "saved"}));
+    assert_eq!(file()["ci_watch"], false);
+    assert_eq!(file()["ci_watch_interval_min"], 12);
+    assert_eq!(file()["keep_running"], true, "the rest of the file stays");
+    let settings = shown().await;
+    assert_eq!(
+        (settings["on"].clone(), settings["interval_min"].clone()),
+        (false.into(), 12.into())
+    );
+
+    for bad in [
+        r#"{"on":true,"interval_min":0}"#,
+        r#"{"on":true,"interval_min":61}"#,
+        r#"{"on":true,"interval_min":-5}"#,
+        r#"{"on":true,"interval_min":"5"}"#,
+        r#"{"on":true}"#,
+        r#"{"on":"yes","interval_min":5}"#,
+        r#"{"on":true,"interval_min":5,"vault":"C:/v"}"#,
+    ] {
+        let reply = save(bad).await;
+        assert_eq!(reply.status, 400, "{bad}: {reply:?}");
+        assert_eq!(file()["ci_watch_interval_min"], 12, "{bad}");
+    }
+
+    // Back to the defaults: no key is left for them.
+    let reply = save(r#"{"on":true,"interval_min":5}"#).await;
+    assert_eq!(reply.status, 200, "{reply:?}");
+    assert_eq!(file(), serde_json::json!({"keep_running": true}));
+    assert_eq!(shown().await["interval_min"], 5);
+
+    // A number outside the bounds written by hand is shown as the default.
+    std::fs::write(dir.join("config.json"), r#"{"ci_watch_interval_min":90}"#).unwrap();
+    assert_eq!(shown().await["interval_min"], 5);
     server.shutdown().await;
 }
 

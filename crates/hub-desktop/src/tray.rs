@@ -37,7 +37,7 @@ const ICON_AGAIN: Duration = Duration::from_secs(2);
 /// What reaches the loop.
 enum Event {
     Ready(Ready),
-    Lines(Vec<HubLine>),
+    Look(Look),
     Menu(String),
     OpenHub,
     Ended(Result<(), String>),
@@ -77,7 +77,7 @@ pub fn run(rt: Runtime) -> Result<(), String> {
         stop: Some(stop),
         icon: None,
         ready: None,
-        lines: None,
+        look: None,
         ended: None,
         tries: 0,
     };
@@ -90,6 +90,13 @@ pub fn run(rt: Runtime) -> Result<(), String> {
     ended.unwrap_or(Ok(()))
 }
 
+/// What the menu shows: the hubs of the kit and how many hints the CI watcher has.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Look {
+    lines: Vec<HubLine>,
+    ci_hints: usize,
+}
+
 struct Tray {
     rt: tokio::runtime::Handle,
     proxy: EventLoopProxy<Event>,
@@ -97,7 +104,7 @@ struct Tray {
     icon: Option<TrayIcon>,
     ready: Option<Ready>,
     /// What the menu shows now; `None` until the first look.
-    lines: Option<Vec<HubLine>>,
+    look: Option<Look>,
     ended: Option<Result<(), String>>,
     /// How often the icon was tried.
     tries: u32,
@@ -128,14 +135,14 @@ impl Tray {
 
     /// Put the icon into the notification area; when it is not there yet, try again a little later.
     fn show(&mut self, event_loop: &ActiveEventLoop) {
-        let lines = self.lines.clone().unwrap_or_default();
+        let look = self.look.clone().unwrap_or_default();
         let built = Icon::from_resource(ICON_RESOURCE, None)
             .map_err(|e| e.to_string())
             .and_then(|image| {
                 TrayIconBuilder::new()
-                    .with_menu(Box::new(menu(&lines)))
+                    .with_menu(Box::new(menu(&look)))
                     .with_menu_on_left_click(false)
-                    .with_tooltip(traymenu::tooltip(&lines))
+                    .with_tooltip(traymenu::tooltip(&look.lines))
                     .with_icon(image)
                     .build()
                     .map_err(|e| e.to_string())
@@ -186,8 +193,11 @@ impl Tray {
         let proxy = self.proxy.clone();
         self.rt.spawn(async move {
             loop {
-                let lines = traymenu::lines(&looking.detector.kit_hubs().await);
-                if proxy.send_event(Event::Lines(lines)).is_err() {
+                let look = Look {
+                    lines: traymenu::lines(&looking.detector.kit_hubs().await),
+                    ci_hints: looking.ci.hint_count(),
+                };
+                if proxy.send_event(Event::Look(look)).is_err() {
                     return;
                 }
                 tokio::time::sleep(LOOK_EVERY).await;
@@ -196,15 +206,15 @@ impl Tray {
         self.ready = Some(ready);
     }
 
-    fn on_lines(&mut self, lines: Vec<HubLine>) {
-        if self.lines.as_ref() == Some(&lines) {
+    fn on_look(&mut self, look: Look) {
+        if self.look.as_ref() == Some(&look) {
             return;
         }
         if let Some(icon) = &self.icon {
-            icon.set_menu(Some(Box::new(menu(&lines))));
-            let _ = icon.set_tooltip(Some(traymenu::tooltip(&lines)));
+            icon.set_menu(Some(Box::new(menu(&look))));
+            let _ = icon.set_tooltip(Some(traymenu::tooltip(&look.lines)));
         }
-        self.lines = Some(lines);
+        self.look = Some(look);
     }
 
     fn act(&mut self, action: Action) {
@@ -242,8 +252,9 @@ impl Tray {
     }
 }
 
-/// The menu for `lines`: "Open hub", a submenu per app, "Quit hub".
-fn menu(lines: &[HubLine]) -> Menu {
+/// The menu for `look`: "Open hub", "CI: n hints" (when there are some), a submenu per app, "Quit hub".
+fn menu(look: &Look) -> Menu {
+    let lines = &look.lines;
     let menu = Menu::new();
     let _ = menu.append(&MenuItem::with_id(
         traymenu::OPEN_HUB,
@@ -251,6 +262,9 @@ fn menu(lines: &[HubLine]) -> Menu {
         true,
         None,
     ));
+    if let Some(label) = traymenu::ci_label(look.ci_hints) {
+        let _ = menu.append(&MenuItem::with_id(traymenu::CI_HINTS, label, true, None));
+    }
     if !lines.is_empty() {
         let _ = menu.append(&PredefinedMenuItem::separator());
     }
@@ -292,7 +306,7 @@ impl ApplicationHandler<Event> for Tray {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
             Event::Ready(ready) => self.on_ready(ready),
-            Event::Lines(lines) => self.on_lines(lines),
+            Event::Look(look) => self.on_look(look),
             Event::Menu(id) => {
                 if let Some(action) = traymenu::action(&id) {
                     self.act(action);

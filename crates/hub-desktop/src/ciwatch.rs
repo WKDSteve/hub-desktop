@@ -14,6 +14,16 @@
 //! 4. A task is green when every commit is, red as soon as one is (a red task turns green again once a later head
 //!    that contains it is green): `tasks set <id> ci=<word> --by=hub-desktop`.
 //!
+//! On unless `config.json` says `ci_watch: false`, never in a hub of a test ([`allowed`]). What it is at is
+//! [`Watcher::view`] (`GET /api/hub/ci`, the section "Testing" of the page) and [`Watcher::hint_count`] (the icon).
+//!
+//! The state of each system is `overall` of `testing ci remote`, never the raw run of the head: for a repository
+//! that lands through `testing ci land` the run of `main` has no legs (`already-verified`), the systems ran on the
+//! check branch `ci/**`, and testing.nvim reads them from there.
+//!
+//! The first round runs [`FIRST_ROUND`] after the start, the next ones `ci_watch_interval_min` minutes apart (5,
+//! 1 to 60); the settings are read again every [`TICK`], so a new interval or the switch counts without a new start.
+//!
 //! Programs are started by argv only, from what [`Programs::find`] found (no path from a request or from
 //! `config.json`): nvim on the `PATH` with the scripts of the checkouts of tasks.nvim and testing.nvim below
 //! `$REPOS_DIR`, git on the `PATH`, the vault of `TASKS_VAULT`. Every word of a foreign document that reaches a
@@ -33,7 +43,14 @@ use crate::config::Env;
 pub const MAX_PAGES: u64 = 10;
 /// The first round runs this long after the hub started (its start stays quick), the next ones [`EVERY`] apart.
 pub const FIRST_ROUND: Duration = Duration::from_secs(60);
-pub const EVERY: Duration = Duration::from_secs(5 * 60);
+/// The minutes between two rounds (`ci_watch_interval_min` of `config.json`): the default and the bounds.
+pub const INTERVAL_DEFAULT_MIN: u64 = 5;
+pub const INTERVAL_MIN: u64 = 1;
+pub const INTERVAL_MAX: u64 = 60;
+/// How often the loop reads the settings again: a shorter interval or a switch counts within this time.
+pub const TICK: Duration = Duration::from_secs(30);
+/// One minute of the interval (the test gives a shorter one).
+pub const MINUTE: Duration = Duration::from_secs(60);
 /// A run that has waited this long for a runner is a hint.
 pub const QUEUED_HINT_AFTER: Duration = Duration::from_secs(30 * 60);
 /// How long one call may take.
@@ -563,16 +580,189 @@ pub fn round(ask: &dyn Ask, programs: &Programs, now: SystemTime) -> Round {
     out
 }
 
-/// The last round, for whoever shows it (none yet: no round has run).
-#[derive(Debug, Default)]
+/// Why the watcher does not run (a fixed sentence the page and the console show).
+pub const OFF_BY_SETTINGS: &str = "config.json turns it off (ci_watch: false)";
+/// A hub of a test (a config folder of its own, no browser, no login entries) never writes into a vault.
+pub const OFF_IN_TESTS: &str = "the hub runs for a test";
+
+/// The variables (of hub-desktop) a test sets and a person's hub does not: with any of them set the watcher never
+/// runs, whatever `config.json` says, so that a test that starts the real program with the environment of the
+/// person (`REPOS_DIR`, `TASKS_VAULT`) cannot write into the person's vault.
+#[must_use]
+pub fn test_markers() -> [String; 3] {
+    ["CONFIG_DIR", "NO_LAUNCH", "NO_LOGIN_SYNC"].map(|v| crate::IDENTITY.var(v))
+}
+
+/// Whether the watcher may run at all: never in a hub of a test, whatever `config.json` says. (Whether it is
+/// switched on is read before every round: [`Schedule::on`].)
+///
+/// # Errors
+///
+/// [`OFF_IN_TESTS`].
+pub fn allowed(env: &Env) -> Result<(), &'static str> {
+    if test_markers().iter().any(|v| env.get(v).is_some()) {
+        return Err(OFF_IN_TESTS);
+    }
+    Ok(())
+}
+
+/// What the settings say for the next round.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Schedule {
+    pub on: bool,
+    pub interval_min: u64,
+}
+
+impl Default for Schedule {
+    fn default() -> Self {
+        Self {
+            on: true,
+            interval_min: INTERVAL_DEFAULT_MIN,
+        }
+    }
+}
+
+/// Whether `minutes` is an interval the settings may name (1 to 60).
+#[must_use]
+pub fn interval_ok(minutes: u64) -> bool {
+    (INTERVAL_MIN..=INTERVAL_MAX).contains(&minutes)
+}
+
+/// The schedule of the keys of `config.json` (`ci_watch`, `ci_watch_interval_min`), and a note when the interval
+/// is outside the bounds (then it is the default).
+#[must_use]
+pub fn schedule_of(on: Option<bool>, interval: Option<u64>) -> (Schedule, Option<String>) {
+    let (interval_min, note) = match interval {
+        None => (INTERVAL_DEFAULT_MIN, None),
+        Some(m) if interval_ok(m) => (m, None),
+        Some(m) => (
+            INTERVAL_DEFAULT_MIN,
+            Some(format!(
+                "ci_watch_interval_min {m} is not {INTERVAL_MIN} to {INTERVAL_MAX}; the CI watcher takes {INTERVAL_DEFAULT_MIN}"
+            )),
+        ),
+    };
+    (
+        Schedule {
+            on: on != Some(false),
+            interval_min,
+        },
+        note,
+    )
+}
+
+/// The settings as the page shows them, with the bounds of the field.
+#[must_use]
+pub fn settings_view(schedule: Schedule) -> Value {
+    serde_json::json!({
+        "on": schedule.on,
+        "interval_min": schedule.interval_min,
+        "min": INTERVAL_MIN,
+        "max": INTERVAL_MAX,
+        "default": INTERVAL_DEFAULT_MIN,
+    })
+}
+
+/// What the watcher is at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Seen {
+    /// It does not run (a fixed sentence).
+    Off(&'static str),
+    /// It runs; no round has ended yet.
+    Waiting,
+    /// The last round, and when it ended (seconds since 1970).
+    Ran { at: u64, round: Round },
+}
+
+/// What the watcher is at, for the page (`/api/hub/ci`) and the icon.
+#[derive(Debug)]
 pub struct Watcher {
-    last: std::sync::Mutex<Option<Round>>,
+    seen: std::sync::Mutex<Seen>,
+}
+
+impl Default for Watcher {
+    fn default() -> Self {
+        Self::new(Seen::Waiting)
+    }
 }
 
 impl Watcher {
     #[must_use]
+    pub fn new(seen: Seen) -> Self {
+        Self {
+            seen: std::sync::Mutex::new(seen),
+        }
+    }
+
+    /// A watcher that does not run, for this reason.
+    #[must_use]
+    pub fn off(why: &'static str) -> Self {
+        Self::new(Seen::Off(why))
+    }
+
+    #[must_use]
+    pub fn seen(&self) -> Seen {
+        self.seen
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or(Seen::Off("the state of the watcher is lost"))
+    }
+
+    /// The last round (none: no round has ended, or the watcher does not run).
+    #[must_use]
     pub fn last(&self) -> Option<Round> {
-        self.last.lock().ok().and_then(|l| l.clone())
+        match self.seen() {
+            Seen::Ran { round, .. } => Some(round),
+            Seen::Off(_) | Seen::Waiting => None,
+        }
+    }
+
+    /// How many things of the last round a person may want to look at: its hints, the verdicts the tasks command
+    /// did not take, and a problem that kept it from the tasks.
+    #[must_use]
+    pub fn hint_count(&self) -> usize {
+        self.last().map_or(0, |r| {
+            r.hints.len() + r.not_written.len() + usize::from(r.problem.is_some())
+        })
+    }
+
+    /// The document of `/api/hub/ci`: no path of the machine is in it, only repository names, task ids and fixed
+    /// words.
+    #[must_use]
+    pub fn view(&self) -> Value {
+        match self.seen() {
+            Seen::Off(why) => serde_json::json!({ "state": "off", "why": why }),
+            Seen::Waiting => serde_json::json!({ "state": "waiting" }),
+            Seen::Ran { at, round } => {
+                let verdicts = |m: &BTreeMap<String, Verdict>| -> Vec<Value> {
+                    m.iter()
+                        .map(|(id, v)| serde_json::json!({ "id": id, "ci": v.word() }))
+                        .collect()
+                };
+                serde_json::json!({
+                    "state": "ran",
+                    "at": at,
+                    "written": verdicts(&round.written),
+                    "not_written": verdicts(&round.not_written),
+                    "hints": round.hints.iter().map(hint_view).collect::<Vec<_>>(),
+                    "problem": round.problem,
+                })
+            }
+        }
+    }
+}
+
+fn hint_view(hint: &Hint) -> Value {
+    match hint {
+        Hint::Queued { repo, minutes } => {
+            serde_json::json!({ "kind": "queued", "repo": repo, "minutes": minutes })
+        }
+        Hint::Behind { repo } => serde_json::json!({ "kind": "behind", "repo": repo }),
+        Hint::NoCheckout { repo } => serde_json::json!({ "kind": "no_checkout", "repo": repo }),
+        Hint::NoGithub { repo } => serde_json::json!({ "kind": "no_github", "repo": repo }),
+        Hint::NoAnswer { repo, why } => {
+            serde_json::json!({ "kind": "no_answer", "repo": repo, "why": why })
+        }
     }
 }
 
@@ -597,29 +787,68 @@ fn say(round: &Round, before: Option<&Round>) {
     }
 }
 
-/// Runs a round [`FIRST_ROUND`] after the start and then every [`EVERY`] (the test gives shorter ones), until the
-/// task is ended (the end of the hub). A round runs on a thread of the blocking pool: it waits for programs.
+/// What the loop reads before every round (the settings of `config.json`, read again each time).
+pub type Settings = std::sync::Arc<dyn Fn() -> Schedule + Send + Sync>;
+
+/// Runs the first round `first` after the start, then one whenever `interval_min` times `minute` has passed since
+/// the last, until the task is ended (the end of the hub). The settings are read every `tick`: a switch or a new
+/// interval counts from the next look on, without a new start. Switched off it shows [`OFF_BY_SETTINGS`] and runs
+/// nothing; switched on again its next round runs at once. A round runs on a thread of the blocking pool: it waits
+/// for programs.
 pub async fn watch(
     watcher: std::sync::Arc<Watcher>,
     ask: std::sync::Arc<dyn Ask>,
     programs: Programs,
+    settings: Settings,
     first: Duration,
-    every: Duration,
+    tick: Duration,
+    minute: Duration,
 ) {
     tokio::time::sleep(first).await;
+    let mut last: Option<tokio::time::Instant> = None;
     loop {
-        let (a, p) = (std::sync::Arc::clone(&ask), programs.clone());
-        let done = tokio::task::spawn_blocking(move || round(a.as_ref(), &p, SystemTime::now()))
-            .await
-            .unwrap_or_else(|_| Round {
-                problem: Some("the round broke off"),
-                ..Round::default()
-            });
-        if let Ok(mut last) = watcher.last.lock() {
-            say(&done, last.as_ref());
-            *last = Some(done);
+        let schedule = settings();
+        if !schedule.on {
+            if let Ok(mut seen) = watcher.seen.lock()
+                && *seen != Seen::Off(OFF_BY_SETTINGS)
+            {
+                println!("ci watch: off ({OFF_BY_SETTINGS})");
+                *seen = Seen::Off(OFF_BY_SETTINGS);
+            }
+            last = None;
+            tokio::time::sleep(tick).await;
+            continue;
         }
-        tokio::time::sleep(every).await;
+        let every = minute.saturating_mul(u32::try_from(schedule.interval_min).unwrap_or(u32::MAX));
+        if last.is_none_or(|t| t.elapsed() >= every) {
+            if let Ok(mut seen) = watcher.seen.lock()
+                && matches!(*seen, Seen::Off(_))
+            {
+                *seen = Seen::Waiting;
+            }
+            let (a, p) = (std::sync::Arc::clone(&ask), programs.clone());
+            let done =
+                tokio::task::spawn_blocking(move || round(a.as_ref(), &p, SystemTime::now()))
+                    .await
+                    .unwrap_or_else(|_| Round {
+                        problem: Some("the round broke off"),
+                        ..Round::default()
+                    });
+            last = Some(tokio::time::Instant::now());
+            let at = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            if let Ok(mut seen) = watcher.seen.lock() {
+                let before = match &*seen {
+                    Seen::Ran { round, .. } => Some(round),
+                    Seen::Off(_) | Seen::Waiting => None,
+                };
+                say(&done, before);
+                *seen = Seen::Ran { at, round: done };
+            }
+        }
+        tokio::time::sleep(tick).await;
     }
 }
 
@@ -755,6 +984,97 @@ mod tests {
         assert_eq!(task_verdict(&[Green, Pending]), None);
         assert_eq!(task_verdict(&[Pending, Red]), Some(Verdict::Red));
         assert_eq!(task_verdict(&[]), None);
+    }
+
+    #[test]
+    fn the_watcher_runs_unless_turned_off_and_never_for_a_test() {
+        let person = Env::from_pairs([("REPOS_DIR", "C:/r"), ("TASKS_VAULT", "C:/v")]);
+        assert_eq!(allowed(&person), Ok(()));
+        for marker in [
+            "HUB_DESKTOP_CONFIG_DIR",
+            "HUB_DESKTOP_NO_LAUNCH",
+            "HUB_DESKTOP_NO_LOGIN_SYNC",
+        ] {
+            for value in ["1", "C:/t"] {
+                let test = Env::from_pairs([("TASKS_VAULT", "C:/v"), (marker, value)]);
+                assert_eq!(allowed(&test), Err(OFF_IN_TESTS), "{marker}={value:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_interval_is_1_to_60_minutes_and_the_default_outside() {
+        assert_eq!(schedule_of(None, None), (Schedule::default(), None));
+        assert_eq!(
+            schedule_of(Some(false), Some(1)),
+            (
+                Schedule {
+                    on: false,
+                    interval_min: 1
+                },
+                None
+            )
+        );
+        assert_eq!(schedule_of(Some(true), Some(60)).0.interval_min, 60);
+        for out in [0, 61, u64::MAX] {
+            let (schedule, note) = schedule_of(None, Some(out));
+            assert_eq!(schedule, Schedule::default(), "{out}");
+            let note = note.unwrap();
+            assert!(
+                note.contains(&out.to_string()) && note.contains("takes 5"),
+                "{note}"
+            );
+        }
+        assert!(interval_ok(1) && interval_ok(60) && !interval_ok(0) && !interval_ok(61));
+        assert_eq!(
+            settings_view(Schedule {
+                on: false,
+                interval_min: 7
+            }),
+            serde_json::json!({"on": false, "interval_min": 7, "min": 1, "max": 60, "default": 5})
+        );
+    }
+
+    #[test]
+    fn the_view_names_the_state_and_counts_what_to_look_at() {
+        let off = Watcher::off(OFF_IN_TESTS);
+        assert_eq!(
+            off.view(),
+            serde_json::json!({"state": "off", "why": OFF_IN_TESTS})
+        );
+        assert_eq!(off.hint_count(), 0);
+        assert_eq!(
+            Watcher::default().view(),
+            serde_json::json!({"state": "waiting"})
+        );
+        let mut round = Round::default();
+        round.written.insert("a/b".into(), Verdict::Green);
+        round.not_written.insert("a/c".into(), Verdict::Red);
+        round.hints.insert(Hint::Queued {
+            repo: "x".into(),
+            minutes: 42,
+        });
+        round.hints.insert(Hint::NoAnswer {
+            repo: "y".into(),
+            why: "testing gave no JSON",
+        });
+        round.problem = Some("the tasks command failed");
+        let ran = Watcher::new(Seen::Ran { at: 7, round });
+        assert_eq!(ran.hint_count(), 4);
+        assert_eq!(
+            ran.view(),
+            serde_json::json!({
+                "state": "ran",
+                "at": 7,
+                "written": [{"id": "a/b", "ci": "green"}],
+                "not_written": [{"id": "a/c", "ci": "red"}],
+                "hints": [
+                    {"kind": "queued", "repo": "x", "minutes": 42},
+                    {"kind": "no_answer", "repo": "y", "why": "testing gave no JSON"},
+                ],
+                "problem": "the tasks command failed",
+            })
+        );
     }
 
     #[test]

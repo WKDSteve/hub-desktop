@@ -215,18 +215,31 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 ## CI-Beobachter (`ciwatch.rs`)
 
 - Schreibt das Urteil der gehosteten CI in erledigte Tasks mit `ci: pending` (oder `red`), nur über die tasks-CLI
-  (`tasks set <id> ci=green|red --by=hub-desktop`), nie in eine Datei. Nur mit `ci_watch: true` in `config.json`:
-  ein Hub eines Tests hat die Umgebung der Person (`REPOS_DIR`, `TASKS_VAULT`) und darf ihren Vault nie schreiben.
-  Erste Runde 60 s nach dem Start, dann alle 5 min (`FIRST_ROUND`, `EVERY`), in `spawn_blocking`.
+  (`tasks set <id> ci=green|red --by=hub-desktop`), nie in eine Datei. Standardmäßig an, `"ci_watch": false` in
+  `config.json` schaltet ihn ab; `"ci_watch_interval_min"` (Standard 5, 1 bis 60; außerhalb: Standard mit Hinweis im
+  Log, `ciwatch::schedule_of`) ist der Takt. Beides liest die Schleife alle 30 s (`TICK`) über `Prefs::ci_schedule`
+  neu: wirkt ohne Neustart; die Seite setzt beides unter „Options“ (`Options.svelte`, `POST /api/hub/ci/settings`
+  in `MUTATION_ROUTES`, schreibt über `Prefs::set_ci`, Standardwerte als fehlende Schlüssel). **Nie in einem Testlauf** (`ciwatch::allowed`): ist `HUB_DESKTOP_CONFIG_DIR`,
+  `HUB_DESKTOP_NO_LAUNCH` oder `HUB_DESKTOP_NO_LOGIN_SYNC` gesetzt, läuft er nicht, egal was `config.json` sagt, denn
+  ein Hub eines Tests hat die Umgebung der Person (`REPOS_DIR`, `TASKS_VAULT`). Ein neuer Test, der das echte Binary
+  startet, setzt mindestens eine davon (die Helfer in `tests/cli.rs` und `ui/e2e/fixture.ts` tun es). Belegt von
+  `tests/cli.rs` (Fake-nvim/-git, Vault bleibt unberührt) und `e2e/hub.spec.ts` (die Seite sagt „does not run“).
+  Erste Runde 60 s nach dem Start, dann im eingestellten Takt, in `spawn_blocking`.
 - Eine Runde: `tasks list --done --ci=pending,red --format=ids` (leer: fertig), dann `tasks call finished` seitenweise
   bis alle IDs gefunden sind (`commits`), je Repo `testing ci remote --json <$REPOS_DIR/repo>`, je Commit
   `git cat-file -e <kopf>^{commit}` und `git merge-base --is-ancestor`. Grün: im Kopf enthalten und `success` (auch
   ein späterer Lauf); rot: nur der eigene Lauf des Commits (Kopf = Commit) `failure`/`rejected`, ein späterer roter
   Push sagt nichts gegen einen älteren Commit; alles andere pending. `queued`/`waiting_runner` über 30 min ist ein Hinweis, nie rot.
+  Repos mit `land`: der Push-Lauf auf `main` hat keine Legs (`already-verified`), die Systeme stehen im Lauf des
+  Prüf-Branchs `ci/**`; deshalb zählt allein `overall` von `testing ci remote --json` (das rechnet es), nie der rohe
+  Lauf des Kopfs.
 - Programme nur per argv aus `Programs::find` (nvim und git auf dem PATH, `$REPOS_DIR/tasks.nvim/scripts/tasks.lua`,
   `$REPOS_DIR/testing.nvim/scripts/testing.lua`, Vault aus `TASKS_VAULT`), über `appkit_core::child::run`
   (`SystemAsk`). Tests: Fake-`Ask` in `tests/ciwatch.rs`, nie die echten Programme.
-- Offen: Anzeige der Hinweise auf der Seite und im Tray (Entscheidung zu Ort und Takt steht aus).
+- Anzeige: `GET /api/hub/ci` (`Watcher::view`: `off` mit Grund, `waiting`, `ran` mit Urteilen, Hinweisen, Problem;
+  nur Repo-Namen, Task-IDs, feste Wörter). Die Seite zeigt Stand und Hinweise im Abschnitt „Testing“
+  (`ui/src/lib/ci.ts`; mit Hinweisen auch ohne Export-Ordner), der Tray die Zeile „CI: n hints“
+  (`Watcher::hint_count` = Hinweise + nicht angenommene Urteile + Problem; Klick öffnet die Seite).
 
 ## Web-Hub (`hub.html`, M1W)
 

@@ -551,8 +551,11 @@ async fn the_watcher_runs_a_round_after_the_first_wait_and_again_every_time_unti
         std::sync::Arc::clone(&watcher),
         std::sync::Arc::clone(&fake) as std::sync::Arc<dyn Ask>,
         place.programs.clone(),
+        std::sync::Arc::new(ciwatch::Schedule::default),
         Duration::from_millis(30),
-        Duration::from_millis(30),
+        Duration::from_millis(5),
+        // Five minutes of this kind are 30 ms.
+        Duration::from_millis(6),
     ));
     tokio::time::sleep(Duration::from_millis(10)).await;
     assert!(fake.calls().is_empty(), "the first round waits");
@@ -569,4 +572,67 @@ async fn the_watcher_runs_a_round_after_the_first_wait_and_again_every_time_unti
         rounds,
         "ended: no round after the abort"
     );
+}
+
+/// The settings are read before every round: a new interval, the switch off and on again count without a new start.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_watcher_follows_its_settings_without_a_new_start() {
+    use ciwatch::{Schedule, Seen, OFF_BY_SETTINGS};
+    let place = place();
+    let fake = std::sync::Arc::new(Fake::new(world(&[], "success")));
+    let watcher = std::sync::Arc::new(ciwatch::Watcher::default());
+    // A minute of this test is 10 ms: 60 of them are 600 ms, 1 is 10 ms.
+    let held = std::sync::Arc::new(std::sync::Mutex::new(Schedule {
+        on: true,
+        interval_min: 60,
+    }));
+    let read = std::sync::Arc::clone(&held);
+    let task = tokio::spawn(ciwatch::watch(
+        std::sync::Arc::clone(&watcher),
+        std::sync::Arc::clone(&fake) as std::sync::Arc<dyn Ask>,
+        place.programs.clone(),
+        std::sync::Arc::new(move || *read.lock().unwrap()),
+        Duration::ZERO,
+        Duration::from_millis(5),
+        Duration::from_millis(10),
+    ));
+    let rounds = || fake.calls().len();
+    let wait_for = |what: &str, check: &dyn Fn() -> bool| {
+        let end = std::time::Instant::now() + Duration::from_secs(10);
+        while !check() {
+            assert!(
+                std::time::Instant::now() < end,
+                "timed out waiting for {what}"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    wait_for("the first round", &|| rounds() == 1);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(rounds(), 1, "60 minutes have not passed");
+
+    held.lock().unwrap().interval_min = 1;
+    // A round every 10 ms (and a look every 5): many in 300 ms, where the old interval would give none.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        rounds() >= 4,
+        "{} rounds with the shorter interval",
+        rounds()
+    );
+
+    held.lock().unwrap().on = false;
+    wait_for("the switch off", &|| {
+        watcher.seen() == Seen::Off(OFF_BY_SETTINGS)
+    });
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    let off = rounds();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(rounds(), off, "switched off: no round");
+
+    held.lock().unwrap().on = true;
+    wait_for("a round at once after the switch on", &|| rounds() > off);
+    wait_for("the round to be shown", &|| {
+        matches!(watcher.seen(), Seen::Ran { .. })
+    });
+    task.abort();
 }

@@ -9,6 +9,8 @@ use std::time::{Duration, Instant};
 
 use appkit_scratch::Scratch;
 
+mod common;
+
 const PROGRAM: &str = env!("CARGO_BIN_EXE_hub-desktop");
 
 /// A port nobody listens on right now.
@@ -376,41 +378,72 @@ fn the_program_is_the_watcher_of_its_childrens_groups() {
     assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{out:?}");
 }
 
-/// The CI watcher runs only when `config.json` turns it on: a hub of a test, with the environment of the person,
-/// never writes into the person's vault. Turned on without its programs (here no checkout of tasks.nvim below
-/// `REPOS_DIR`), it is a note and the hub runs on.
+/// A hub of a test never runs the CI watcher, whatever `config.json` says (nothing: on; `true`): a test starts the
+/// real program, and with the environment of the person it would write into the person's vault. Everything the
+/// watcher needs is there and a fake that logs every start (nvim and git on the `PATH`, the scripts of tasks.nvim
+/// and testing.nvim, a vault): the hub says why the watcher does not run, nothing is started, the vault stays as
+/// it was. `ciwatch::allowed` has each variable of a test on its own.
 #[test]
-fn the_ci_watcher_starts_only_when_the_settings_turn_it_on() {
-    for on in [false, true] {
+fn a_hub_of_a_test_never_runs_the_ci_watcher() {
+    const TASK: &str = "ci: pending";
+    for setting in [None, Some(r#"{"ci_watch":true}"#)] {
         let scratch = Scratch::new("hub-cli-ciwatch");
-        let config = scratch.path();
-        let repos = config.join("repos");
-        std::fs::create_dir_all(&repos).unwrap();
-        if on {
-            std::fs::write(config.join("config.json"), r#"{"ci_watch":true}"#).unwrap();
+        let config = scratch.path().join("cfg");
+        let bin = scratch.path().join("bin");
+        let repos = scratch.path().join("repos");
+        let vault = scratch.path().join("vault");
+        for dir in [&config, &bin, &vault] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        for name in ["nvim", "git"] {
+            let file = bin.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
+            std::fs::copy(common::fake_app_exe(), file).unwrap();
+        }
+        for script in [
+            "tasks.nvim/scripts/tasks.lua",
+            "testing.nvim/scripts/testing.lua",
+        ] {
+            let file = repos.join(script);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, "os.exit(3)").unwrap();
+        }
+        std::fs::write(vault.join("task.md"), TASK).unwrap();
+        if let Some(text) = setting {
+            std::fs::write(config.join("config.json"), text).unwrap();
         }
         let err = config.join("serve-err.txt");
-        let mut cmd = command(config, free_port());
+        let mut cmd = command(&config, free_port());
         cmd.arg("serve")
             .env("HUB_DESKTOP_NO_LOGIN_SYNC", "1")
+            .env("PATH", &bin)
             .env("REPOS_DIR", &repos)
+            .env("TASKS_VAULT", &vault)
             .stdout(Stdio::null())
             .stderr(Stdio::from(std::fs::File::create(&err).unwrap()));
-        let _hub = Running {
+        let hub = Running {
             child: cmd.spawn().unwrap(),
         };
         wait_for("the hub to write hub.json", || {
             config.join("hub.json").is_file()
         });
-        let note = "note: the CI watcher does not run: no checkout of tasks.nvim in REPOS_DIR";
-        if on {
-            wait_for("the note of the CI watcher", || {
-                std::fs::read_to_string(&err).is_ok_and(|t| t.contains(note))
-            });
-        } else {
-            std::thread::sleep(Duration::from_millis(500));
-            let said = std::fs::read_to_string(&err).unwrap();
-            assert!(!said.contains("CI watcher"), "{said}");
-        }
+        let note = "note: the CI watcher does not run: the hub runs for a test";
+        wait_for("the note of the CI watcher", || {
+            std::fs::read_to_string(&err).is_ok_and(|t| t.contains(note))
+        });
+        std::thread::sleep(Duration::from_millis(500));
+        drop(hub);
+        assert!(
+            common::starts_of(&bin.join("nvim")).is_empty(),
+            "{setting:?}: a program of the watcher was started"
+        );
+        let names: Vec<_> = std::fs::read_dir(&vault)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["task.md"], "{setting:?}");
+        assert_eq!(
+            std::fs::read_to_string(vault.join("task.md")).unwrap(),
+            TASK
+        );
     }
 }

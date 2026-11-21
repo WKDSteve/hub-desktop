@@ -13,6 +13,7 @@ import {
   type UpdateInfo,
   type UpdateJob,
 } from './api';
+import { CI_NONE, type CiView } from './ci';
 import { type CasesView, type MonitorReading, NOT_CONFIGURED } from './monitor';
 import { askable, differs, type UpdateChecker } from './updates';
 import { active, roundText, updatable, whyNot } from './updating';
@@ -108,6 +109,8 @@ export class App {
   toast = $state<ToastMessage | null>(null);
   /** The testing export the hub reads, as it showed last. */
   monitor = $state<MonitorReading>(NOT_CONFIGURED);
+  /** What the CI watcher of the hub is at, as it showed last. */
+  ci = $state<CiView>(CI_NONE);
   /** The repository of the monitor whose red cases are shown (one at a time), and what was read for it. */
   openCases = $state<string | null>(null);
   cases = $state<CasesView>({ state: 'loading' });
@@ -294,6 +297,11 @@ export class App {
       this.monitor = await this.hub.monitor();
     } catch {
       // A refused session already moved the phase (`onUnauthorized`); anything else keeps the rows.
+    }
+    try {
+      this.ci = await this.hub.ci();
+    } catch {
+      // The same: what the watcher showed last stays.
     }
   }
 
@@ -486,6 +494,20 @@ export class App {
     } catch {
       await this.reload(false);
       this.say('error', 'The start with the login could not be switched.');
+    }
+  }
+
+  /** Switch the CI watcher and set its interval; it counts from its next round, without a new start of the hub. */
+  async saveCi(on: boolean, intervalMin: number): Promise<void> {
+    try {
+      await this.hub.saveCi(on, intervalMin);
+      await this.reload();
+      this.say(
+        'ok',
+        on ? `The CI watcher runs every ${intervalMin} min.` : 'The CI watcher is switched off.',
+      );
+    } catch {
+      this.say('error', 'The options of the CI watcher could not be saved.');
     }
   }
 

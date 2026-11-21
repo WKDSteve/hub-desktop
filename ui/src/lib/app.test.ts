@@ -8,6 +8,8 @@ function fakeHub(
     acceptCode?: string;
     token?: string;
     monitor?: () => Response;
+    ci?: () => Response;
+    saveCi?: (body: unknown) => Response;
     cases?: (path: string) => Response | Promise<Response>;
     /** The start with the login of tasks, as the machine holds it; the switch writes it. */
     login?: { on: boolean; refuse?: boolean };
@@ -41,6 +43,8 @@ function fakeHub(
     }
     if (path === '/api/hub/monitor' && options.monitor) return options.monitor();
     if (path.startsWith('/api/hub/monitor/cases?') && options.cases) return options.cases(path);
+    if (path === '/api/hub/ci' && options.ci) return options.ci();
+    if (path === '/api/hub/ci/settings' && options.saveCi) return options.saveCi(JSON.parse(String(init?.body)));
     return json(404, { error: { code: 'not_found', message: path } });
   }) as typeof fetch;
   return { hub: new Hub(fetchFn), asked, token };
@@ -154,6 +158,46 @@ describe('App', () => {
       expect(app.phase).toBe('ready');
       expect(app.monitor).toEqual({ state: 'not_configured' });
     }
+  });
+
+  it('shows what the CI watcher is at, keeps it when a later look fails, and nothing from a hub without it', async () => {
+    const off = { state: 'off', why: 'the hub runs for a test' };
+    let answer = reply(off);
+    const app = new App(fakeHub({ acceptCode: 'c', ci: () => answer() }).hub, memory());
+    await app.start('c');
+    expect(app.ci).toEqual(off);
+    answer = reply({ state: 'fly' });
+    await app.reload();
+    expect(app.ci).toEqual(off);
+    const ran = { state: 'ran', at: 5, written: [], not_written: [], hints: [{ kind: 'no_github', repo: 'x' }], problem: null };
+    answer = reply(ran);
+    await app.reload();
+    expect(app.ci).toEqual(ran);
+    const older = new App(fakeHub({ acceptCode: 'c' }).hub, memory());
+    await older.start('c');
+    expect(older.phase).toBe('ready');
+    expect(older.ci).toEqual({ state: 'none' });
+  });
+
+  it('saves the options of the CI watcher, says so, and says when the hub refused them', async () => {
+    const sent: unknown[] = [];
+    let status = 200;
+    const app = new App(
+      fakeHub({
+        acceptCode: 'c',
+        saveCi: (body) => (sent.push(body), reply(status === 200 ? { result: 'saved' } : { error: { code: 'bad_request', message: 'no' } }, status)()),
+      }).hub,
+      memory(),
+    );
+    await app.start('c');
+    await app.saveCi(true, 12);
+    expect(sent).toEqual([{ on: true, interval_min: 12 }]);
+    expect(app.toast).toEqual({ kind: 'ok', text: 'The CI watcher runs every 12 min.' });
+    await app.saveCi(false, 12);
+    expect(app.toast).toEqual({ kind: 'ok', text: 'The CI watcher is switched off.' });
+    status = 400;
+    await app.saveCi(true, 5);
+    expect(app.toast).toEqual({ kind: 'error', text: 'The options of the CI watcher could not be saved.' });
   });
 
   it('keeps the rows it has when a later look fails, and takes a new answer', async () => {

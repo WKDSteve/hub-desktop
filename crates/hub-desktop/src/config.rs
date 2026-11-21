@@ -36,10 +36,14 @@ pub struct HubSettings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub start_with_hub: Vec<String>,
     /// The CI watcher (`ciwatch.rs`) writes the verdict of the hosted CI into the finished tasks whose `ci` is
-    /// `pending` or `red`, through the tasks command. Off unless set: a hub started by a test (a folder of its own,
-    /// the environment of the person) must never write into the person's vault.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub ci_watch: bool,
+    /// `pending` or `red`, through the tasks command. None: on; `false` turns it off. A hub of a test never runs
+    /// it, whatever this says (`ciwatch::allowed`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ci_watch: Option<bool>,
+    /// How many minutes lie between two rounds of the CI watcher; none: 5. A value outside 1 to 60 is the default,
+    /// with a note (`ciwatch::schedule_of`). Read before every round: a change counts without a new start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ci_watch_interval_min: Option<u64>,
 }
 
 /// The choices for updates (`update` in `config.json`).
@@ -249,10 +253,25 @@ mod tests {
     }
 
     #[test]
-    fn the_ci_watcher_is_off_unless_the_file_turns_it_on() {
-        assert!(!tiles("{}").unwrap().ci_watch);
-        assert!(tiles(r#"{"ci_watch":true}"#).unwrap().ci_watch);
-        for bad in [r#"{"ci_watch":"yes"}"#, r#"{"ci_watch":{"vault":"C:/v"}}"#] {
+    fn the_ci_watcher_is_on_unless_the_file_turns_it_off() {
+        assert_eq!(tiles("{}").unwrap().ci_watch, None);
+        assert_eq!(tiles(r#"{"ci_watch":true}"#).unwrap().ci_watch, Some(true));
+        assert_eq!(
+            tiles(r#"{"ci_watch":false}"#).unwrap().ci_watch,
+            Some(false)
+        );
+        // A number outside the bounds is no broken file: the watcher takes the default and says so.
+        for minutes in [0, 5, 61, 100_000] {
+            let text = format!(r#"{{"ci_watch_interval_min":{minutes}}}"#);
+            assert_eq!(tiles(&text).unwrap().ci_watch_interval_min, Some(minutes));
+        }
+        for bad in [
+            r#"{"ci_watch":"yes"}"#,
+            r#"{"ci_watch":{"vault":"C:/v"}}"#,
+            r#"{"ci_watch_interval_min":"5"}"#,
+            r#"{"ci_watch_interval_min":-1}"#,
+            r#"{"ci_watch_interval_min":2.5}"#,
+        ] {
             assert!(tiles(bad).is_err(), "{bad}");
         }
     }

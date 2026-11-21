@@ -190,6 +190,28 @@ testing.nvim wrote them into the export, already without paths of your machine).
 nothing; the history and the start of a run stay with testing.nvim. A folder that cannot be read is said in one
 sentence, without its path.
 
+## CI watcher
+
+When a task of [tasks.nvim](https://github.com/WKDSteve/tasks.nvim) is finished with `ci: pending`, the hub looks at
+the hosted CI of its commits (`testing ci remote` of [testing.nvim](https://github.com/WKDSteve/testing.nvim)) and
+writes the verdict into the task through the tasks command (`ci=green` or `ci=red`); it never edits a file itself.
+Green: every system of the commit's run, or of a later run that contains it, is green. Red: the commit's own run
+failed. A run that has waited more than 30 minutes for a runner is a hint, never red. It needs nvim and git on the
+`PATH`, checkouts of tasks.nvim and testing.nvim in `REPOS_DIR`, and `TASKS_VAULT`.
+
+The section **Testing** of the page says what the watcher is at and lists its hints (no runner, a checkout that was
+not fetched, a repository without hosted CI, ...); the icon in the notification area shows **CI: n hints** when
+there are some. Under **Options** you switch it on or off and set the minutes between two of its rounds (1 to 60,
+default 5); **Save** writes them into `config.json`:
+
+```json
+{ "ci_watch": false, "ci_watch_interval_min": 10 }
+```
+
+Both count from the next round, without a new start of the hub. An interval outside 1 to 60 written by hand is taken
+as 5, with a note in the log. A hub started by a test (its own config folder, `HUB_DESKTOP_NO_LAUNCH`,
+`HUB_DESKTOP_NO_LOGIN_SYNC`) never runs the watcher.
+
 <!-- connections:begin (written by the app-icons tool of the workshop; change integrations.json there, not this block) -->
 ## Connections
 

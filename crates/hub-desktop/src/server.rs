@@ -22,6 +22,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::ciwatch::Watcher;
 use crate::detect::Detector;
 use crate::launch::{LaunchError, Launcher, Outcome, Request};
 use crate::monitor::Monitor;
@@ -38,6 +39,7 @@ pub struct HubRuntime {
     prefs: Arc<Prefs>,
     monitor: Arc<Monitor>,
     updater: Arc<Updater>,
+    ci: Arc<Watcher>,
 }
 
 impl HubRuntime {
@@ -49,6 +51,7 @@ impl HubRuntime {
         prefs: Arc<Prefs>,
         monitor: Arc<Monitor>,
         updater: Arc<Updater>,
+        ci: Arc<Watcher>,
     ) -> Self {
         Self {
             status: HubStatus {
@@ -61,6 +64,7 @@ impl HubRuntime {
             prefs,
             monitor,
             updater,
+            ci,
         }
     }
 
@@ -87,6 +91,11 @@ impl HubRuntime {
     #[must_use]
     pub fn updater(&self) -> &Arc<Updater> {
         &self.updater
+    }
+
+    #[must_use]
+    pub fn ci(&self) -> &Arc<Watcher> {
+        &self.ci
     }
 }
 
@@ -118,6 +127,8 @@ pub struct ServerConfig {
     pub monitor: Arc<Monitor>,
     /// What updates the apps ([`Updater::disabled`] where nothing may be updated).
     pub updater: Arc<Updater>,
+    /// What the CI watcher is at (`ciwatch::Watcher::off` where it does not run).
+    pub ci: Arc<Watcher>,
 }
 
 /// The one other address the page may fetch from: GitHub, for the update badge (`ui/src/lib/updates.ts`).
@@ -126,7 +137,7 @@ pub const RELEASES_ORIGIN: &str = "https://api.github.com";
 /// The names (below `/api/hub/`) of the routes that need a session. The security matrix reads them
 /// from here: a route added to [`routes`] and left out of this list would be a route the matrix
 /// never tries (`tests/hub.rs` asks every name with a session).
-pub const DATA_ROUTES: [&str; 4] = ["apps", "monitor", "monitor/cases", "updates"];
+pub const DATA_ROUTES: [&str; 5] = ["apps", "monitor", "monitor/cases", "updates", "ci"];
 
 /// `GET /api/hub/apps`: the apps of the catalog and what the machine says about each. No path of the
 /// machine is in it.
@@ -147,6 +158,72 @@ async fn monitor(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
             problem: "the export cannot be read",
         });
     Json(serde_json::to_value(reading).unwrap_or(Value::Null))
+}
+
+/// `GET /api/hub/ci`: what the CI watcher is at: off (why), waiting for its first round, or its last round (the
+/// verdicts it wrote, the hints, a problem), and its settings with the bounds of the field (`settings`). Repository
+/// names, task ids and fixed words only.
+async fn ci(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
+    let prefs = Arc::clone(core.rt().prefs());
+    // The settings are a file: read on a thread of their own, as the monitor's.
+    let schedule = tokio::task::spawn_blocking(move || prefs.ci_schedule().0)
+        .await
+        .unwrap_or_default();
+    let mut view = core.rt().ci().view();
+    if let Some(doc) = view.as_object_mut() {
+        doc.insert(
+            "settings".to_owned(),
+            crate::ciwatch::settings_view(schedule),
+        );
+    }
+    Json(view)
+}
+
+/// What the options of the CI watcher send: the switch and the interval in minutes. Nothing else is read.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CiSettingsBody {
+    on: bool,
+    interval_min: u64,
+}
+
+/// `POST /api/hub/ci/settings`: switch the CI watcher and set its interval (1 to 60 minutes), in `config.json`.
+/// The watcher reads them before its next round, without a new start.
+async fn ci_settings(State(core): State<Arc<Core<HubRuntime>>>, body: Bytes) -> Response {
+    let Ok(parsed) = serde_json::from_slice::<CiSettingsBody>(&body) else {
+        return appkit_hub::error_body(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "the body is not {\"on\": ..., \"interval_min\": ...}",
+        );
+    };
+    let schedule = crate::ciwatch::Schedule {
+        on: parsed.on,
+        interval_min: parsed.interval_min,
+    };
+    let prefs = Arc::clone(core.rt().prefs());
+    let done = tokio::task::spawn_blocking(move || prefs.set_ci(schedule))
+        .await
+        .unwrap_or_else(|_| Err(PrefsError::Failed("the write broke off".to_owned())));
+    match done {
+        Ok(()) => Json(json!({ "result": "saved" })).into_response(),
+        Err(PrefsError::Invalid(why)) => {
+            appkit_hub::error_body(StatusCode::BAD_REQUEST, "bad_request", why)
+        }
+        Err(PrefsError::Failed(why)) => {
+            eprintln!("settings: {why}");
+            appkit_hub::error_body(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "not_saved",
+                "the settings could not be written",
+            )
+        }
+        Err(PrefsError::UnknownApp | PrefsError::NotAvailable(_)) => appkit_hub::error_body(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "not_saved",
+            "the settings could not be written",
+        ),
+    }
 }
 
 /// `GET /api/hub/monitor/cases?key=<key>`: the red cases of the last run of one repository of the export
@@ -177,7 +254,7 @@ fn key_of(query: Option<&str>) -> &str {
 
 /// The routes that change something (a `POST`, a session and a JSON body): `{id}` stands for an app. The
 /// tests ask each of them without a session, with a wrong content type and with a body that is not one.
-pub const MUTATION_ROUTES: [&str; 7] = [
+pub const MUTATION_ROUTES: [&str; 8] = [
     "apps/{id}/launch",
     "apps/{id}/mode",
     "rescan",
@@ -185,6 +262,7 @@ pub const MUTATION_ROUTES: [&str; 7] = [
     "apps/{id}/update",
     "update-all",
     "apps/{id}/autostart",
+    "ci/settings",
 ];
 
 /// What a click sends: a mode, or nothing (the default of the app). Nothing else is read.
@@ -344,6 +422,9 @@ async fn choose_mode(
             "not_available",
             &format!("the app has no {what} mode"),
         ),
+        Err(PrefsError::Invalid(why)) => {
+            appkit_hub::error_body(StatusCode::BAD_REQUEST, "bad_request", why)
+        }
         Err(PrefsError::Failed(why)) => {
             eprintln!("settings: {why}");
             appkit_hub::error_body(
@@ -389,6 +470,9 @@ async fn switch_autostart(
             "not_available",
             "the start with the login of this app cannot be switched here",
         ),
+        Ok(Err(PrefsError::Invalid(why))) => {
+            appkit_hub::error_body(StatusCode::BAD_REQUEST, "bad_request", why)
+        }
         Ok(Err(PrefsError::Failed(why))) => {
             eprintln!("autostart: {why}");
             appkit_hub::error_body(
@@ -454,6 +538,7 @@ fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
         .route(&IDENTITY.route("monitor"), get(monitor))
         .route(&IDENTITY.route("monitor/cases"), get(monitor_cases))
         .route(&IDENTITY.route("updates"), get(updates))
+        .route(&IDENTITY.route("ci"), get(ci))
         .route(
             &IDENTITY.route(MUTATION_ROUTES[0]),
             post(launch).layer(DefaultBodyLimit::max(small)),
@@ -482,6 +567,10 @@ fn routes(core: &Arc<Core<HubRuntime>>) -> Router<Arc<Core<HubRuntime>>> {
             &IDENTITY.route(MUTATION_ROUTES[6]),
             post(switch_autostart).layer(DefaultBodyLimit::max(small)),
         )
+        .route(
+            &IDENTITY.route(MUTATION_ROUTES[7]),
+            post(ci_settings).layer(DefaultBodyLimit::max(small)),
+        )
 }
 
 /// Start the server.
@@ -495,12 +584,14 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
     let prefs = cfg.prefs;
     let monitor = cfg.monitor;
     let updater = cfg.updater;
+    let ci = cfg.ci;
     let for_build = (
         Arc::clone(&detector),
         Arc::clone(&launcher),
         Arc::clone(&prefs),
         Arc::clone(&monitor),
         Arc::clone(&updater),
+        Arc::clone(&ci),
     );
     serve(
         ServeParts {
@@ -518,7 +609,7 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
             guard_rules: GuardRules::new(IDENTITY.route("hello"), Vec::<String>::new())
                 .with_connect_src(RELEASES_ORIGIN),
             ui: cfg.ui,
-            runtime: HubRuntime::new(detector, launcher, prefs, monitor, updater),
+            runtime: HubRuntime::new(detector, launcher, prefs, monitor, updater, ci),
             // There is no vault to choose, so no runtime is ever made again.
             build: Arc::new(move |()| {
                 HubRuntime::new(
@@ -527,6 +618,7 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<RunningServer> {
                     Arc::clone(&for_build.2),
                     Arc::clone(&for_build.3),
                     Arc::clone(&for_build.4),
+                    Arc::clone(&for_build.5),
                 )
             }),
             vaults: None,

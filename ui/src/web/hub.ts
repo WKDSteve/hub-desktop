@@ -16,6 +16,7 @@ import type {
   UpdateResult,
 } from '../lib/api';
 import type { FolderOutcome, Presence } from '../lib/app.svelte';
+import { CI_NONE, type CiView } from '../lib/ci';
 import { type CasesReading, type MonitorReading, NOT_CONFIGURED } from '../lib/monitor';
 
 /** One entry of `catalog.json` (the rendering of `catalog.rs`, see `webcatalog.rs`). */
@@ -213,6 +214,16 @@ export class WebHub implements HubApi, Presence {
 
   async monitorCases(): Promise<CasesReading> {
     return { state: 'not_configured' };
+  }
+
+  /** A page of a file has no CI watcher. */
+  async ci(): Promise<CiView> {
+    return CI_NONE;
+  }
+
+  /** Nor its settings (the page shows no options for it). */
+  async saveCi(): Promise<void> {
+    throw new Error('a page of a file has no CI watcher');
   }
 
   /** A page of a file runs nothing: it shows the lines to type instead (`webUpdateLines`). */

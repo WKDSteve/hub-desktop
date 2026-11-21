@@ -5,6 +5,9 @@
 //! mode. The file is read again before every write, so that what a person changed by hand in the meantime is
 //! kept. The start with the login is the one state of the kit (`appkit_hub::loginstate`), which the app
 //! switches the same way; the program passes its writer, the tests one of their own.
+//!
+//! The settings of the CI watcher (`ci_watch`, `ci_watch_interval_min`) are read and written here as well: the page
+//! changes them, the watcher reads them before every round.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -12,6 +15,7 @@ use std::sync::{Arc, Mutex};
 use appkit_core::identity::AppIdentity;
 
 use crate::catalog::{self, Mode};
+use crate::ciwatch::{self, Schedule};
 use crate::config::{self, TileSettings};
 use crate::detect::Detector;
 
@@ -20,6 +24,8 @@ pub enum PrefsError {
     UnknownApp,
     /// The app has no such mode.
     NotAvailable(&'static str),
+    /// A value the setting does not take (a fixed sentence).
+    Invalid(&'static str),
     Failed(String),
 }
 
@@ -34,6 +40,10 @@ pub struct Prefs {
     detector: Arc<Detector>,
     login: Option<AutostartWriter>,
     write: Mutex<()>,
+    /// The settings of the CI watcher without a config folder (tests); with one, the file holds them.
+    ci: Mutex<Schedule>,
+    /// The schedule last read from the file: a file that cannot be read keeps it.
+    ci_read: Mutex<Schedule>,
 }
 
 impl Prefs {
@@ -44,6 +54,8 @@ impl Prefs {
             detector,
             login: None,
             write: Mutex::new(()),
+            ci: Mutex::new(Schedule::default()),
+            ci_read: Mutex::new(Schedule::default()),
         }
     }
 
@@ -80,6 +92,58 @@ impl Prefs {
         let done = writer(identity, on).map_err(PrefsError::Failed);
         self.detector.invalidate();
         done
+    }
+
+    /// The settings of the CI watcher as `config.json` holds them now, and a note when its interval is outside the
+    /// bounds (then it is the default). A file that cannot be read keeps the last schedule, with a note.
+    #[must_use]
+    pub fn ci_schedule(&self) -> (Schedule, Option<String>) {
+        let Some(dir) = &self.dir else {
+            return (self.ci.lock().map(|s| *s).unwrap_or_default(), None);
+        };
+        match config::load_file(dir) {
+            Ok(file) => {
+                let (schedule, note) =
+                    ciwatch::schedule_of(file.app.ci_watch, file.app.ci_watch_interval_min);
+                if let Ok(mut kept) = self.ci_read.lock() {
+                    *kept = schedule;
+                }
+                (schedule, note)
+            }
+            Err(e) => (
+                self.ci_read.lock().map(|s| *s).unwrap_or_default(),
+                Some(format!(
+                    "config.json cannot be read ({e}); the CI watcher keeps its last settings"
+                )),
+            ),
+        }
+    }
+
+    /// Switch the CI watcher on or off and set its interval (1 to 60 minutes), in `config.json`. The default
+    /// interval is written as no key; the switch on as no key either (on is the default).
+    ///
+    /// # Errors
+    ///
+    /// [`PrefsError::Invalid`]: the interval is outside the bounds; [`PrefsError::Failed`]: the file.
+    pub fn set_ci(&self, schedule: Schedule) -> Result<(), PrefsError> {
+        if !ciwatch::interval_ok(schedule.interval_min) {
+            return Err(PrefsError::Invalid("interval_min is 1 to 60"));
+        }
+        let _guard = self
+            .write
+            .lock()
+            .map_err(|_| PrefsError::Failed("the settings are locked".to_owned()))?;
+        if let Some(dir) = &self.dir {
+            let mut file = config::load_file(dir).map_err(|e| PrefsError::Failed(e.to_string()))?;
+            file.app.ci_watch = (!schedule.on).then_some(false);
+            file.app.ci_watch_interval_min = (schedule.interval_min
+                != ciwatch::INTERVAL_DEFAULT_MIN)
+                .then_some(schedule.interval_min);
+            config::save_file(dir, &file).map_err(PrefsError::Failed)?;
+        } else if let Ok(mut held) = self.ci.lock() {
+            *held = schedule;
+        }
+        Ok(())
     }
 
     /// Choose (`Some`) or forget (`None`) the mode a click opens for `id`.

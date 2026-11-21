@@ -9,6 +9,8 @@
   import { areas, hasMenu, hasMode, missingReason, moveFocus, otherMode, stopReason } from './lib/tiles';
   import { active, updatable, whyNot } from './lib/updating';
   import Monitor from './Monitor.svelte';
+  import Options from './Options.svelte';
+  import { settingsOf } from './lib/ci';
   import Tile from './Tile.svelte';
   import Updates from './Updates.svelte';
 
@@ -271,10 +273,12 @@
     <Updates apps={app.apps} updates={app.updates} web={!app.canUpdate} />
     <Monitor
       monitor={app.monitor}
+      ci={app.ci}
       open={app.openCases}
       cases={app.cases}
       ontoggle={(key) => void app.toggleCases(key)}
     />
+    <Options settings={settingsOf(app.ci)} onsave={(on, minutes) => void app.saveCi(on, minutes)} />
   {/if}
   <!-- Inside the landmark: the menu is drawn at the pointer, but its content belongs to the page (axe: region). -->
   <ContextMenu {registry} label="Other ways to open the app" />

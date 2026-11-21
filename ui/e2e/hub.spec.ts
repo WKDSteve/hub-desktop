@@ -373,6 +373,49 @@ test('the monitor shows a light for each repository of the export, red first, in
   expect(hub.starts('tasks')).toEqual([]);
 });
 
+test('a hub of a test says in its section Testing that the CI watcher does not run', async ({ page, hubOn }) => {
+  // The hub of this test has the variables of a test (a config folder of its own, no browser): whatever its
+  // settings say, it never writes into a vault (`ciwatch::allowed`).
+  const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
+  await hub.open(page);
+  const monitor = page.getByRole('region', { name: 'Testing' });
+  await expect(monitor.locator('[data-ci="off"]')).toHaveText('The CI watcher does not run: the hub runs for a test.');
+  await expect(monitor.getByRole('list', { name: 'Hints of the CI watcher' })).toHaveCount(0);
+});
+
+test('the options save the interval and the switch of the CI watcher into config.json', async ({ page, hub }) => {
+  await hub.open(page);
+  const options = page.getByRole('form', { name: 'CI watcher' });
+  const minutes = options.getByRole('spinbutton', { name: 'Minutes between two rounds' });
+  const save = options.getByRole('button', { name: 'Save' });
+  await expect(minutes).toHaveValue('5');
+  await expect(save).toBeDisabled();
+
+  // Outside the bounds: said at the field, nothing is sent.
+  for (const out of ['0', '61']) {
+    await minutes.fill(out);
+    await expect(options.locator('#ci-interval-help')).toHaveText('The interval is 1 to 60 minutes.');
+    await expect(minutes).toHaveAttribute('aria-invalid', 'true');
+    await expect(save).toBeDisabled();
+  }
+
+  await minutes.fill('12');
+  await save.click();
+  await expect(page.getByText('The CI watcher runs every 12 min.')).toBeVisible();
+  expect(hub.settings()['ci_watch_interval_min']).toBe(12);
+  expect(hub.settings()['ci_watch']).toBeUndefined();
+  // The page shows what the hub kept, after a new load as well.
+  await page.reload();
+  await expect(options.getByRole('spinbutton', { name: 'Minutes between two rounds' })).toHaveValue('12');
+
+  await options.getByRole('checkbox', { name: /CI watcher/ }).uncheck();
+  await expect(minutes).toBeDisabled();
+  await save.click();
+  await expect(page.getByText('The CI watcher is switched off.')).toBeVisible();
+  expect(hub.settings()['ci_watch']).toBe(false);
+  expect(hub.settings()['ci_watch_interval_min']).toBe(12);
+});
+
 test('a red row opens its red cases by file and line, as text, and closes them again', async ({ page, hubOn }) => {
   const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
   await hub.open(page);

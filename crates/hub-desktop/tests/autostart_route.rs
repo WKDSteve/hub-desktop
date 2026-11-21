@@ -105,6 +105,7 @@ impl Hub {
             prefs: Arc::new(prefs),
             monitor: Arc::new(Monitor::new(None)),
             updater: Arc::new(Updater::disabled(detector, launcher)),
+            ci: Arc::new(hub_desktop::ciwatch::Watcher::off("a test")),
         })
         .await
         .unwrap();

@@ -47,6 +47,7 @@ impl Subject for Hub {
                 prefs: Arc::new(Prefs::new(None, Arc::clone(&detector))),
                 monitor: Arc::new(Monitor::new(None)),
                 updater: Arc::new(Updater::disabled(Arc::clone(&detector), launcher)),
+                ci: Arc::new(hub_desktop::ciwatch::Watcher::off("a test")),
             })
             .await
         })

@@ -69,6 +69,30 @@ for (const scheme of ['light', 'dark'] as const) {
       await showsThePointer(page.locator('[data-tile="testing"]'));
     });
 
+    // The field of the interval at rest, with the focus ring, with a value outside the bounds, and switched off; the
+    // Save button shows the pointer.
+    test('the options of the CI watcher', async ({ page, hub }) => {
+      await hub.open(page);
+      const options = page.getByRole('form', { name: 'CI watcher' });
+      const minutes = options.getByRole('spinbutton', { name: 'Minutes between two rounds' });
+      await expect(minutes).toHaveValue('5');
+      const axe = async () => {
+        const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+        expect(result.violations, JSON.stringify(result.violations.map((v) => [v.id, v.nodes.map((n) => n.html)]), null, 1)).toEqual([]);
+      };
+      await axe();
+      await minutes.focus();
+      await axe();
+      await minutes.fill('90');
+      await expect(minutes).toHaveAttribute('aria-invalid', 'true');
+      await axe();
+      await minutes.fill('7');
+      await showsThePointer(options.getByRole('button', { name: 'Save' }));
+      await options.getByRole('checkbox', { name: /CI watcher/ }).uncheck();
+      await expect(minutes).toBeDisabled();
+      await axe();
+    });
+
     test('with the monitor shown', async ({ page, hubOn }) => {
       const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
       await hub.open(page);
