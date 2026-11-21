@@ -212,6 +212,20 @@ Both count from the next round, without a new start of the hub. An interval outs
 as 5, with a note in the log. A hub started by a test (its own config folder, `HUB_DESKTOP_NO_LAUNCH`,
 `HUB_DESKTOP_NO_LOGIN_SYNC`) never runs the watcher.
 
+## Self-hosted runners
+
+On the private machine (never on the workstation) the menu of the icon has a submenu **Runners**: each self-hosted
+GitHub runner of this machine (`%USERPROFILE%\actions-runners\<repo>`), whether it runs, and whether a push of its
+repository waits for it. A click on one that does not run starts it. The hub asks the same script you use,
+`runners.ps1` of the nvim config (`pwsh -File $NVIM_CONFIG_DIR/scripts/runners.ps1 status all`, `ensure <repo>`),
+in the rhythm of the CI watcher. To have a runner started without the click as soon as a push waits for it:
+
+```json
+{ "runners": { "start_when_waiting": true } }
+```
+
+It needs `pwsh` on the `PATH` and `NVIM_CONFIG_DIR`; to see a waiting push, also what the CI watcher needs.
+
 <!-- connections:begin (written by the app-icons tool of the workshop; change integrations.json there, not this block) -->
 ## Connections
 

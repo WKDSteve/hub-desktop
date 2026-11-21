@@ -2,12 +2,17 @@
 //! icon itself (`tray.rs`, Windows), so that it can be tested everywhere.
 //!
 //! The menu: "Open hub", "CI: n hints" when the CI watcher has some (it opens the page, which names them), one
-//! submenu per installed app of the kit (its state, "Open", "Stop"), "Quit hub". An entry is known by its id, a
-//! word written here (`open-hub`, `ci-hints`, `open:<app>`, `stop:<app>`, `quit`); an id that is not one of these,
-//! or that names no app of the catalog with a hub of the kit, does nothing.
+//! submenu per installed app of the kit (its state, "Open", "Stop"), a submenu "Runners" with each self-hosted
+//! runner of this machine (whether it runs; a click on one that does not starts it), "Quit hub". An entry is known
+//! by its id, a word written here (`open-hub`, `ci-hints`, `open:<app>`, `stop:<app>`, `runner:<repo>`, `quit`); an
+//! id that is not one of these, or that names no app of the catalog with a hub of the kit, does nothing. A runner
+//! of a click is checked against what the last look saw (`runners::RunnerWatch::start`).
+
+use std::collections::BTreeSet;
 
 use crate::catalog;
 use crate::detect::{AppState, Run};
+use crate::runners::Board;
 
 /// The id of "Open hub".
 pub const OPEN_HUB: &str = "open-hub";
@@ -44,8 +49,87 @@ pub enum HubState {
     Setup,
 }
 
-/// What an entry of the menu asks for.
+/// One self-hosted runner in the menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunnerLine {
+    pub repo: String,
+    pub state: RunnerState,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunnerState {
+    Running,
+    Stopped,
+    /// Not running while a push of its repository waits for it.
+    Waiting,
+    /// A start is on its way.
+    Starting,
+}
+
+/// The lines of the runners the last look saw (none: no look yet, or no runner here).
+#[must_use]
+pub fn runner_lines(board: Option<&Board>, starting: &BTreeSet<String>) -> Vec<RunnerLine> {
+    board
+        .map(|b| {
+            b.runners
+                .iter()
+                .map(|r| RunnerLine {
+                    repo: r.repo.clone(),
+                    state: if r.running {
+                        RunnerState::Running
+                    } else if starting.contains(&r.repo) {
+                        RunnerState::Starting
+                    } else if b.waiting.contains(&r.repo) {
+                        RunnerState::Waiting
+                    } else {
+                        RunnerState::Stopped
+                    },
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The text of a runner: its repository and its state, in words.
+#[must_use]
+pub fn runner_label(line: &RunnerLine) -> String {
+    let state = match line.state {
+        RunnerState::Running => "running",
+        RunnerState::Stopped => "not running (click starts it)",
+        RunnerState::Waiting => "not running, a push waits (click starts it)",
+        RunnerState::Starting => "starting",
+    };
+    format!("{} \u{2014} {state}", line.repo)
+}
+
+/// Whether a click starts the runner.
+#[must_use]
+pub fn can_start(line: &RunnerLine) -> bool {
+    matches!(line.state, RunnerState::Stopped | RunnerState::Waiting)
+}
+
+/// The id of a runner's entry.
+#[must_use]
+pub fn runner_id(repo: &str) -> String {
+    format!("runner:{repo}")
+}
+
+/// The title of the submenu: how many runners a push waits for, when any.
+#[must_use]
+pub fn runners_title(lines: &[RunnerLine]) -> String {
+    let waiting = lines
+        .iter()
+        .filter(|l| l.state == RunnerState::Waiting)
+        .count();
+    match waiting {
+        0 => "Runners".to_owned(),
+        1 => "Runners \u{2014} a push waits for 1".to_owned(),
+        n => format!("Runners \u{2014} pushes wait for {n}"),
+    }
+}
+
+/// What an entry of the menu asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// The page of hub-desktop, paired, in the browser.
     OpenHub,
@@ -55,6 +139,8 @@ pub enum Action {
     Stop(&'static str),
     /// hub-desktop ends; the other hubs stay.
     Quit,
+    /// Start the self-hosted runner of this repository (`runners.ps1 ensure <repo>`).
+    StartRunner(String),
 }
 
 /// The lines of the installed apps of the kit, from a look of the detection.
@@ -117,6 +203,8 @@ pub fn action(id: &str) -> Option<Action> {
                 kit(app).map(Action::Open)
             } else if let Some(app) = id.strip_prefix("stop:") {
                 kit(app).map(Action::Stop)
+            } else if let Some(repo) = id.strip_prefix("runner:") {
+                crate::ciwatch::plain_repo(repo).then(|| Action::StartRunner(repo.to_owned()))
             } else {
                 None
             }
@@ -182,6 +270,56 @@ mod tests {
         assert_eq!(ci_label(0), None);
         assert_eq!(ci_label(1).as_deref(), Some("CI: 1 hint"));
         assert_eq!(ci_label(3).as_deref(), Some("CI: 3 hints"));
+    }
+
+    #[test]
+    fn the_runners_are_lines_with_their_state_and_a_click_starts_a_stopped_one() {
+        use crate::runners::Runner;
+        let runner = |repo: &str, running: bool| Runner {
+            repo: repo.into(),
+            running,
+            github: "online",
+            busy: false,
+        };
+        let board = Board {
+            runners: vec![
+                runner("hub-desktop", true),
+                runner("tasks.nvim", false),
+                runner("rules.nvim", false),
+                runner("my.nvim", false),
+            ],
+            waiting: ["tasks.nvim".to_owned(), "hub-desktop".to_owned()].into(),
+            ..Board::default()
+        };
+        let starting: BTreeSet<String> = ["my.nvim".to_owned()].into();
+        let lines = runner_lines(Some(&board), &starting);
+        let states: Vec<_> = lines.iter().map(|l| (l.repo.as_str(), l.state)).collect();
+        assert_eq!(
+            states,
+            [
+                ("hub-desktop", RunnerState::Running),
+                ("tasks.nvim", RunnerState::Waiting),
+                ("rules.nvim", RunnerState::Stopped),
+                ("my.nvim", RunnerState::Starting),
+            ]
+        );
+        assert_eq!(runner_label(&lines[0]), "hub-desktop \u{2014} running");
+        assert_eq!(
+            runner_label(&lines[1]),
+            "tasks.nvim \u{2014} not running, a push waits (click starts it)"
+        );
+        let clickable: Vec<bool> = lines.iter().map(can_start).collect();
+        assert_eq!(clickable, [false, true, true, false]);
+        assert_eq!(runners_title(&lines), "Runners \u{2014} a push waits for 1");
+        assert_eq!(runners_title(&lines[2..]), "Runners");
+        assert!(runner_lines(None, &starting).is_empty());
+        assert_eq!(
+            action(&runner_id("tasks.nvim")),
+            Some(Action::StartRunner("tasks.nvim".into()))
+        );
+        for nothing in ["runner:", "runner:../x", "runner:a/b", "runner:a b"] {
+            assert_eq!(action(nothing), None, "{nothing:?}");
+        }
     }
 
     #[test]

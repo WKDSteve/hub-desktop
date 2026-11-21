@@ -241,6 +241,21 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   (`ui/src/lib/ci.ts`; mit Hinweisen auch ohne Export-Ordner), der Tray die Zeile „CI: n hints“
   (`Watcher::hint_count` = Hinweise + nicht angenommene Urteile + Problem; Klick öffnet die Seite).
 
+## Runner im Tray (`runners.rs`)
+
+- Zeigt im Menü des Icons je selbst gehostetem Runner, ob er läuft, und ob ein Push auf ihn wartet. Quelle ist allein
+  `$NVIM_CONFIG_DIR/scripts/runners.ps1` (`status all`, `ensure <repo>`), per argv über `pwsh -NoProfile
+  -NonInteractive -File` (`Runners::find`: pwsh vom PATH, das Skript aus `NVIM_CONFIG_DIR`). **Ausnahme vom „nie
+  PowerShell“ der Updates**, mit Grund: eine Quelle der Wahrheit für die Runner (dieselbe wie für die Person und
+  `:MyPlugins runner`); nie ein anderes Skript, nie ein Pfad aus einer Anfrage.
+- Nur auf dem privaten Rechner (`machine::Role::Private`; Workstation und unklar: nichts, FALCON-11) und nie für einen
+  Test (`ciwatch::allowed`). Runde im Takt des Beobachters (`ci_watch_interval_min`): `status all`, für jeden
+  gestoppten Runner mit Checkout `testing ci remote --json`; `waiting_runner` = ein Push wartet. Start nur auf Klick
+  (`runner:<repo>`, geprüft gegen den letzten Blick, `RunnerWatch::start`), ohne Rückfrage nur mit
+  `"runners": { "start_when_waiting": true }` in `config.json`.
+- Tests: Fake-`Ask` in `tests/runners.rs` (Fake-pwsh, Fake-testing), `tests/cli.rs` (ein Hub eines Tests sieht keine
+  Runner); nie die echten Runner. Handlauf mit echtem Tray und echten Runnern: eigene Abnahme-Task.
+
 ## Web-Hub (`hub.html`, M1W)
 
 - Dieselbe Oberfläche als eine HTML-Datei (`ui/index.web.html`, `src/main.web.ts`, `vite build --mode web`, gepackt von

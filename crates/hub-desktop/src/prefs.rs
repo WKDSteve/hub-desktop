@@ -119,6 +119,15 @@ impl Prefs {
         }
     }
 
+    /// Whether a runner that a push waits for starts without asking (`runners.start_when_waiting`); a file that
+    /// cannot be read says no.
+    #[must_use]
+    pub fn runner_auto(&self) -> bool {
+        self.dir.as_ref().is_some_and(|dir| {
+            config::load_file(dir).is_ok_and(|file| file.app.runners.start_when_waiting)
+        })
+    }
+
     /// Switch the CI watcher on or off and set its interval (1 to 60 minutes), in `config.json`. The default
     /// interval is written as no key; the switch on as no key either (on is the default).
     ///

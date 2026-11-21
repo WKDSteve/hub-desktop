@@ -18,6 +18,7 @@ pub mod overlay;
 pub mod paths;
 pub mod prefs;
 pub mod probe;
+pub mod runners;
 pub mod server;
 pub mod sums;
 #[cfg(windows)]

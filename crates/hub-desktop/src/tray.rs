@@ -23,7 +23,7 @@ use winit::window::WindowId;
 
 use crate::app::{self, Ready, ServeOptions};
 use crate::launch::Request;
-use crate::traymenu::{self, Action, HubLine};
+use crate::traymenu::{self, Action, HubLine, RunnerLine};
 
 /// How often the menu looks at the hubs again (no program is run for it: a file and a loopback probe).
 const LOOK_EVERY: Duration = Duration::from_secs(5);
@@ -95,6 +95,7 @@ pub fn run(rt: Runtime) -> Result<(), String> {
 struct Look {
     lines: Vec<HubLine>,
     ci_hints: usize,
+    runners: Vec<RunnerLine>,
 }
 
 struct Tray {
@@ -193,9 +194,13 @@ impl Tray {
         let proxy = self.proxy.clone();
         self.rt.spawn(async move {
             loop {
+                let runners = looking.runners.as_ref().map_or_else(Vec::new, |r| {
+                    traymenu::runner_lines(r.board().as_ref(), &r.starting())
+                });
                 let look = Look {
                     lines: traymenu::lines(&looking.detector.kit_hubs().await),
                     ci_hints: looking.ci.hint_count(),
+                    runners,
                 };
                 if proxy.send_event(Event::Look(look)).is_err() {
                     return;
@@ -247,6 +252,16 @@ impl Tray {
                     }
                 });
             }
+            Action::StartRunner(repo) => {
+                let Some(runners) = ready.runners.clone() else {
+                    return;
+                };
+                self.rt.spawn_blocking(move || {
+                    if let Err(why) = runners.start(&repo) {
+                        eprintln!("runner {repo}: {why}");
+                    }
+                });
+            }
             Action::Quit => self.quit(),
         }
     }
@@ -277,6 +292,28 @@ fn menu(look: &Look) -> Menu {
             None,
         );
         if let Ok(sub) = Submenu::with_items(traymenu::label(line), true, &[&open, &stop]) {
+            let _ = menu.append(&sub);
+        }
+    }
+    if !look.runners.is_empty() {
+        let items: Vec<MenuItem> = look
+            .runners
+            .iter()
+            .map(|r| {
+                MenuItem::with_id(
+                    traymenu::runner_id(&r.repo),
+                    traymenu::runner_label(r),
+                    traymenu::can_start(r),
+                    None,
+                )
+            })
+            .collect();
+        let refs: Vec<&dyn tray_icon::menu::IsMenuItem> = items
+            .iter()
+            .map(|i| i as &dyn tray_icon::menu::IsMenuItem)
+            .collect();
+        if let Ok(sub) = Submenu::with_items(traymenu::runners_title(&look.runners), true, &refs) {
+            let _ = menu.append(&PredefinedMenuItem::separator());
             let _ = menu.append(&sub);
         }
     }

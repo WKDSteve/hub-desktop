@@ -195,7 +195,7 @@ impl Programs {
         self.nvim_call(&self.tasks_lua, &all, &self.vault)
     }
 
-    fn remote(&self, dir: &Path) -> Call {
+    pub(crate) fn remote(&self, dir: &Path) -> Call {
         let args = [
             OsString::from("ci"),
             "remote".into(),
@@ -243,7 +243,7 @@ pub struct Watched {
 }
 
 /// A repository name of `repo@sha`: letters, digits, `.`, `_`, `-`, not `.` or `..`.
-fn plain_repo(repo: &str) -> bool {
+pub(crate) fn plain_repo(repo: &str) -> bool {
     !repo.is_empty()
         && repo.len() <= 100
         && repo != "."
@@ -343,6 +343,9 @@ pub struct Remote {
     pub overall: State,
     /// When the run was created (seconds since 1970), when known.
     pub created: Option<u64>,
+    /// The run waits for a runner of this machine (`waiting_runner`): the push of a repository whose runner is not
+    /// running (`runners.rs`).
+    pub waiting_runner: bool,
 }
 
 /// The state of a run, as far as the watcher tells them apart.
@@ -387,13 +390,16 @@ pub fn parse_remote(text: &[u8]) -> Result<Remote, &'static str> {
         .and_then(Value::as_array)
         .and_then(|r| r.first())
         .ok_or("the document names no repository")?;
-    let overall = State::of(repo.get("overall").and_then(Value::as_str).unwrap_or(""));
+    let word = repo.get("overall").and_then(Value::as_str).unwrap_or("");
+    let overall = State::of(word);
+    let waiting_runner = word == "waiting_runner";
     let sha = repo.get("sha").and_then(Value::as_str).unwrap_or("");
     if overall == State::NoGithub {
         return Ok(Remote {
             sha: String::new(),
             overall,
             created: None,
+            waiting_runner,
         });
     }
     if !hex(sha, 40, 40) {
@@ -408,6 +414,7 @@ pub fn parse_remote(text: &[u8]) -> Result<Remote, &'static str> {
         sha: sha.to_ascii_lowercase(),
         overall,
         created,
+        waiting_runner,
     })
 }
 

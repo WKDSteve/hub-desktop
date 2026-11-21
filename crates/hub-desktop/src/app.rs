@@ -94,6 +94,8 @@ pub struct Ready {
     pub start_with_hub: Vec<String>,
     /// What the CI watcher is at (the icon counts its hints).
     pub ci: Arc<crate::ciwatch::Watcher>,
+    /// The runners of this machine (none: not here, see `runners.rs`).
+    pub runners: Option<Arc<crate::runners::RunnerWatch>>,
 }
 
 /// Run the server until Ctrl-C, or until `<program> stop` asks it to end.
@@ -194,6 +196,7 @@ pub async fn serve_until(
     ));
     let monitor = Arc::new(Monitor::new(file.app.testing_export.clone()));
     let (ci, ci_programs) = ci_watcher(&env);
+    let runner_watch = runner_watch(&env, ci_programs.clone());
     // What an update may do here: the role of the machine and the programs are read once, now.
     let updater = Arc::new(Updater::new(
         Arc::clone(&detector),
@@ -288,6 +291,17 @@ pub async fn serve_until(
         launcher: Arc::clone(&launcher),
         start_with_hub: file.app.start_with_hub.clone(),
         ci: Arc::clone(&ci),
+        runners: runner_watch.clone(),
+    });
+    let watching_runners = runner_watch.map(|watch| {
+        let prefs = Arc::clone(&prefs);
+        tokio::spawn(crate::runners::watch(
+            watch,
+            Arc::new(move || (prefs.ci_schedule().0.interval_min, prefs.runner_auto())),
+            crate::ciwatch::FIRST_ROUND,
+            crate::ciwatch::TICK,
+            crate::ciwatch::MINUTE,
+        ))
     });
     let watching = ci_programs.map(|programs| {
         tokio::spawn(crate::ciwatch::watch(
@@ -305,7 +319,7 @@ pub async fn serve_until(
         () = stop => {}
         () = until_over(&running, &presence, &dir, &env, opts.alone) => {}
     }
-    if let Some(watching) = watching {
+    for watching in [watching, watching_runners].into_iter().flatten() {
         watching.abort();
     }
     registry::remove_record(&dir);
@@ -330,6 +344,27 @@ fn ci_watcher(
         Err(why) => {
             eprintln!("note: the CI watcher does not run: {why}");
             (Arc::new(crate::ciwatch::Watcher::off(why)), None)
+        }
+    }
+}
+
+/// The runners of this machine (`runners.rs`): on the private machine only, never for a test. Without the
+/// programs of the CI watcher it shows their state but sees no waiting push.
+fn runner_watch(
+    env: &Env,
+    programs: Option<crate::ciwatch::Programs>,
+) -> Option<Arc<crate::runners::RunnerWatch>> {
+    let found = crate::ciwatch::allowed(env)
+        .and_then(|()| crate::runners::Runners::find(env, Role::of(env)));
+    match found {
+        Ok(runners) => Some(Arc::new(crate::runners::RunnerWatch::new(
+            Arc::new(crate::ciwatch::SystemAsk),
+            runners,
+            programs,
+        ))),
+        Err(why) => {
+            eprintln!("note: the runners are not shown: {why}");
+            None
         }
     }
 }

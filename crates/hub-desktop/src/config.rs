@@ -44,6 +44,26 @@ pub struct HubSettings {
     /// with a note (`ciwatch::schedule_of`). Read before every round: a change counts without a new start.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ci_watch_interval_min: Option<u64>,
+    /// The self-hosted runners of this machine (`runners.rs`).
+    #[serde(default, skip_serializing_if = "RunnerSettings::is_default")]
+    pub runners: RunnerSettings,
+}
+
+/// The choices for the self-hosted runners (`runners` in `config.json`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunnerSettings {
+    /// A runner that is not running while a push of its repository waits for it (`waiting_runner`) is started
+    /// without asking (`runners.ps1 ensure <repo>`). Off: the icon says so and starts it on a click. Never on the
+    /// workstation.
+    #[serde(default)]
+    pub start_when_waiting: bool,
+}
+
+impl RunnerSettings {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// The choices for updates (`update` in `config.json`).
@@ -247,6 +267,24 @@ mod tests {
             r#"{"start_with_hub":["tasks","tasks"]}"#,
             r#"{"start_with_hub":"tasks"}"#,
             r#"{"start_with_hub":[{"program":"C:/x.exe"}]}"#,
+        ] {
+            assert!(tiles(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_runner_starts_without_asking_only_when_the_file_says_so() {
+        assert!(!tiles("{}").unwrap().runners.start_when_waiting);
+        assert!(
+            tiles(r#"{"runners":{"start_when_waiting":true}}"#)
+                .unwrap()
+                .runners
+                .start_when_waiting
+        );
+        for bad in [
+            r#"{"runners":{"start_when_waiting":"yes"}}"#,
+            r#"{"runners":{"script":"C:/x.ps1"}}"#,
+            r#"{"runners":true}"#,
         ] {
             assert!(tiles(bad).is_err(), "{bad}");
         }

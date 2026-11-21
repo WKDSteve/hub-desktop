@@ -395,7 +395,7 @@ fn a_hub_of_a_test_never_runs_the_ci_watcher() {
         for dir in [&config, &bin, &vault] {
             std::fs::create_dir_all(dir).unwrap();
         }
-        for name in ["nvim", "git"] {
+        for name in ["nvim", "git", "pwsh"] {
             let file = bin.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
             std::fs::copy(common::fake_app_exe(), file).unwrap();
         }
@@ -408,6 +408,10 @@ fn a_hub_of_a_test_never_runs_the_ci_watcher() {
             std::fs::write(file, "os.exit(3)").unwrap();
         }
         std::fs::write(vault.join("task.md"), TASK).unwrap();
+        // The script of the runners, so that only the variables of the test keep them from being looked at.
+        let nvim_config = scratch.path().join("nvim");
+        std::fs::create_dir_all(nvim_config.join("scripts")).unwrap();
+        std::fs::write(nvim_config.join("scripts/runners.ps1"), "exit 3").unwrap();
         if let Some(text) = setting {
             std::fs::write(config.join("config.json"), text).unwrap();
         }
@@ -418,6 +422,10 @@ fn a_hub_of_a_test_never_runs_the_ci_watcher() {
             .env("PATH", &bin)
             .env("REPOS_DIR", &repos)
             .env("TASKS_VAULT", &vault)
+            .env("NVIM_CONFIG_DIR", &nvim_config)
+            .env("NVIM_MACHINE_ROLE", "default")
+            .env_remove("USERDOMAIN")
+            .env_remove("COMPUTERNAME")
             .stdout(Stdio::null())
             .stderr(Stdio::from(std::fs::File::create(&err).unwrap()));
         let hub = Running {
@@ -426,10 +434,14 @@ fn a_hub_of_a_test_never_runs_the_ci_watcher() {
         wait_for("the hub to write hub.json", || {
             config.join("hub.json").is_file()
         });
-        let note = "note: the CI watcher does not run: the hub runs for a test";
-        wait_for("the note of the CI watcher", || {
-            std::fs::read_to_string(&err).is_ok_and(|t| t.contains(note))
-        });
+        for note in [
+            "note: the CI watcher does not run: the hub runs for a test",
+            "note: the runners are not shown: the hub runs for a test",
+        ] {
+            wait_for(note, || {
+                std::fs::read_to_string(&err).is_ok_and(|t| t.contains(note))
+            });
+        }
         std::thread::sleep(Duration::from_millis(500));
         drop(hub);
         assert!(

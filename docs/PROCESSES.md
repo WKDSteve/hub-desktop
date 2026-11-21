@@ -27,6 +27,9 @@ The ways:
 | ai-desktop (a server in its console) | the click on its tile when it does not run | until you close its console | named exception: a server in its console (`Window::NewConsole`), visible; its page then opens in the browser |
 | `<hub of an app> stop` | **Stop** in the menu of its tile or of the icon | the call | launch |
 | `git` (on `PATH`) | update of a web variant: `symbolic-ref`, `status`, `rev-parse`, `pull --ff-only` | the call; at most 10 minutes | child |
+| `nvim` (on `PATH`) with `$REPOS_DIR/tasks.nvim/scripts/tasks.lua` or `$REPOS_DIR/testing.nvim/scripts/testing.lua` | the CI watcher: `tasks list --done --ci=pending,red`, `tasks call finished`, `tasks set <id> ci=green\|red --by=hub-desktop`, `testing ci remote --json <checkout>`; also the runners' look at a push that waits | the call; at most 90 s | child |
+| `git` (on `PATH`) | the CI watcher: `cat-file -e <head>^{commit}`, `merge-base --is-ancestor` in a checkout below `REPOS_DIR` | the call; at most 90 s | child |
+| `pwsh -NoProfile -NonInteractive -File $NVIM_CONFIG_DIR/scripts/runners.ps1` (`pwsh` on `PATH`) | the runners in the menu of the icon (private machine only): `status all` in the rhythm of the CI watcher, `ensure <repo>` on a click on a stopped runner or, with `runners.start_when_waiting`, for a push that waits | the call; `status` at most 2 minutes, `ensure` at most 4 minutes; the runner `ensure` starts is started detached by the script (outside the hub's job) and outlives the hub on purpose | child; the one PowerShell the hub runs, so that the runners have one source of truth |
 | `gh` (on `PATH`) | update of a program: `release download`, `attestation verify` | the call; at most 10 minutes (the attestation 1 minute) | child |
 | the checked file of a release | update of a program: `--version` and `install` of a program of the kit, or the setup with its window | the call; what it starts on purpose (the hub of the app, the app after a setup) stays | child (`Leftovers::Keep` for what it started on purpose) |
 | `<installed hub-desktop> start` | `hub-desktop install` brings the hub back from the installed program | the call; the hub it puts in the background stays | child (`background::start_from`) |
@@ -34,8 +37,9 @@ The ways:
 | `conhost.exe` | Windows gives every console program (`git`, `gh`, a setup that is one) a console host, also without a window | as long as its console program | comes with each child; no window |
 
 When an update call runs out of time, it ends together with everything it started; nothing of
-an update is left running. No PowerShell and no script of a release is run: the hub runs the
-checked file directly.
+an update is left running. No PowerShell and no script of a release is run for an update: the hub
+runs the checked file directly. The one script the hub runs is `runners.ps1` of the nvim config
+(above), never one of a release or of a request.
 
 What the hub does **not** start any more: `powershell.exe` (the update), `taskkill.exe` (`stop`
 asks the hub over its control route), `reg.exe` (the login entry and the uninstall entry go
