@@ -133,11 +133,13 @@ mod tests {
 
     #[tokio::test]
     async fn a_port_nobody_listens_on_is_nothing() {
-        let free = {
-            let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
-            l.local_addr().unwrap().port()
-        };
+        // The port stays bound (so no other test can take it in the meantime) but nobody listens on it: a
+        // connection is refused. A port that was let go could be another test's listener by the time it is asked.
+        let held = tokio::net::TcpSocket::new_v4().unwrap();
+        held.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let free = held.local_addr().unwrap().port();
         assert_eq!(get(free, "/x").await, Probe::Nothing);
+        drop(held);
     }
 
     #[tokio::test]
