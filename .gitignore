@@ -4,7 +4,9 @@ node_modules/
 __pycache__/
 /.cargo/config.toml
 *.local.*
-.claude/
+# Local Claude files stay local; the shared .claude/settings.json is committed.
+.claude/*
+!.claude/settings.json
 
 # What a test sheet leaves to look at
 TESTS/sheets/out/
