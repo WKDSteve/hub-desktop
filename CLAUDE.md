@@ -220,8 +220,9 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   Erste Runde 60 s nach dem Start, dann alle 5 min (`FIRST_ROUND`, `EVERY`), in `spawn_blocking`.
 - Eine Runde: `tasks list --done --ci=pending,red --format=ids` (leer: fertig), dann `tasks call finished` seitenweise
   bis alle IDs gefunden sind (`commits`), je Repo `testing ci remote --json <$REPOS_DIR/repo>`, je Commit
-  `git cat-file -e <kopf>^{commit}` und `git merge-base --is-ancestor`. Grün: im Kopf enthalten und `success`; rot:
-  enthalten und `failure`/`rejected`; alles andere pending. `queued`/`waiting_runner` über 30 min ist ein Hinweis, nie rot.
+  `git cat-file -e <kopf>^{commit}` und `git merge-base --is-ancestor`. Grün: im Kopf enthalten und `success` (auch
+  ein späterer Lauf); rot: nur der eigene Lauf des Commits (Kopf = Commit) `failure`/`rejected`, ein späterer roter
+  Push sagt nichts gegen einen älteren Commit; alles andere pending. `queued`/`waiting_runner` über 30 min ist ein Hinweis, nie rot.
 - Programme nur per argv aus `Programs::find` (nvim und git auf dem PATH, `$REPOS_DIR/tasks.nvim/scripts/tasks.lua`,
   `$REPOS_DIR/testing.nvim/scripts/testing.lua`, Vault aus `TASKS_VAULT`), über `appkit_core::child::run`
   (`SystemAsk`). Tests: Fake-`Ask` in `tests/ciwatch.rs`, nie die echten Programme.

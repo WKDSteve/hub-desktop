@@ -170,9 +170,13 @@ fn finished(items: &[(&str, &str, &[&str])]) -> String {
 }
 
 fn remote(overall: &str, created: &str) -> String {
+    remote_at(HEAD, overall, created)
+}
+
+fn remote_at(head: &str, overall: &str, created: &str) -> String {
     serde_json::json!({
         "schema": "testing-ci-remote/1",
-        "repos": [{ "repo": "demo", "branch": "main", "sha": HEAD, "overall": overall,
+        "repos": [{ "repo": "demo", "branch": "main", "sha": head, "overall": overall,
                     "run": { "created_at": created, "status": "completed" } }]
     })
     .to_string()
@@ -287,16 +291,36 @@ fn a_pending_task_whose_commit_is_in_a_green_head_becomes_green_through_the_task
 }
 
 #[test]
-fn a_finished_red_run_makes_the_task_red() {
+fn a_finished_red_run_of_the_commit_itself_makes_the_task_red() {
     let place = place();
     let a = a();
+    for word in ["failure", "rejected"] {
+        // The head of origin/main is the task's commit: its own run is red.
+        let mut w = world(&[("demo/done-task", "pending", &[a.as_str()])], word);
+        w.remote = remote_at(SHA_A, word, "2026-11-21T00:50:00Z");
+        w.known = vec![SHA_A];
+        let fake = Fake::new(w);
+        let round = ciwatch::round(&fake, &place.programs, now());
+        assert_eq!(
+            round.written.get("demo/done-task"),
+            Some(&Verdict::Red),
+            "{word}"
+        );
+        assert!(fake.sets()[0].contains(&"ci=red".to_owned()));
+    }
+}
+
+#[test]
+fn a_later_red_head_says_nothing_against_an_older_commit() {
+    let place = place();
+    let a = a();
+    // HEAD is a later push that contains the task's commit and broke the CI: the task waits, it is not red.
     let fake = Fake::new(world(
         &[("demo/done-task", "pending", &[a.as_str()])],
         "failure",
     ));
     let round = ciwatch::round(&fake, &place.programs, now());
-    assert_eq!(round.written.get("demo/done-task"), Some(&Verdict::Red));
-    assert!(fake.sets()[0].contains(&"ci=red".to_owned()));
+    assert!(round.written.is_empty() && fake.sets().is_empty());
 }
 
 #[test]

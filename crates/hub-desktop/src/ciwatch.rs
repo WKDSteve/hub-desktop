@@ -709,9 +709,12 @@ fn judge(
         return CommitState::Pending;
     }
     match remote.overall {
+        // A later run that contains it and succeeded on every system speaks for it as well.
         State::Success => CommitState::Green,
-        State::Red => CommitState::Red,
-        State::Waiting | State::Open | State::NoGithub => CommitState::Pending,
+        // Red is the commit's own run only: a later push that broke the CI says nothing against an older commit
+        // the watcher had not judged yet (it stays pending until a green head contains it).
+        State::Red if remote.sha.starts_with(sha) => CommitState::Red,
+        State::Red | State::Waiting | State::Open | State::NoGithub => CommitState::Pending,
     }
 }
 
