@@ -92,7 +92,30 @@ its tile here ("Start at login", tasks, rules, testing and pult) and the app its
 switch of its page). Switched on while hub-desktop starts with your login, an app goes into `start_with_hub`; otherwise
 it gets its own entry. Switched off, it leaves both.
 
-`hub-desktop open --launch` opens a paired page for a hub that runs, `hub-desktop stop` ends it. Checks before a
+## In the terminal
+
+`install` (every way: the install line, `scripts\build-install.ps1`, a double click) makes `hub-desktop` a command
+in every new terminal (PowerShell, cmd, Git Bash): a starter in `%LOCALAPPDATA%\appkit-family\bin`, which goes on the
+PATH of your user once; `uninstall` takes it away.
+
+```
+hub-desktop                 start the hub when it does not run, and open the page
+hub-desktop open            the same: open the page, starting the hub first when needed
+hub-desktop start [--open]  run the hub in the background (on Windows with its icon)
+hub-desktop stop | quit     end it
+hub-desktop restart         stop, then start
+hub-desktop status [--json] does it run (process, port, version)? exit code 0 yes, 1 no
+hub-desktop link            print a one-time pairing link (for a phone or a script)
+hub-desktop logs [-f]       the end of the log of the hub in the background
+hub-desktop paths           where the program, the settings and the log are
+hub-desktop help [<cmd>]    all commands, or one
+```
+
+These commands are those of every hub app of the family (`tasks-desktop`, `rules-desktop`, `testing-desktop` once
+they take the same appkit); `serve`, `tray`, `autostart`, `install` and `uninstall` are hub-desktop's own. Exit codes:
+0 done, 1 failed, 2 wrong arguments. `open --launch` of earlier versions still works and does what `open` does.
+
+Checks before a
 change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,
 `cargo test --workspace --locked` and, in `ui/`, `pnpm check && pnpm test`.
 

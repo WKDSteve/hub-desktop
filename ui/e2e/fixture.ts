@@ -91,7 +91,7 @@ export interface Hub {
   port: number;
   webPort: number;
   root: string;
-  /** A one-time pairing link of the hub (`hub-desktop open`). */
+  /** A one-time pairing link of the hub (`hub-desktop link`). */
   link(): string;
   /** The starts the fake program of an app logged (its argument lists). */
   starts(app: 'tasks' | 'rules' | 'docmap' | 'ai'): string[][];
@@ -280,7 +280,7 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
   }
 
   const link = (): string => {
-    const run = spawnSync(HUB, ['open'], { env, encoding: 'utf8' });
+    const run = spawnSync(HUB, ['link'], { env, encoding: 'utf8' });
     const text = run.stdout.trim();
     if (!/^http:\/\/127\.0\.0\.1:\d+\/#pair=[0-9a-f]+$/.test(text)) throw new Error(`no link: ${text} ${run.stderr}`);
     return text;

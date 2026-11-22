@@ -29,7 +29,7 @@ const state = new AppState(
 installTooltips(document, window, { regionLabel: () => 'Hints' });
 mount(App, { target: document.getElementById('app') as HTMLElement, props: { app: state, code } });
 
-// A link from `hub-desktop open` pasted into a tab that is already open changes only the fragment: no reload.
+// A link from `hub-desktop link` pasted into a tab that is already open changes only the fragment: no reload.
 window.addEventListener('hashchange', () => {
   const later = takePairingCode(window.location, window.history);
   if (later) void state.start(later);

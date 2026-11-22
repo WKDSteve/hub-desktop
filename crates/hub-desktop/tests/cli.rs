@@ -165,13 +165,13 @@ fn a_click_runs_the_hub_and_a_second_click_opens_on_it_instead_of_starting_anoth
 }
 
 #[test]
-fn the_page_and_hello_come_from_the_program_and_open_prints_a_link_that_pairs() {
+fn the_page_and_hello_come_from_the_program_and_link_prints_a_link_that_pairs() {
     let scratch = Scratch::new("hub-cli-page");
     let config = scratch.path();
     let port = free_port();
     let _hub = start_by_click(config, port);
 
-    let link = text(&run(config, port, &["open"]));
+    let link = text(&run(config, port, &["link"]));
     let code = link
         .trim()
         .split_once("#pair=")
@@ -220,14 +220,100 @@ fn an_unknown_verb_and_a_stray_argument_print_the_usage_and_fail() {
         vec!["serve", "--port", "80"],
         vec!["open", "extra"],
         vec!["--version", "x"],
+        vec!["logs", "-n", "0"],
+        vec!["help", "bogus"],
     ] {
         let out = run(scratch.path(), free_port(), &args);
-        assert!(!out.status.success(), "{args:?}: {out:?}");
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {out:?}");
         let err = String::from_utf8_lossy(&out.stderr);
         assert!(
-            err.contains("usage:") || err.contains("--port must be"),
+            err.contains("usage:") || err.contains("--port must be") || err.contains("logs:"),
             "{args:?}: {err}"
         );
+    }
+    // `close` would read as "close the window, the hub runs on": it points to `stop` instead.
+    let close = run(scratch.path(), free_port(), &["close"]);
+    assert_eq!(close.status.code(), Some(2), "{close:?}");
+    assert!(
+        String::from_utf8_lossy(&close.stderr).contains("`stop`"),
+        "{close:?}"
+    );
+}
+
+/// The commands every hub app shares, on the program: `status` (text, JSON, exit code 0 runs / 1 does not), `quit` as
+/// `stop`, `paths`, `logs` without a log, `version` and `help` for one command, common or own.
+#[test]
+fn the_common_commands_say_whether_the_hub_runs_and_quit_ends_it() {
+    let scratch = Scratch::new("hub-cli-common");
+    let config = scratch.path();
+    let port = free_port();
+
+    let off = run(config, port, &["status"]);
+    assert_eq!(off.status.code(), Some(1), "{off:?}");
+    assert!(
+        text(&off).starts_with("hub-desktop: not running\n"),
+        "{off:?}"
+    );
+
+    let mut hub = start_by_click(config, port);
+    let on = run(config, port, &["status"]);
+    assert_eq!(on.status.code(), Some(0), "{on:?}");
+    let said = text(&on);
+    assert!(
+        said.starts_with("hub-desktop: running (process ")
+            && said.contains(&format!("port {port}, version {}", hub_desktop::VERSION)),
+        "{said}"
+    );
+    assert!(said.contains(&config.display().to_string()), "{said}");
+    let json = run(config, port, &["status", "--json"]);
+    assert_eq!(json.status.code(), Some(0), "{json:?}");
+    let doc: serde_json::Value = serde_json::from_str(text(&json).trim()).unwrap();
+    assert_eq!(doc["running"], true);
+    assert_eq!(doc["port"], port);
+    assert_eq!(doc["app"], "hub-desktop");
+
+    let paths = run(config, port, &["paths"]);
+    assert!(paths.status.success(), "{paths:?}");
+    assert!(
+        text(&paths).contains(&format!("settings:  {}", config.display())),
+        "{paths:?}"
+    );
+
+    // A hub that runs in a terminal writes no hub.log: `logs` says why there is none.
+    let logs = run(config, port, &["logs"]);
+    assert_eq!(logs.status.code(), Some(1), "{logs:?}");
+    assert!(
+        String::from_utf8_lossy(&logs.stderr).contains("no log at"),
+        "{logs:?}"
+    );
+
+    let quit = run(config, port, &["quit"]);
+    assert!(quit.status.success(), "{quit:?}");
+    wait_for("the hub to end on quit", || {
+        hub.child.try_wait().unwrap().is_some()
+    });
+    assert_eq!(run(config, port, &["status"]).status.code(), Some(1));
+
+    let version = run(config, port, &["version"]);
+    assert_eq!(text(&version).trim(), hub_desktop::version_line());
+    for (command, expect) in [
+        ("status", "hub-desktop status [--json]"),
+        ("serve", "hub-desktop serve [--port"),
+        ("install", "make the\n"),
+    ] {
+        let help = run(config, port, &["help", command]);
+        assert!(help.status.success(), "{command}: {help:?}");
+        assert!(text(&help).contains(expect), "{command}: {help:?}");
+    }
+    let asked = run(config, port, &["link", "--help"]);
+    assert!(text(&asked).starts_with("hub-desktop link"), "{asked:?}");
+    let all = text(&run(config, port, &["--help"]));
+    for word in [
+        "hub-desktop status [--json]",
+        "hub-desktop tray",
+        "Exit codes",
+    ] {
+        assert!(all.contains(word), "{word}: {all}");
     }
 }
 

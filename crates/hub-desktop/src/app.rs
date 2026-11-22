@@ -1,4 +1,4 @@
-//! The commands of the program: `serve`, `open` and what a double click does.
+//! The commands of the program: `serve`, the pairing link (`link`), opening the page (`open`) and what a double click does.
 //!
 //! They live in the library so that their parts can be tested; `main.rs` only reads the arguments.
 
@@ -590,7 +590,7 @@ pub async fn open() -> Result<String, String> {
     Ok(format!("http://127.0.0.1:{}/#pair={code}", record.port))
 }
 
-/// Is this the link `open` prints: the loopback address, a port, `/#pair=` and hex, and nothing else a
+/// Is this the link `link` prints: the loopback address, a port, `/#pair=` and hex, and nothing else a
 /// program could take as an option or a path?
 #[must_use]
 pub fn is_own_link(url: &str) -> bool {
@@ -608,7 +608,7 @@ pub fn is_own_link(url: &str) -> bool {
         && code.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// Open a link of `open` in the default browser. The link is the hub's own
+/// Open a link of `link` in the default browser. The link is the hub's own
 /// (`http://127.0.0.1:<port>/#pair=<hex>`), and nothing else is passed.
 ///
 /// # Errors

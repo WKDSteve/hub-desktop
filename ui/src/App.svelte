@@ -216,7 +216,7 @@
   {:else if app.phase === 'unpaired'}
     <h2>Open the hub with its link</h2>
     <p>
-      This page has no session. Run <code>hub-desktop open --launch</code> in a terminal, or start the hub from its
+      This page has no session. Run <code>hub-desktop open</code> in a terminal, or start the hub from its
       link, and the browser opens it paired.
     </p>
   {:else if app.phase === 'error'}

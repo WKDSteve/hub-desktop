@@ -13,9 +13,9 @@ use appkit_hub::background::{LinkName, LinkStart};
 
 use crate::config::Env;
 
-/// What the background commands know about this app. The hub keeps no file in the config folder
-/// besides those every hub has.
-pub(crate) const APP: Background<'static> = Background {
+/// What the background commands know about this app (also `status`, `logs` and `paths` of `appkit_hub::cli`). The
+/// hub keeps no file in the config folder besides those every hub has.
+pub const APP: Background<'static> = Background {
     login: crate::LOGIN,
     extra_files: &[],
     uninstall_script: "scripts/uninstall",

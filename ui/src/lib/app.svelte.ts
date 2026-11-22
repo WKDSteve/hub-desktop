@@ -18,7 +18,7 @@ import { type CasesView, type MonitorReading, NOT_CONFIGURED } from './monitor';
 import { askable, differs, type UpdateChecker } from './updates';
 import { active, roundText, updatable, whyNot } from './updating';
 
-/** `starting`: the code is traded. `unpaired`: no session and no code (open the link of `hub-desktop open`). */
+/** `starting`: the code is traded. `unpaired`: no session and no code (open the link of `hub-desktop link`). */
 export type Phase = 'starting' | 'ready' | 'unpaired' | 'error';
 
 /** The place the session survives a reload of the tab: the token only, never in a store that outlives the tab. */
