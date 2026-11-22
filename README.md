@@ -246,3 +246,10 @@ It needs `pwsh` on the `PATH` and `NVIM_CONFIG_DIR`; to see a waiting push, also
 - [testing-web](https://github.com/WKDSteve/testing-web): The hub opens the web form of testing from a local clone of testing-web, served on 127.0.0.1, and pulls the clone to keep it current. ([picture](assets/graphs/pair/hub-desktop--testing-web.png))
 - [testing.nvim](https://github.com/WKDSteve/testing.nvim): The monitor of hub-desktop shows a light per repository, read from an export folder of testing.nvim (`testing-export/1`). ([picture](assets/graphs/pair/hub-desktop--testing.nvim.png))
 <!-- connections:end -->
+
+## Release channels
+
+The rolling build has one channel, `latest`: the newest commit of `main` whose CI is green, rebuilt after every
+green CI run and only ever moving forward. Releases are separate (`vX.Y.Z`). The channels an app has switched on
+are the `channels:` line of the prepare step in `.github/workflows/rolling.yml`; `nightly` (the tip of `main`) and
+`stable` (a `latest` that has stayed up for 14 days) are not switched on.
