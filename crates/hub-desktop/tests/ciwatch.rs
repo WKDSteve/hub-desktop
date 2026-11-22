@@ -31,6 +31,9 @@ struct World {
     set_code: i32,
     /// What `list --done --ci=pending,red` says, when not the ids of `finished`.
     listed: Option<&'static str>,
+    /// The documents `ci remote --sha=<sha>` answers by sha; any other sha gets what an older testing says to an
+    /// unknown option (exit 2, nothing on stdout).
+    own: Vec<(&'static str, String)>,
 }
 
 struct Fake {
@@ -94,6 +97,22 @@ impl Ask for Fake {
         }
         if has("finished") {
             return Ok(ok(&self.world.finished));
+        }
+        if has("remote")
+            && let Some(sha) = args.iter().find_map(|a| a.strip_prefix("--sha="))
+        {
+            return Ok(
+                match self.world.own.iter().find(|(s, _)| s.starts_with(sha)) {
+                    Some((_, doc)) => Answer {
+                        code: Some(i32::from(!doc.contains("\"success\""))),
+                        stdout: doc.as_bytes().to_vec(),
+                    },
+                    None => Answer {
+                        code: Some(2),
+                        stdout: Vec::new(),
+                    },
+                },
+            );
         }
         if has("remote") {
             // A red CI: exit 1 and the document all the same.
@@ -190,6 +209,7 @@ fn world(items: &[(&str, &str, &[&str])], overall: &str) -> World {
         contained: vec![SHA_A, SHA_B],
         set_code: 0,
         listed: None,
+        own: Vec::new(),
     }
 }
 
@@ -321,6 +341,86 @@ fn a_later_red_head_says_nothing_against_an_older_commit() {
     ));
     let round = ciwatch::round(&fake, &place.programs, now());
     assert!(round.written.is_empty() && fake.sets().is_empty());
+}
+
+/// A document of `testing ci remote` for one commit; `guard` is `"refused"` for a run the runner guard turned away.
+fn remote_run(sha: &str, overall: &str, guard: Option<&str>) -> String {
+    let mut repo = serde_json::json!({
+        "repo": "demo", "branch": "main", "sha": sha, "overall": overall,
+        "run": { "created_at": "2026-11-21T00:50:00Z", "status": "completed" }
+    });
+    if let Some(guard) = guard {
+        repo["guard"] = guard.into();
+    }
+    serde_json::json!({ "schema": "testing-ci-remote/1", "repos": [repo] }).to_string()
+}
+
+#[test]
+fn a_red_head_does_not_keep_an_older_commit_pending_when_its_own_run_was_green() {
+    let place = place();
+    let a = a();
+    // HEAD (a later push) is red; the task's commit is an ancestor whose own run was green on every system.
+    let mut w = world(&[("demo/done-task", "pending", &[a.as_str()])], "failure");
+    w.own = vec![(SHA_A, remote_run(SHA_A, "success", None))];
+    let fake = Fake::new(w);
+    let round = ciwatch::round(&fake, &place.programs, now());
+    assert_eq!(round.written.get("demo/done-task"), Some(&Verdict::Green));
+    assert!(fake.sets()[0].contains(&"ci=green".to_owned()));
+    let own: Vec<_> = fake
+        .calls()
+        .into_iter()
+        .filter(|c| {
+            c.iter()
+                .any(|x| x == &format!("--sha={a_sha}", a_sha = &SHA_A[..12]))
+        })
+        .collect();
+    assert_eq!(own.len(), 1, "one question about the commit itself");
+}
+
+#[test]
+fn the_own_run_of_an_older_commit_counts_red_only_when_it_was_red_and_not_refused() {
+    let place = place();
+    let a = a();
+    let mut w = world(&[("demo/done-task", "pending", &[a.as_str()])], "failure");
+    w.own = vec![(SHA_A, remote_run(SHA_A, "failure", None))];
+    let round = ciwatch::round(&Fake::new(w), &place.programs, now());
+    assert_eq!(round.written.get("demo/done-task"), Some(&Verdict::Red));
+    // The document of another commit (a testing that ignores the option) is never taken for the commit's own run.
+    let mut w = world(&[("demo/done-task", "pending", &[a.as_str()])], "failure");
+    w.own = vec![(SHA_A, remote_run(HEAD, "success", None))];
+    let fake = Fake::new(w);
+    let round = ciwatch::round(&fake, &place.programs, now());
+    assert!(round.written.is_empty() && fake.sets().is_empty());
+}
+
+#[test]
+fn a_run_the_runner_guard_turned_away_is_a_hint_awaiting_release_never_red() {
+    let place = place();
+    let a = a();
+    // The head is the task's commit and its run was refused: pending with a hint, nothing written.
+    let mut w = world(&[("demo/done-task", "pending", &[a.as_str()])], "failure");
+    w.remote = serde_json::to_string(&{
+        let mut doc: serde_json::Value =
+            serde_json::from_str(&remote_at(SHA_A, "failure", "2026-11-21T00:50:00Z")).unwrap();
+        doc["repos"][0]["guard"] = "refused".into();
+        doc
+    })
+    .unwrap();
+    w.known = vec![SHA_A];
+    let fake = Fake::new(w);
+    let round = ciwatch::round(&fake, &place.programs, now());
+    assert!(round.written.is_empty() && fake.sets().is_empty());
+    assert!(round.hints.contains(&Hint::AwaitsTrust {
+        repo: "demo".to_owned()
+    }));
+    // Same for an older commit whose own run was refused while the head is red.
+    let mut w = world(&[("demo/done-task", "pending", &[a.as_str()])], "failure");
+    w.own = vec![(SHA_A, remote_run(SHA_A, "failure", Some("refused")))];
+    let round = ciwatch::round(&Fake::new(w), &place.programs, now());
+    assert!(round.written.is_empty());
+    assert!(round.hints.contains(&Hint::AwaitsTrust {
+        repo: "demo".to_owned()
+    }));
 }
 
 #[test]

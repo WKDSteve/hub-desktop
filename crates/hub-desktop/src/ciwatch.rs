@@ -205,6 +205,18 @@ impl Programs {
         self.nvim_call(&self.testing_lua, &args, dir)
     }
 
+    /// The run of one commit (`--sha=<sha>`, a plain hex id), not of the head of origin/main.
+    fn remote_of(&self, dir: &Path, sha: &str) -> Call {
+        let args = [
+            OsString::from("ci"),
+            "remote".into(),
+            "--json".into(),
+            OsString::from(format!("--sha={sha}")),
+            dir.as_os_str().to_owned(),
+        ];
+        self.nvim_call(&self.testing_lua, &args, dir)
+    }
+
     fn git(&self, dir: &Path, args: &[&str]) -> Call {
         let mut all = vec![OsString::from("-C"), dir.as_os_str().to_owned()];
         all.extend(args.iter().map(OsString::from));
@@ -348,6 +360,9 @@ pub struct Remote {
     /// The run waits for a runner of this machine (`waiting_runner`): the push of a repository whose runner is not
     /// running (`runners.rs`).
     pub waiting_runner: bool,
+    /// The run was turned away by the runner guard (`"guard": "refused"`, `JOB REFUSED ... not reviewed`): no test
+    /// step ran, so it says nothing about the code.
+    pub refused: bool,
 }
 
 /// The state of a run, as far as the watcher tells them apart.
@@ -402,6 +417,7 @@ pub fn parse_remote(text: &[u8]) -> Result<Remote, &'static str> {
             overall,
             created: None,
             waiting_runner,
+            refused: false,
         });
     }
     if !hex(sha, 40, 40) {
@@ -417,6 +433,7 @@ pub fn parse_remote(text: &[u8]) -> Result<Remote, &'static str> {
         overall,
         created,
         waiting_runner,
+        refused: repo.get("guard").and_then(Value::as_str) == Some("refused"),
     })
 }
 
@@ -471,6 +488,9 @@ pub enum Hint {
     NoGithub { repo: String },
     /// A call gave no usable answer (a fixed sentence).
     NoAnswer { repo: String, why: &'static str },
+    /// The run of a commit was turned away by the runner guard: it waits for a release (`testing ci trust`), it is
+    /// not red.
+    AwaitsTrust { repo: String },
 }
 
 /// The outcome of a round.
@@ -772,6 +792,7 @@ fn hint_view(hint: &Hint) -> Value {
         Hint::NoAnswer { repo, why } => {
             serde_json::json!({ "kind": "no_answer", "repo": repo, "why": why })
         }
+        Hint::AwaitsTrust { repo } => serde_json::json!({ "kind": "awaits_trust", "repo": repo }),
     }
 }
 
@@ -953,13 +974,47 @@ fn judge(
     if !contained {
         return CommitState::Pending;
     }
+    let head_is_commit = remote.sha.starts_with(sha);
     match remote.overall {
         // A later run that contains it and succeeded on every system speaks for it as well.
         State::Success => CommitState::Green,
-        // Red is the commit's own run only: a later push that broke the CI says nothing against an older commit
-        // the watcher had not judged yet (it stays pending until a green head contains it).
-        State::Red if remote.sha.starts_with(sha) => CommitState::Red,
-        State::Red | State::Waiting | State::Open | State::NoGithub => CommitState::Pending,
+        // Red is the commit's own run only. A head that is red and is not the commit says nothing against it: the
+        // commit's own run is asked for. A run the runner guard turned away is no verdict (a hint, pending).
+        State::Red if head_is_commit => own_verdict(remote, repo, hints),
+        State::Red => {
+            let own = ask
+                .ask(&programs.remote_of(&dir, sha), ASK_TIMEOUT)
+                .map_err(|_| "testing did not start")
+                .and_then(|a| parse_remote(&a.stdout));
+            match own {
+                // Only a document of the very commit counts, never the head of origin/main by mistake.
+                Ok(own) if sha.len() >= 7 && own.sha.starts_with(sha) => match own.overall {
+                    State::Success => CommitState::Green,
+                    State::Red => own_verdict(&own, repo, hints),
+                    State::Waiting | State::Open | State::NoGithub => CommitState::Pending,
+                },
+                _ => {
+                    hints.insert(Hint::NoAnswer {
+                        repo: repo.to_owned(),
+                        why: "testing gave no run of the commit itself",
+                    });
+                    CommitState::Pending
+                }
+            }
+        }
+        State::Waiting | State::Open | State::NoGithub => CommitState::Pending,
+    }
+}
+
+/// A red run of the commit itself: red, unless the runner guard turned it away (then nothing ran).
+fn own_verdict(run: &Remote, repo: &str, hints: &mut BTreeSet<Hint>) -> CommitState {
+    if run.refused {
+        hints.insert(Hint::AwaitsTrust {
+            repo: repo.to_owned(),
+        });
+        CommitState::Pending
+    } else {
+        CommitState::Red
     }
 }
 

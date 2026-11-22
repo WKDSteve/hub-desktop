@@ -7,7 +7,8 @@ export type CiHint =
   | { kind: 'behind'; repo: string }
   | { kind: 'no_checkout'; repo: string }
   | { kind: 'no_github'; repo: string }
-  | { kind: 'no_answer'; repo: string; why: string };
+  | { kind: 'no_answer'; repo: string; why: string }
+  | { kind: 'awaits_trust'; repo: string };
 
 export interface CiVerdict {
   id: string;
@@ -54,6 +55,8 @@ export function hintText(hint: CiHint): string {
       return `${hint.repo}: no hosted CI (its origin is not on GitHub)`;
     case 'no_answer':
       return `${hint.repo}: no usable answer (${hint.why})`;
+    case 'awaits_trust':
+      return `${hint.repo}: the runner guard turned the run away, it waits for your release (testing ci trust)`;
   }
 }
 

@@ -24,6 +24,7 @@ describe('hints', () => {
     expect(hintText({ kind: 'no_answer', repo: 'a', why: 'testing gave no JSON' })).toBe(
       'a: no usable answer (testing gave no JSON)',
     );
+    expect(hintText({ kind: 'awaits_trust', repo: 'a' })).toContain('waits for your release');
   });
 
   it('lists the problem, the refused verdicts and the hints of the last round, as many as the icon counts', () => {

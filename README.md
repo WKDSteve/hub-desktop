@@ -196,7 +196,10 @@ When a task of [tasks.nvim](https://github.com/WKDSteve/tasks.nvim) is finished 
 the hosted CI of its commits (`testing ci remote` of [testing.nvim](https://github.com/WKDSteve/testing.nvim)) and
 writes the verdict into the task through the tasks command (`ci=green` or `ci=red`); it never edits a file itself.
 Green: every system of the commit's run, or of a later run that contains it, is green. Red: the commit's own run
-failed. A run that has waited more than 30 minutes for a runner is a hint, never red. It needs nvim and git on the
+failed; when the head of `origin/main` is a later, red push, the hub asks for the commit's own run
+(`testing ci remote --sha=<commit>`) and calls the task green if that run was green on every system. A run the
+runner guard turned away (`JOB REFUSED … not reviewed`, no test step ran) is never red: it is a hint that the run waits
+for your release (`testing ci trust`). A run that has waited more than 30 minutes for a runner is a hint, never red. It needs nvim and git on the
 `PATH`, checkouts of tasks.nvim and testing.nvim in `REPOS_DIR`, and `TASKS_VAULT`.
 
 The section **Testing** of the page says what the watcher is at and lists its hints (no runner, a checkout that was
