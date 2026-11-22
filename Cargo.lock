@@ -71,7 +71,7 @@ checksum = "fc7eb209b1518d6bb87b283c20095f5228ecda460da70b44f0802523dea6da04"
 [[package]]
 name = "appkit-core"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.72.0#88a36c463095405ef6686e43ee116b75ece95043"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.74.0#041b49c502d2dcea62a7f753cd98f6e2da14c70d"
 dependencies = [
  "getrandom",
  "libc",
@@ -84,7 +84,7 @@ dependencies = [
 [[package]]
 name = "appkit-hub"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.72.0#88a36c463095405ef6686e43ee116b75ece95043"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.74.0#041b49c502d2dcea62a7f753cd98f6e2da14c70d"
 dependencies = [
  "aes-gcm",
  "appkit-core",
@@ -107,7 +107,7 @@ dependencies = [
 [[package]]
 name = "appkit-scratch"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.72.0#88a36c463095405ef6686e43ee116b75ece95043"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.74.0#041b49c502d2dcea62a7f753cd98f6e2da14c70d"
 dependencies = [
  "tempfile",
 ]
@@ -115,7 +115,7 @@ dependencies = [
 [[package]]
 name = "appkit-testkit"
 version = "0.0.0"
-source = "git+https://github.com/WKDSteve/appkit?tag=v0.72.0#88a36c463095405ef6686e43ee116b75ece95043"
+source = "git+https://github.com/WKDSteve/appkit?tag=v0.74.0#041b49c502d2dcea62a7f753cd98f6e2da14c70d"
 dependencies = [
  "appkit-core",
  "appkit-hub",
@@ -564,7 +564,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1705,7 +1705,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1951,7 +1951,7 @@ dependencies = [
  "getrandom",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2238,7 +2238,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
