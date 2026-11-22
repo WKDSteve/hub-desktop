@@ -288,3 +288,4 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
 - The scanner is an exact devDependency of `ui` (the policy of `ui/pnpm-workspace.yaml` applies):
   `cd ui && DISABLE_TELEMETRY=1 pnpm exec modern-web-guidance legacy-scan src --json`; CI runs it as an informative
   step. `.claude/settings.json` turns the tool's telemetry off and allows only `npx -y modern-web-guidance@latest *`.
+- Git: In einer Cloud-Sitzung (`CLAUDE_CODE_REMOTE` gesetzt) nie auf `main` pushen, nur auf den eigenen Branch `claude/…`; gelandet wird lokal per Rebase, der Geräteschlüssel signiert dabei (`GIT-09`). Das „auf main pushen“ (`GIT-01`) gilt nur lokal.
