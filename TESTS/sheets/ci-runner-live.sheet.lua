@@ -16,7 +16,7 @@ return {
         .. " (Rolling build or scripts/build-install.ps1) and its hub running (icon in the notification area)?",
     },
     {
-      ask = "On the hub page, section Options: switch on, 5 minutes; after a little more than a minute the section"
+      ask = "On the hub page, tab Options: switch on, 5 minutes; after a little more than a minute the tab"
         .. " Testing says 'CI watcher: last round ...' (not 'does not run')?",
     },
     {

@@ -15,6 +15,8 @@ return {
   steps = {
     { scheme = "light" },
     { open = "${link}", note = "the pairing link the hub printed" },
+    { wait = "document.getElementById('tab-options') !== null", timeout = 10000, note = "paired: the tabs are there" },
+    { click = "#tab-options", note = "the tab Options" },
     {
       wait = "document.querySelector('[data-options] input[type=number]') !== null",
       timeout = 10000,
