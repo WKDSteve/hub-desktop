@@ -20,12 +20,13 @@ test('the menu of a tile updates its clone, and the program is left on the works
   await tile(page, 'tasks').focus();
   await page.keyboard.press('Shift+Enter');
   await page.getByRole('menuitem', { name: 'Update', exact: true }).click();
+  // The tile says it first (the click leaves the person on the Apps tab), then the Updates tab has the details.
+  await expect(tile(page, 'tasks')).toContainText('Updated: reload its open page', { timeout: 20_000 });
   await openTab(page, 'Updates');
   const updates = page.getByRole('region', { name: 'Updates' });
-  await expect(updates).toContainText('Updated: reload its open page', { timeout: 20_000 });
+  await expect(updates).toContainText('Updated: reload its open page');
   await expect(updates).toContainText('Web page: updated');
   await expect(updates).toContainText('Program: not updated, not on the workstation');
-  await expect(tile(page, 'tasks')).toContainText('Updated: reload its open page');
   expect(hub.file('Repos/tasks-web/tasks.html')).toBe(PAGE_AFTER);
   expect(asked).toHaveLength(1);
   // The output is text: the lines of git, the check of the sums.

@@ -428,6 +428,7 @@ test('the options save the interval and the switch of the CI watcher into config
   expect(hub.settings()['ci_watch']).toBeUndefined();
   // The page shows what the hub kept, after a new load as well.
   await page.reload();
+  await openTab(page, 'Options');
   await expect(options.getByRole('spinbutton', { name: 'Minutes between two rounds' })).toHaveValue('12');
 
   await options.getByRole('checkbox', { name: /CI watcher/ }).uncheck();
@@ -477,5 +478,6 @@ test('an export that cannot be read is said in a sentence, without its path', as
   await expect(monitor).toContainText('The testing export cannot be shown: the export folder has no testing-export.json');
   expect(await monitor.innerText()).not.toContain(hub.root);
   // The apps are there all the same.
+  await openTab(page, 'Apps');
   await expect(tile(page, 'tasks')).toBeVisible();
 });
