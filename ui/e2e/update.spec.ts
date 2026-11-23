@@ -1,4 +1,4 @@
-import { expect, FULL, PAGE_AFTER, PAGE_BEFORE, test } from './fixture';
+import { expect, FULL, PAGE_AFTER, PAGE_BEFORE, test, openTab } from './fixture';
 
 // Updates through the real hub. The machine of the tests is the workstation (see the fixture): the programs are never
 // installed, the clone of tasks-web is a real git clone one commit behind an origin in the folder of the test.
@@ -19,7 +19,8 @@ test('the menu of a tile updates its clone, and the program is left on the works
   await hub.open(page);
   await tile(page, 'tasks').focus();
   await page.keyboard.press('Shift+Enter');
-  await page.getByRole('menuitem', { name: 'Update' }).click();
+  await page.getByRole('menuitem', { name: 'Update', exact: true }).click();
+  await openTab(page, 'Updates');
   const updates = page.getByRole('region', { name: 'Updates' });
   await expect(updates).toContainText('Updated: reload its open page', { timeout: 20_000 });
   await expect(updates).toContainText('Web page: updated');
@@ -35,6 +36,27 @@ test('the menu of a tile updates its clone, and the program is left on the works
   expect(hub.starts('tasks')).toEqual([]);
 });
 
+test('"Update output" in the menu of a tile jumps to the output of its last update', async ({ page, hubOn }) => {
+  const hub = await hubOn({ ...FULL, tasksWebClone: 'behind' });
+  await hub.open(page);
+  await tile(page, 'tasks').focus();
+  await page.keyboard.press('Shift+Enter');
+  // Nothing has run yet: the entry says so instead of jumping to an empty page.
+  await expect(page.getByRole('menuitem', { name: /Update output/ })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await tile(page, 'tasks').focus();
+  await page.keyboard.press('Shift+Enter');
+  await page.getByRole('menuitem', { name: 'Update', exact: true }).click();
+  await expect(tile(page, 'tasks')).toContainText('Updated: reload its open page', { timeout: 20_000 });
+  // Still on the Apps tab, as before; the entry takes the person to the lines of git.
+  await expect(page.getByRole('tab', { name: 'Apps' })).toHaveAttribute('aria-selected', 'true');
+  await tile(page, 'tasks').focus();
+  await page.keyboard.press('Shift+Enter');
+  await page.getByRole('menuitem', { name: /Update output/ }).click();
+  await expect(page.getByRole('tab', { name: 'Updates' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('[data-update-item="tasks"] pre')).toContainText('$ git pull --ff-only');
+});
+
 test('update all leaves a clone with local changes as it is and says why', async ({ page, hubOn }) => {
   const hub = await hubOn({ ...FULL, tasksWebClone: 'dirty' });
   const asked = updateRequests(page);
@@ -42,6 +64,7 @@ test('update all leaves a clone with local changes as it is and says why', async
   const all = page.getByRole('button', { name: 'Update all' });
   await expect(all).toBeEnabled();
   await all.click();
+  await openTab(page, 'Updates');
   await expect(page.getByRole('region', { name: 'Updates' })).toContainText('Update failed: the clone has local changes', {
     timeout: 20_000,
   });
@@ -62,7 +85,7 @@ test('with nothing to update on the machine, update all and the entry of the men
   await expect(page.getByRole('button', { name: 'Update all' })).toBeDisabled();
   await tile(page, 'tasks').focus();
   await page.keyboard.press('Shift+Enter');
-  const entry = page.getByRole('menuitem', { name: /Update/ });
+  const entry = page.getByRole('menuitem', { name: 'Update', exact: true });
   await expect(entry).toBeDisabled();
   await entry.hover();
   await expect(page.getByRole('tooltip')).toContainText('not on the workstation');
@@ -95,6 +118,7 @@ for (const [word, state, result, text] of [
       await route.fulfill({ response: real, json: doc });
     });
     await hub.open(page);
+    await openTab(page, 'Updates');
     const updates = page.getByRole('region', { name: 'Updates' });
     await expect(updates.locator(`[data-attestation="${word}"]`)).toContainText(text);
     if (word === 'failed') {

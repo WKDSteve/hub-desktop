@@ -356,6 +356,12 @@ export const test = base.extend<Fixtures>({
 export { expect };
 
 /** The requests of the page that start something: `POST /api/hub/apps/<id>/launch`. */
+/** Bring a tab of the page to the front (Apps, Testing, Updates, Options). */
+export async function openTab(page: Page, name: 'Apps' | 'Testing' | 'Updates' | 'Options'): Promise<void> {
+  await page.getByRole('tab', { name }).click();
+  await expect(page.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
+}
+
 export function launchRequests(page: Page): string[] {
   const seen: string[] = [];
   page.on('request', (r) => {

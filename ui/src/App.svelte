@@ -10,7 +10,9 @@
   import { active, updatable, whyNot } from './lib/updating';
   import Monitor from './Monitor.svelte';
   import Options from './Options.svelte';
-  import { settingsOf } from './lib/ci';
+  import { ciLines, settingsOf } from './lib/ci';
+  import { effectiveTab, TAB_NAMES, type Tab, tabAfterKey, visibleTabs } from './lib/tabs';
+  import { applyTheme, loadTheme, saveTheme, type Theme } from './lib/theme';
   import Tile from './Tile.svelte';
   import Updates from './Updates.svelte';
 
@@ -24,6 +26,36 @@
   const tabId = $derived(order.some((a) => a.id === focused) ? focused : (order[0]?.id ?? null));
 
   let filterBox: HTMLInputElement | undefined = $state();
+
+  // The tabs: Testing only where there is something to show. A tab that went away gives way to the first.
+  const shown = $derived(visibleTabs(app.monitor.state !== 'not_configured' || ciLines(app.ci).length > 0));
+  const tab = $derived(effectiveTab(app.tab, shown));
+  $effect(() => {
+    // The focus on an update is for one visit of the tab: the next jump to the same app must work again.
+    if (tab !== 'updates' && app.updateFocus !== null) app.updateFocus = null;
+  });
+
+  function onTabKey(event: KeyboardEvent): void {
+    const to = tabAfterKey(shown, tab, event.key);
+    if (to === null) return;
+    event.preventDefault();
+    app.tab = to;
+    document.getElementById(`tab-${to}`)?.focus();
+  }
+
+  let theme = $state<Theme>('system');
+  function themeStorage(): Storage | null {
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  }
+  function setTheme(next: Theme): void {
+    theme = next;
+    saveTheme(themeStorage(), next);
+    applyTheme(document.documentElement, next);
+  }
 
   // The second action of a tile (concept 6.1): the mode a click does not open, and keeping it as the default.
   const registry = new ContextRegistry();
@@ -73,6 +105,14 @@
         hint: canUpdateTile(tile.id) ? undefined : updateHint(tile.id),
         onselect: () => void app.update(tile),
       },
+      // The output of the last update (the lines git and the steps printed), in the Updates tab.
+      {
+        kind: 'action',
+        label: 'Update output →',
+        disabled: !app.updates[tile.id]?.job,
+        hint: app.updates[tile.id]?.job ? undefined : 'No update of this app has run yet',
+        onselect: () => app.showUpdate(tile.id),
+      },
       // The start with the login: the same state the app shows and switches itself. Only where it can be told.
       ...(typeof tile.autostart === 'boolean'
         ? [
@@ -93,6 +133,8 @@
     active(app.updates[id]?.job) ? 'An update is on its way' : whyNot(app.updates[id]);
 
   onMount(() => {
+    theme = loadTheme(themeStorage());
+    applyTheme(document.documentElement, theme);
     void app.start(code);
     // Fresh when the page is looked at again (concept 5.1), and now and then while it stays in front.
     const refresh = () => void app.reload();
@@ -207,7 +249,6 @@
       {app.updating ? 'Updating…' : 'Update all'}
     </button>
   {/if}
-  {#if app.version}<span class="version">{app.version}</span>{/if}
 </header>
 
 <main>
@@ -223,62 +264,97 @@
     <h2>The hub does not answer</h2>
     <p role="alert">{app.problem}</p>
   {:else}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="areas" onkeydown={onTileKey} role="presentation">
-      <section aria-labelledby="installed-heading">
-        <h2 id="installed-heading">Installed</h2>
-        {#if groups.installed.length > 0}
-          <ul class="grid">
-            {#each groups.installed as tile (tile.id)}
-              <Tile
-                app={tile}
-                starting={app.starting[tile.id] !== undefined}
-                failed={app.failed[tile.id]}
-                tab={tabId === tile.id}
-                update={app.hasUpdate(tile.id)}
-                job={app.updates[tile.id]?.job ?? null}
-                canUpdate={canUpdateTile(tile.id)}
-                onupdate={() => void app.update(tile)}
-                onlaunch={() => void app.launch(tile)}
-                onmore={() => openMenu(tile.id)}
-                onfocus={() => (focused = tile.id)}
-              />
-            {/each}
-          </ul>
-        {:else}
-          <p class="none">{app.filter ? 'No installed app matches.' : 'No app is installed on this machine yet.'}</p>
-        {/if}
-      </section>
-      <section aria-labelledby="other-heading">
-        <h2 id="other-heading">Install or download</h2>
-        {#if groups.other.length > 0}
-          <ul class="grid">
-            {#each groups.other as tile (tile.id)}
-              <Tile
-                app={tile}
-                starting={false}
-                failed={undefined}
-                tab={tabId === tile.id}
-                onlaunch={() => undefined}
-                onmore={() => openMenu(tile.id)}
-                onfocus={() => (focused = tile.id)}
-              />
-            {/each}
-          </ul>
-        {:else}
-          <p class="none">{app.filter ? 'No other app matches.' : 'Everything is installed.'}</p>
-        {/if}
-      </section>
+    <div class="tabs" role="tablist" aria-label="Areas of the hub" tabindex="-1" onkeydown={onTabKey}>
+      {#each shown as t (t)}
+        <button
+          type="button"
+          role="tab"
+          id={`tab-${t}`}
+          class="tab"
+          aria-selected={tab === t}
+          aria-controls={`panel-${t}`}
+          tabindex={tab === t ? 0 : -1}
+          onclick={() => (app.tab = t)}
+        >
+          {TAB_NAMES[t]}{#if t === 'updates' && app.updating}<span class="dot" aria-hidden="true"></span>{/if}
+        </button>
+      {/each}
     </div>
-    <Updates apps={app.apps} updates={app.updates} web={!app.canUpdate} />
-    <Monitor
-      monitor={app.monitor}
-      ci={app.ci}
-      open={app.openCases}
-      cases={app.cases}
-      ontoggle={(key) => void app.toggleCases(key)}
-    />
-    <Options settings={settingsOf(app.ci)} onsave={(on, minutes) => void app.saveCi(on, minutes)} />
+    {#if tab === 'apps'}
+      <div role="tabpanel" id="panel-apps" aria-labelledby="tab-apps">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div class="areas" onkeydown={onTileKey} role="presentation">
+        <section aria-labelledby="installed-heading">
+          <h2 id="installed-heading">Installed</h2>
+          {#if groups.installed.length > 0}
+            <ul class="grid">
+              {#each groups.installed as tile (tile.id)}
+                <Tile
+                  app={tile}
+                  starting={app.starting[tile.id] !== undefined}
+                  failed={app.failed[tile.id]}
+                  tab={tabId === tile.id}
+                  update={app.hasUpdate(tile.id)}
+                  job={app.updates[tile.id]?.job ?? null}
+                  canUpdate={canUpdateTile(tile.id)}
+                  onupdate={() => void app.update(tile)}
+                  onlaunch={() => void app.launch(tile)}
+                  onmore={() => openMenu(tile.id)}
+                  onfocus={() => (focused = tile.id)}
+                />
+              {/each}
+            </ul>
+          {:else}
+            <p class="none">{app.filter ? 'No installed app matches.' : 'No app is installed on this machine yet.'}</p>
+          {/if}
+        </section>
+        <section aria-labelledby="other-heading">
+          <h2 id="other-heading">Install or download</h2>
+          {#if groups.other.length > 0}
+            <ul class="grid">
+              {#each groups.other as tile (tile.id)}
+                <Tile
+                  app={tile}
+                  starting={false}
+                  failed={undefined}
+                  tab={tabId === tile.id}
+                  onlaunch={() => undefined}
+                  onmore={() => openMenu(tile.id)}
+                  onfocus={() => (focused = tile.id)}
+                />
+              {/each}
+            </ul>
+          {:else}
+            <p class="none">{app.filter ? 'No other app matches.' : 'Everything is installed.'}</p>
+          {/if}
+        </section>
+      </div>
+      </div>
+    {:else if tab === 'testing'}
+      <div role="tabpanel" id="panel-testing" aria-labelledby="tab-testing">
+        <Monitor
+          monitor={app.monitor}
+          ci={app.ci}
+          open={app.openCases}
+          cases={app.cases}
+          ontoggle={(key) => void app.toggleCases(key)}
+        />
+      </div>
+    {:else if tab === 'updates'}
+      <div role="tabpanel" id="panel-updates" aria-labelledby="tab-updates">
+        <Updates apps={app.apps} updates={app.updates} web={!app.canUpdate} focus={app.updateFocus} />
+      </div>
+    {:else}
+      <div role="tabpanel" id="panel-options" aria-labelledby="tab-options">
+        <Options
+          settings={settingsOf(app.ci)}
+          onsave={(on, minutes) => void app.saveCi(on, minutes)}
+          {theme}
+          onTheme={setTheme}
+          version={app.version}
+        />
+      </div>
+    {/if}
   {/if}
   <!-- Inside the landmark: the menu is drawn at the pointer, but its content belongs to the page (axe: region). -->
   <ContextMenu {registry} label="Other ways to open the app" />
@@ -335,8 +411,35 @@
   .tool:hover:not(:disabled) {
     background: var(--line);
   }
-  .version {
+  .tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab {
+    font: inherit;
     color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 0.4rem 0.9rem;
+    cursor: pointer;
+  }
+  .tab:hover {
+    color: var(--text);
+  }
+  .tab[aria-selected='true'] {
+    color: var(--text);
+    font-weight: 600;
+    border-bottom-color: var(--accent);
+  }
+  .dot {
+    display: inline-block;
+    width: 0.45rem;
+    height: 0.45rem;
+    margin-left: 0.4rem;
+    border-radius: 50%;
+    background: var(--accent);
   }
   main {
     padding: 1rem;

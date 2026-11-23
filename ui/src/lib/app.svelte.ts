@@ -17,6 +17,7 @@ import { CI_NONE, type CiView } from './ci';
 import { type CasesView, type MonitorReading, NOT_CONFIGURED } from './monitor';
 import { askable, differs, type UpdateChecker } from './updates';
 import { active, roundText, updatable, whyNot } from './updating';
+import type { Tab } from './tabs';
 
 /** `starting`: the code is traded. `unpaired`: no session and no code (open the link of `hub-desktop link`). */
 export type Phase = 'starting' | 'ready' | 'unpaired' | 'error';
@@ -120,6 +121,16 @@ export class App {
   checking = $state(false);
   /** What the hub can update of each app, and its last update, by app id. */
   updates = $state<Record<string, UpdateInfo>>({});
+  /** The tab in front. */
+  tab = $state<Tab>('apps');
+  /** The app whose update output the Updates tab opens (set by the tile menu, read once by the tab). */
+  updateFocus = $state<string | null>(null);
+
+  /** Jump to the output of the last update of an app. */
+  showUpdate(id: string): void {
+    this.updateFocus = id;
+    this.tab = 'updates';
+  }
 
   #asked = new Map<string, number>();
   #watchingUpdates = false;

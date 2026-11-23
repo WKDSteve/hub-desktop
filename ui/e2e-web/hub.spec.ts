@@ -39,6 +39,7 @@ test('the web hub runs no update: it shows the lines to type in the folder of th
   await page.goto(site.url);
   await expect(page.locator('[data-tile="tasks"]')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Update all' })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Updates' }).click();
   const pages = page.getByRole('region', { name: 'Update the pages' });
   await expect(pages.locator('pre')).toHaveText([
     /git -C tasks-web pull --ff-only\s+git -C tasks-web status --short/,
@@ -46,6 +47,7 @@ test('the web hub runs no update: it shows the lines to type in the folder of th
   ]);
   // Only what is a web variant on this machine: no line for a program.
   await expect(pages).not.toContainText('Rules');
+  await page.getByRole('tab', { name: 'Apps' }).click();
   await page.locator('[data-tile="tasks"]').focus();
   await page.keyboard.press('Shift+Enter');
   await expect(page.getByRole('menuitem', { name: 'Update' })).toHaveCount(0);

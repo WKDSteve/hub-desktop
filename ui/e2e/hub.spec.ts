@@ -1,4 +1,4 @@
-import { expect, FULL, launchRequests, test, until, type Machine } from './fixture';
+import { expect, FULL, launchRequests, test, until, type Machine, openTab } from './fixture';
 
 const tile = (page: import('@playwright/test').Page, id: string) => page.locator(`[data-tile="${id}"]`);
 
@@ -349,14 +349,34 @@ test('an overlay of a newer schema is ignored and the hub still runs', async ({ 
   await expect(tile(page, 'tasks')).toBeVisible();
 });
 
+test('the tabs switch with the arrow keys, and the options hold the version and the look', async ({ page, hub }) => {
+  await hub.open(page);
+  const tabs = page.getByRole('tablist', { name: 'Areas of the hub' });
+  await expect(tabs.getByRole('tab')).toHaveText(['Apps', 'Updates', 'Options']);
+  await tabs.getByRole('tab', { name: 'Apps' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab', { name: 'Updates' })).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('End');
+  await expect(page.getByRole('tabpanel', { name: 'Options' })).toBeVisible();
+  await expect(page.locator('[data-about]')).toContainText(/Hub \S+/);
+  await page.getByRole('radio', { name: 'Dark' }).check();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await openTab(page, 'Options');
+  await page.getByRole('radio', { name: 'Follow the system' }).check();
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+});
+
 test('without an export folder the page shows no monitor', async ({ page, hub }) => {
   await hub.open(page);
-  await expect(page.getByRole('heading', { name: 'Testing' })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Testing' })).toHaveCount(0);
 });
 
 test('the monitor shows a light for each repository of the export, red first, in words', async ({ page, hubOn }) => {
   const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
   await hub.open(page);
+  await openTab(page, 'Testing');
   const monitor = page.getByRole('region', { name: 'Testing' });
   await expect(monitor).toContainText('Export of 2026-11-01 10:00:00 UTC');
   const rows = await monitor.locator('[data-repo]').evaluateAll((els) =>
@@ -378,6 +398,7 @@ test('a hub of a test says in its section Testing that the CI watcher does not r
   // settings say, it never writes into a vault (`ciwatch::allowed`).
   const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
   await hub.open(page);
+  await openTab(page, 'Testing');
   const monitor = page.getByRole('region', { name: 'Testing' });
   await expect(monitor.locator('[data-ci="off"]')).toHaveText('The CI watcher does not run: the hub runs for a test.');
   await expect(monitor.getByRole('list', { name: 'Hints of the CI watcher' })).toHaveCount(0);
@@ -385,6 +406,7 @@ test('a hub of a test says in its section Testing that the CI watcher does not r
 
 test('the options save the interval and the switch of the CI watcher into config.json', async ({ page, hub }) => {
   await hub.open(page);
+  await openTab(page, 'Options');
   const options = page.getByRole('form', { name: 'CI watcher' });
   const minutes = options.getByRole('spinbutton', { name: 'Minutes between two rounds' });
   const save = options.getByRole('button', { name: 'Save' });
@@ -419,6 +441,7 @@ test('the options save the interval and the switch of the CI watcher into config
 test('a red row opens its red cases by file and line, as text, and closes them again', async ({ page, hubOn }) => {
   const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
   await hub.open(page);
+  await openTab(page, 'Testing');
   const monitor = page.getByRole('region', { name: 'Testing' });
   // Only the red row offers its cases.
   await expect(monitor.getByRole('button', { name: 'Red cases' })).toHaveCount(1);
@@ -449,6 +472,7 @@ test('a red row opens its red cases by file and line, as text, and closes them a
 test('an export that cannot be read is said in a sentence, without its path', async ({ page, hubOn }) => {
   const hub = await hubOn({ ...FULL, testingExport: 'broken' });
   await hub.open(page);
+  await openTab(page, 'Testing');
   const monitor = page.getByRole('region', { name: 'Testing' });
   await expect(monitor).toContainText('The testing export cannot be shown: the export folder has no testing-export.json');
   expect(await monitor.innerText()).not.toContain(hub.root);

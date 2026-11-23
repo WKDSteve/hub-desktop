@@ -4,11 +4,22 @@
   // new start. A page of a file (the web hub) has no watcher and shows nothing.
   import { untrack } from 'svelte';
   import { type CiSettings, intervalProblem } from './lib/ci';
+  import { type Theme, THEMES } from './lib/theme';
+
+  const THEME_WORDS: Record<Theme, string> = { system: 'Follow the system', light: 'Light', dark: 'Dark' };
 
   let {
     settings,
     onsave = () => {},
+    theme = 'system',
+    onTheme = () => {},
+    version = '',
   }: {
+    /** The look of the page, and what happens when the person picks another. */
+    theme?: Theme;
+    onTheme?: (theme: Theme) => void;
+    /** The version of the hub, as it said hello. */
+    version?: string;
     /** What `config.json` says now; `null`: there is nothing to set here. */
     settings: CiSettings | null;
     onsave?: (on: boolean, intervalMin: number) => void;
@@ -43,9 +54,18 @@
   }
 </script>
 
-{#if settings}
-  <section aria-labelledby="options-heading" data-options>
-    <h2 id="options-heading">Options</h2>
+<section aria-labelledby="options-heading" data-options>
+  <h2 id="options-heading">Options</h2>
+  <fieldset class="group" data-theme-options>
+    <legend>Appearance</legend>
+    {#each THEMES as t (t)}
+      <label class="choice">
+        <input type="radio" name="theme" value={t} checked={theme === t} onchange={() => onTheme(t)} />
+        {THEME_WORDS[t]}
+      </label>
+    {/each}
+  </fieldset>
+  {#if settings}
     <form class="ci-options" onsubmit={save} aria-label="CI watcher">
       <label class="switch">
         <input type="checkbox" bind:checked={on} />
@@ -70,15 +90,35 @@
       </p>
       <button type="submit" class="save" disabled={!changed || problem !== null}>Save</button>
     </form>
-  </section>
-{/if}
+  {/if}
+  <div class="group" data-about>
+    <h3>About</h3>
+    <p class="help">Hub{version ? ` ${version}` : ''}</p>
+  </div>
+</section>
 
 <style>
   h2 {
     font-size: 1.1em;
     margin: 1rem 0 0.5rem;
   }
+  .group {
+    display: grid;
+    gap: 0.4rem;
+    justify-items: start;
+    margin: 0 0 0.75rem;
+    padding: 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .group h3,
+  legend {
+    margin: 0;
+    padding: 0 0.25rem;
+  }
   .ci-options {
+    margin-bottom: 0.75rem;
     display: grid;
     gap: 0.5rem;
     justify-items: start;

@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator } from '@playwright/test';
-import { expect, FULL, test } from './fixture';
+import { expect, FULL, openTab, test } from './fixture';
 
 // Accessibility of the page (axe), light and dark, and with the pieces that open: the menu of the second action and
 // the dialog of the setup. The scan is of the page as it is; a rule that does not apply is not a pass for another.
@@ -73,6 +73,7 @@ for (const scheme of ['light', 'dark'] as const) {
     // Save button shows the pointer.
     test('the options of the CI watcher', async ({ page, hub }) => {
       await hub.open(page);
+      await openTab(page, 'Options');
       const options = page.getByRole('form', { name: 'CI watcher' });
       const minutes = options.getByRole('spinbutton', { name: 'Minutes between two rounds' });
       await expect(minutes).toHaveValue('5');
@@ -96,6 +97,7 @@ for (const scheme of ['light', 'dark'] as const) {
     test('with the monitor shown', async ({ page, hubOn }) => {
       const hub = await hubOn({ ...FULL, testingExport: 'fleet' });
       await hub.open(page);
+      await openTab(page, 'Testing');
       await expect(page.getByRole('region', { name: 'Testing' })).toBeVisible();
       await showsThePointer(page.getByRole('button', { name: 'Red cases' }));
       await page.getByRole('button', { name: 'Red cases' }).click();
@@ -159,6 +161,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await hub.open(page);
       await showsThePointer(page.getByRole('button', { name: 'Update all' }));
       await page.getByRole('button', { name: 'Update all' }).click();
+      await openTab(page, 'Updates');
       const updates = page.getByRole('region', { name: 'Updates' });
       await expect(updates).toContainText('Update failed', { timeout: 20_000 });
       await updates.getByText('Output of Tasks').click();

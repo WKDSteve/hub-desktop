@@ -5,7 +5,31 @@
   import type { HubApp, UpdateInfo } from './lib/api';
   import { attestationText, jobLabel, partText, webUpdateLines } from './lib/updating';
 
-  let { apps, updates, web }: { apps: HubApp[]; updates: Record<string, UpdateInfo>; web: boolean } = $props();
+  let {
+    apps,
+    updates,
+    web,
+    focus = null,
+  }: {
+    apps: HubApp[];
+    updates: Record<string, UpdateInfo>;
+    web: boolean;
+    /** The app whose output is opened and scrolled to (the "Update" entry of its tile menu). */
+    focus?: string | null;
+  } = $props();
+
+  // Open the output of the app the person came for, and bring it into view.
+  $effect(() => {
+    if (!focus) return;
+    const id = focus;
+    queueMicrotask(() => {
+      const item = document.querySelector<HTMLElement>(`[data-update-item="${CSS.escape(id)}"]`);
+      if (!item) return;
+      item.querySelector('details')?.setAttribute('open', '');
+      item.scrollIntoView({ block: 'start' });
+      item.focus({ preventScroll: true });
+    });
+  });
 
   const jobs = $derived(
     apps.flatMap((a) => {
@@ -26,7 +50,7 @@
     <h2 id="updates-heading">Updates</h2>
     <ul>
       {#each jobs as { app, job, label, attestation } (app.id)}
-        <li>
+        <li data-update-item={app.id} tabindex="-1" class:focused={focus === app.id}>
           <span class="name">{app.name}</span>
           <span class="state {label.kind}" role={label.kind === 'active' ? 'status' : undefined}>{label.text}</span>
           {#if job.parts.length > 0}
@@ -46,6 +70,11 @@
         </li>
       {/each}
     </ul>
+  </section>
+{:else if typed.length === 0}
+  <section class="updates" aria-labelledby="updates-heading">
+    <h2 id="updates-heading">Updates</h2>
+    <p class="note">No update has run since the hub started. Update an app from its tile, or press "Update all".</p>
   </section>
 {/if}
 
@@ -78,6 +107,9 @@
     border: 1px solid var(--line);
     border-radius: var(--radius);
     background: var(--surface);
+  }
+  .updates > ul > li.focused {
+    border-color: var(--accent);
   }
   .name {
     font-weight: 600;
