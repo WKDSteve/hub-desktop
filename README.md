@@ -113,7 +113,11 @@ hub-desktop link            print a one-time pairing link (for a phone or a scri
 hub-desktop logs [-f]       the end of the log of the hub in the background
 hub-desktop paths           where the program, the settings and the log are
 hub-desktop help [<cmd>]    all commands, or one
+hub-desktop completions <shell>  tab completion script for powershell or bash
 ```
+
+Tab completion: put `hub-desktop completions powershell | Out-String | Invoke-Expression` in your PowerShell profile (`$PROFILE`),
+or `source <(hub-desktop completions bash)` in `~/.bashrc`.
 
 These commands are those of every hub app of the family (`tasks-desktop`, `rules-desktop`, `testing-desktop`);
 `serve`, `tray`, `autostart`, `install` and `uninstall` are hub-desktop's own, and so is what looks after the whole

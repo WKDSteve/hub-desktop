@@ -608,3 +608,22 @@ fn install_makes_the_command_and_uninstall_takes_it_away() {
     assert!(removed.status.success(), "{removed:?}");
     assert!(!starter.exists(), "{removed:?}");
 }
+
+#[test]
+fn completions_print_a_script_for_each_shell_and_refuse_another() {
+    let scratch = Scratch::new("hub-cli-completions");
+    for (shell, needle) in [
+        ("bash", "complete -F"),
+        ("powershell", "Register-ArgumentCompleter"),
+    ] {
+        let out = run(scratch.path(), free_port(), &["completions", shell]);
+        assert!(out.status.success(), "{shell}: {out:?}");
+        let script = String::from_utf8_lossy(&out.stdout).into_owned();
+        assert!(script.contains(needle), "{shell}: {script}");
+        for word in ["status", "stop", "serve", "install", "hub-desktop"] {
+            assert!(script.contains(word), "{shell} lacks {word}: {script}");
+        }
+    }
+    let out = run(scratch.path(), free_port(), &["completions", "zsh"]);
+    assert_eq!(out.status.code(), Some(2), "{out:?}");
+}
