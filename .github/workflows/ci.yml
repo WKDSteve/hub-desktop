@@ -179,7 +179,7 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
-      # What the build ships has a number (measured 145 kB on 2026-11-21, about a tenth of room): a page that only grows
+      # What the build ships has a number (measured 169 kB on 2026-11-23, with the German catalog, about a tenth of room): a page that only grows
       # is parsed at every start. Over it: find what grew before raising it.
       - run: python ../tools/check-dist-size.py dist --budget 185
       - run: pnpm audit --audit-level high
