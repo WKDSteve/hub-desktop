@@ -545,3 +545,60 @@ fn a_hub_of_a_test_never_runs_the_ci_watcher() {
         );
     }
 }
+
+/// `install` and `uninstall` of the program itself, into folders of the test (`HUB_DESKTOP_INSTALL_DIR`, a family folder
+/// of its own, `HUB_DESKTOP_NO_LOGIN_SYNC`: no login entry, no link, no PATH of the machine). The install copies the
+/// program and makes the command `hub-desktop`, whose starter runs the installed program; the uninstall takes the
+/// command away again. Run in a debug build, it is also the check that the commands fit the stack of the main thread.
+#[test]
+fn install_makes_the_command_and_uninstall_takes_it_away() {
+    let scratch = Scratch::new("hub-cli-install");
+    let config = scratch.path().join("config");
+    let bin = scratch.path().join("bin");
+    let family = scratch.path().join("family");
+    std::fs::create_dir_all(&config).unwrap();
+    let port = free_port();
+    let with_folders = |args: &[&str]| {
+        command(&config, port)
+            .env("HUB_DESKTOP_INSTALL_DIR", &bin)
+            .env("HUB_DESKTOP_NO_LOGIN_SYNC", "1")
+            .env("APPKIT_FAMILY_DIR", &family)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+
+    let installed = with_folders(&["install"]);
+    assert!(installed.status.success(), "{installed:?}");
+    let said = text(&installed);
+    assert!(said.contains("command: `hub-desktop`"), "{said}");
+    let program = bin.join(if cfg!(windows) {
+        "hub-desktop.exe"
+    } else {
+        "hub-desktop"
+    });
+    assert!(program.is_file(), "{said}");
+
+    // The starter runs the installed program with the arguments, and hands its output back.
+    let starter = family.join("bin").join(if cfg!(windows) {
+        "hub-desktop.cmd"
+    } else {
+        "hub-desktop"
+    });
+    let version = if cfg!(windows) {
+        Command::new("cmd.exe")
+            .args(["/d", "/c"])
+            .arg(&starter)
+            .arg("--version")
+            .output()
+    } else {
+        Command::new("sh").arg(&starter).arg("--version").output()
+    }
+    .unwrap();
+    assert!(version.status.success(), "{version:?}");
+    assert_eq!(text(&version).trim(), hub_desktop::version_line());
+
+    let removed = with_folders(&["uninstall"]);
+    assert!(removed.status.success(), "{removed:?}");
+    assert!(!starter.exists(), "{removed:?}");
+}
