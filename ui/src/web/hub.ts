@@ -18,6 +18,7 @@ import type {
 import type { FolderOutcome, Presence } from '../lib/app.svelte';
 import { CI_NONE, type CiView } from '../lib/ci';
 import { type CasesReading, type MonitorReading, NOT_CONFIGURED } from '../lib/monitor';
+import { t } from '../lib/i18n.svelte';
 
 /** One entry of `catalog.json` (the rendering of `catalog.rs`, see `webcatalog.rs`). */
 export interface CatalogEntry {
@@ -148,7 +149,7 @@ export class WebHub implements HubApi, Presence {
     try {
       present = await presentIn(picked.handle, this.catalog);
     } catch {
-      return { kind: 'failed', message: 'The folder could not be read.' };
+      return { kind: 'failed', message: t('The folder could not be read.') };
     }
     const webApps = this.catalog.filter((e) => e.web && e.status === 'available');
     const next = new Set(await this.#ids());

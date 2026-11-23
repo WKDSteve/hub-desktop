@@ -15,6 +15,8 @@ return {
     { scheme = "light" },
     { open = "${link}", note = "the pairing link the hub printed" },
     { wait = "document.querySelector('[data-tile=\"tasks\"]') !== null", timeout = 10000, note = "paired: the tiles are there" },
+    { expect = "(localStorage.setItem('hub-desktop.lang', 'en'), setTimeout(() => location.reload(), 0), true)", note = "the page in English, whatever the language of the browser" },
+    { wait = "document.documentElement.lang === 'en' && document.querySelector('[data-tile=\"tasks\"]') !== null", timeout = 10000, note = "reloaded in English" },
 
     { hover = "main h2" },
     { expect = "![...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Look again').matches(':hover')" },

@@ -18,6 +18,7 @@ import { type CasesView, type MonitorReading, NOT_CONFIGURED } from './monitor';
 import { askable, differs, type UpdateChecker } from './updates';
 import { active, roundText, updatable, whyNot } from './updating';
 import type { Tab } from './tabs';
+import { t } from './i18n.svelte';
 
 /** `starting`: the code is traded. `unpaired`: no session and no code (open the link of `hub-desktop link`). */
 export type Phase = 'starting' | 'ready' | 'unpaired' | 'error';
@@ -81,18 +82,18 @@ function safely<T>(call: () => T, fallback: T): T {
 
 /** What a refusal of a start says, in words for the person. */
 function refusal(name: string, e: unknown): string {
-  if (!(e instanceof ApiError)) return `${name} could not be started.`;
+  if (!(e instanceof ApiError)) return t('{name} could not be started.', { name });
   switch (e.code) {
     case 'not_installed':
-      return `${name} is not installed.`;
+      return t('{name} is not installed.', { name });
     case 'port_busy':
-      return `The port of ${name} is busy: something else answers there.`;
+      return t('The port of {name} is busy: something else answers there.', { name });
     case 'not_available':
-      return `${name} has no such mode.`;
+      return t('{name} has no such mode.', { name });
     case 'web_unavailable':
-      return 'The web variants are not served: the port of the listener is taken.';
+      return t('The web variants are not served: the port of the listener is taken.');
     default:
-      return `${name} could not be started.`;
+      return t('{name} could not be started.', { name });
   }
 }
 
@@ -244,13 +245,18 @@ export class App {
     if (!this.canUpdate || this.phase !== 'ready') return;
     try {
       const result = await this.hub.update(app.id);
-      this.say('ok', result === 'already' ? `${app.name} is being updated already.` : `Updating ${app.name}…`);
+      this.say(
+        'ok',
+        result === 'already'
+          ? t('{name} is being updated already.', { name: app.name })
+          : t('Updating {name}…', { name: app.name }),
+      );
       // In the round from the start: a job that is over before the next read is still reported.
       this.#round.add(app.id);
       await this.#readUpdates();
       void this.watchUpdates();
     } catch (e) {
-      const why = e instanceof ApiError && e.code === 'not_updatable' ? whyNot(this.updates[app.id]) : 'The hub did not answer.';
+      const why = e instanceof ApiError && e.code === 'not_updatable' ? whyNot(this.updates[app.id]) : t('The hub did not answer.');
       this.say('error', `${app.name}: ${why}`);
     }
   }
@@ -261,16 +267,16 @@ export class App {
     try {
       const queued = await this.hub.updateAll();
       if (queued === 0) {
-        this.say('ok', this.updating ? 'The updates are on their way.' : 'Nothing can be updated here.');
+        this.say('ok', this.updating ? t('The updates are on their way.') : t('Nothing can be updated here.'));
         return;
       }
-      this.say('ok', queued === 1 ? 'Updating 1 app…' : `Updating ${queued} apps…`);
+      this.say('ok', queued === 1 ? t('Updating 1 app…') : t('Updating {n} apps…', { n: queued }));
       // The hub queued what it can update here: the same apps the page was told can be updated.
       for (const u of Object.values(this.updates)) if (updatable(u)) this.#round.add(u.id);
       await this.#readUpdates();
       void this.watchUpdates();
     } catch {
-      this.say('error', 'The hub did not answer.');
+      this.say('error', t('The hub did not answer.'));
     }
   }
 
@@ -357,19 +363,19 @@ export class App {
     try {
       const askedAbout = this.apps.filter(askable);
       if (askedAbout.length === 0) {
-        this.say('ok', 'No app can be checked: only running apps of public repositories report their build.');
+        this.say('ok', t('No app can be checked: only running apps of public repositories report their build.'));
         return;
       }
       const round = await this.checker.check(this.apps);
       this.available = { ...this.available, ...round.available };
       const newer = askedAbout.filter((a) => round.states[a.id] === 'available').length;
       const unknown = askedAbout.filter((a) => round.states[a.id] === 'unknown').length;
-      if (round.failed) this.say('error', 'GitHub did not answer. Try again later.');
-      else if (newer > 0) this.say('ok', newer === 1 ? '1 update is available.' : `${newer} updates are available.`);
+      if (round.failed) this.say('error', t('GitHub did not answer. Try again later.'));
+      else if (newer > 0) this.say('ok', newer === 1 ? t('1 update is available.') : t('{n} updates are available.', { n: newer }));
       else if (unknown > 0) {
-        const apps = unknown === 1 ? '1 app' : `${unknown} apps`;
-        this.say('ok', `GitHub names no build for ${apps}; the others are up to date.`);
-      } else this.say('ok', 'Everything that could be checked is up to date.');
+        const apps = unknown === 1 ? t('1 app') : t('{n} apps', { n: unknown });
+        this.say('ok', t('GitHub names no build for {apps}; the others are up to date.', { apps }));
+      } else this.say('ok', t('Everything that could be checked is up to date.'));
     } finally {
       this.checking = false;
     }
@@ -386,7 +392,7 @@ export class App {
     const outcome = await this.presence.chooseFolder();
     if (outcome.kind === 'cancelled') return;
     if (outcome.kind !== 'scanned') {
-      this.say('error', outcome.kind === 'failed' ? outcome.message : 'This browser cannot choose a folder.');
+      this.say('error', outcome.kind === 'failed' ? outcome.message : t('This browser cannot choose a folder.'));
       return;
     }
     try {
@@ -394,8 +400,11 @@ export class App {
     } catch {
       // The marks are kept; the list shows them at the next read.
     }
-    const found = outcome.present === 1 ? '1 web app found' : `${outcome.present} web apps found`;
-    this.say('ok', outcome.missing === 0 ? `${found}.` : `${found}, ${outcome.missing} not in the folder.`);
+    const found = outcome.present === 1 ? t('1 web app found') : t('{n} web apps found', { n: outcome.present });
+    this.say(
+      'ok',
+      outcome.missing === 0 ? `${found}.` : t('{found}, {n} not in the folder.', { found, n: outcome.missing }),
+    );
   }
 
   /** Say an app is (not) on this machine; the list is read again. */
@@ -404,9 +413,11 @@ export class App {
     try {
       await this.presence.mark(app.id, missing);
       this.apps = (await this.hub.apps()).apps;
-      this.say('ok', missing ? `${app.name} is marked as not present.` : `${app.name} is marked as present.`);
+      this.say('ok', missing
+          ? t('{name} is marked as not present.', { name: app.name })
+          : t('{name} is marked as present.', { name: app.name }));
     } catch {
-      this.say('error', 'The mark could not be kept.');
+      this.say('error', t('The mark could not be kept.'));
     }
   }
 
@@ -416,9 +427,9 @@ export class App {
     try {
       await this.hub.rescan();
       this.apps = (await this.hub.apps()).apps;
-      this.say('ok', 'Looked at the machine again.');
+      this.say('ok', t('Looked at the machine again.'));
     } catch {
-      this.say('error', 'The hub did not answer.');
+      this.say('error', t('The hub did not answer.'));
     }
   }
 
@@ -451,18 +462,18 @@ export class App {
       const result = await this.hub.launch(app.id, ask);
       switch (result) {
         case 'started':
-          this.say('ok', `Starting ${app.name}…`);
+          this.say('ok', t('Starting {name}…', { name: app.name }));
           void this.watch(app.id);
           break;
         case 'starting':
-          this.say('ok', `${app.name} is already starting.`);
+          this.say('ok', t('{name} is already starting.', { name: app.name }));
           break;
         case 'opened':
-          this.say('ok', `Opened ${app.name}.`);
+          this.say('ok', t('Opened {name}.', { name: app.name }));
           break;
         case 'setup_required':
           // An app that is not set up opens its page, where its first start is; a hub that answers this is older.
-          this.say('error', `${app.name} is not set up yet.`);
+          this.say('error', t('{name} is not set up yet.', { name: app.name }));
           break;
       }
     } catch (e) {
@@ -475,14 +486,17 @@ export class App {
   async stop(app: HubApp): Promise<void> {
     try {
       const result = await this.hub.stop(app.id);
-      if (result === 'not_running') this.say('ok', `${app.name} is not running.`);
-      else if (result === 'starting') this.say('ok', `${app.name} is busy: a start or stop is on its way.`);
+      if (result === 'not_running') this.say('ok', t('{name} is not running.', { name: app.name }));
+      else if (result === 'starting') this.say('ok', t('{name} is busy: a start or stop is on its way.', { name: app.name }));
       else {
-        this.say('ok', `Stopping ${app.name}…`);
+        this.say('ok', t('Stopping {name}…', { name: app.name }));
         void this.watchStop(app.id);
       }
     } catch (e) {
-      this.say('error', e instanceof ApiError && e.code === 'not_available' ? `${app.name} cannot be stopped from here.` : `${app.name} could not be asked to stop.`);
+      this.say('error', e instanceof ApiError && e.code === 'not_available'
+          ? t('{name} cannot be stopped from here.', { name: app.name })
+          : t('{name} could not be asked to stop.', { name: app.name }),
+      );
     }
   }
 
@@ -501,10 +515,15 @@ export class App {
     try {
       await this.hub.setAutostart(app.id, on);
       await this.reload();
-      this.say('ok', on ? `${app.name} starts with your login.` : `${app.name} does not start with your login.`);
+      this.say(
+        'ok',
+        on
+          ? t('{name} starts with your login.', { name: app.name })
+          : t('{name} does not start with your login.', { name: app.name }),
+      );
     } catch {
       await this.reload(false);
-      this.say('error', 'The start with the login could not be switched.');
+      this.say('error', t('The start with the login could not be switched.'));
     }
   }
 
@@ -515,10 +534,10 @@ export class App {
       await this.reload();
       this.say(
         'ok',
-        on ? `The CI watcher runs every ${intervalMin} min.` : 'The CI watcher is switched off.',
+        on ? t('The CI watcher runs every {n} min.', { n: intervalMin }) : t('The CI watcher is switched off.'),
       );
     } catch {
-      this.say('error', 'The options of the CI watcher could not be saved.');
+      this.say('error', t('The options of the CI watcher could not be saved.'));
     }
   }
 
@@ -527,9 +546,14 @@ export class App {
     try {
       await this.hub.setMode(app.id, mode);
       await this.reload();
-      this.say('ok', `${app.name} now opens ${mode === 'web' ? 'as a web app' : 'natively'}.`);
+      this.say(
+        'ok',
+        mode === 'web'
+          ? t('{name} now opens as a web app.', { name: app.name })
+          : t('{name} now opens natively.', { name: app.name }),
+      );
     } catch {
-      this.say('error', 'The choice could not be kept.');
+      this.say('error', t('The choice could not be kept.'));
     }
   }
 

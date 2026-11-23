@@ -2,6 +2,8 @@
 // to a few words of its own (`monitor.rs`); this file turns them into the text of a row. Colour is never the only
 // signal: every light has a word and a shape.
 
+import { msg, t } from './i18n.svelte';
+
 export type Light = 'red' | 'amber' | 'green' | 'unknown';
 
 /** One repository as `GET /api/hub/monitor` tells it. */
@@ -58,11 +60,11 @@ export type CasesView = CasesReading | { state: 'loading' } | { state: 'failed' 
 
 /** What a status says, in words. */
 export const STATUS_WORDS: Record<CaseStatus, string> = {
-  fail: 'failed',
-  error: 'error',
-  timeout: 'timed out',
-  crash: 'crashed',
-  xpass: 'passed unexpectedly',
+  fail: msg('failed'),
+  error: msg('error'),
+  timeout: msg('timed out'),
+  crash: msg('crashed'),
+  xpass: msg('passed unexpectedly'),
 };
 
 /** A key the hub reads a document for (`plain_key` of `monitor.rs`); it is also the id of the list of cases. */
@@ -80,26 +82,32 @@ export function where(c: RedCase): string {
 
 /** The describe titles and the name of a case, outermost first. */
 export function title(c: RedCase): string {
-  return [...c.describe, c.name].filter((s) => s !== '').join(' › ') || '(no name)';
+  return [...c.describe, c.name].filter((s) => s !== '').join(' › ') || t('(no name)');
 }
 
 /** The sentence under the cases when some are not shown; `null` when all are. */
 export function omitted(reading: Extract<CasesReading, { state: 'ready' }>): string | null {
   const n = reading.cases_omitted;
   if (!n) return null;
-  return n === 1 ? '1 more red case is not shown.' : `${n} more red cases are not shown.`;
+  return n === 1 ? t('1 more red case is not shown.') : t('{n} more red cases are not shown.', { n });
 }
 
 /** What the word of a light says, and the mark drawn before it. */
 export const LIGHTS: Record<Light, { word: string; mark: string }> = {
-  red: { word: 'Red', mark: '●' },
-  amber: { word: 'Check', mark: '◐' },
-  green: { word: 'Green', mark: '○' },
-  unknown: { word: 'No result', mark: '–' },
+  red: { word: msg('Red'), mark: '●' },
+  amber: { word: msg('Check'), mark: '◐' },
+  green: { word: msg('Green'), mark: '○' },
+  unknown: { word: msg('No result'), mark: '–' },
 };
 
-const LOCAL = { green: 'green', green_partial: 'partly run', red: 'red' } as const;
-const PIPELINE = { green: 'green', green_partial: 'partly run', red: 'red', error: 'error', infra: 'infrastructure' } as const;
+const LOCAL = { green: msg('green'), green_partial: msg('partly run'), red: msg('red') } as const;
+const PIPELINE = {
+  green: msg('green'),
+  green_partial: msg('partly run'),
+  red: msg('red'),
+  error: msg('error'),
+  infra: msg('infrastructure'),
+} as const;
 
 /** The CI state as a person says it. */
 function remote(state: string): string {
@@ -110,19 +118,21 @@ function remote(state: string): string {
 export function parts(repo: RepoLight, localRead: boolean): string[] {
   const out: string[] = [];
   if (repo.local) {
-    const fails = repo.local === 'red' && repo.fail ? ` (${repo.fail} failing)` : '';
-    out.push(`local ${LOCAL[repo.local]}${fails}`);
-    if (repo.stale) out.push(`${repo.stale} outdated`);
+    const fails = repo.local === 'red' && repo.fail ? ` (${t('{n} failing', { n: repo.fail })})` : '';
+    out.push(t('local {state}', { state: t(LOCAL[repo.local]) }) + fails);
+    if (repo.stale) out.push(t('{n} outdated', { n: repo.stale }));
   } else if (!localRead) {
-    out.push('local not read here');
+    out.push(t('local not read here'));
   }
-  if (repo.ci_local) out.push(`pipeline ${PIPELINE[repo.ci_local]}`);
-  if (repo.ci_remote) out.push(`CI ${remote(repo.ci_remote)}`);
-  if (out.length === 0) out.push('nothing recorded');
+  if (repo.ci_local) out.push(t('pipeline {state}', { state: t(PIPELINE[repo.ci_local]) }));
+  if (repo.ci_remote) out.push(t('CI {state}', { state: remote(repo.ci_remote) }));
+  if (out.length === 0) out.push(t('nothing recorded'));
   return out;
 }
 
 /** The sentence over the rows. */
 export function stamped(generated: string | null): string {
-  return generated ? `Export of ${generated.replace('T', ' ').replace('Z', ' UTC')}` : 'Export of an unknown time';
+  return generated
+    ? t('Export of {when}', { when: generated.replace('T', ' ').replace('Z', ' UTC') })
+    : t('Export of an unknown time');
 }

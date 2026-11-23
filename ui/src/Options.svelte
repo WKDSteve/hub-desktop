@@ -5,8 +5,14 @@
   import { untrack } from 'svelte';
   import { type CiSettings, intervalProblem } from './lib/ci';
   import { type Theme, THEMES } from './lib/theme';
+  import { LANG_NAMES, LANGS, type LangChoice, msg, t } from './lib/i18n.svelte';
 
-  const THEME_WORDS: Record<Theme, string> = { system: 'Follow the system', light: 'Light', dark: 'Dark' };
+  const THEME_WORDS: Record<Theme, string> = {
+    system: msg('Follow the system'),
+    light: msg('Light'),
+    dark: msg('Dark'),
+  };
+  const LANG_WORDS: Record<LangChoice, string> = { system: msg('Follow the browser'), en: LANG_NAMES.en, de: LANG_NAMES.de };
 
   let {
     settings,
@@ -14,12 +20,17 @@
     theme = 'system',
     onTheme = () => {},
     version = '',
+    langChoice = 'system',
+    onLang = () => {},
   }: {
     /** The look of the page, and what happens when the person picks another. */
     theme?: Theme;
     onTheme?: (theme: Theme) => void;
     /** The version of the hub, as it said hello. */
     version?: string;
+    /** The language the person picked (`system`: the browser's), and what happens when they pick another. */
+    langChoice?: LangChoice;
+    onLang?: (choice: LangChoice) => void;
     /** What `config.json` says now; `null`: there is nothing to set here. */
     settings: CiSettings | null;
     onsave?: (on: boolean, intervalMin: number) => void;
@@ -55,24 +66,39 @@
 </script>
 
 <section aria-labelledby="options-heading" data-options>
-  <h2 id="options-heading">Options</h2>
+  <h2 id="options-heading">{t('Options')}</h2>
   <fieldset class="group" data-theme-options>
-    <legend>Appearance</legend>
-    {#each THEMES as t (t)}
+    <legend>{t('Appearance')}</legend>
+    {#each THEMES as th (th)}
       <label class="choice">
-        <input type="radio" name="theme" value={t} checked={theme === t} onchange={() => onTheme(t)} />
-        {THEME_WORDS[t]}
+        <input type="radio" name="theme" value={th} checked={theme === th} onchange={() => onTheme(th)} />
+        {t(THEME_WORDS[th])}
+      </label>
+    {/each}
+  </fieldset>
+  <fieldset class="group" data-lang-options>
+    <legend>{t('Language')}</legend>
+    {#each ['system', ...LANGS] as choice (choice)}
+      <label class="choice">
+        <input
+          type="radio"
+          name="lang"
+          value={choice}
+          checked={langChoice === choice}
+          onchange={() => onLang(choice as LangChoice)}
+        />
+        {t(LANG_WORDS[choice as LangChoice])}
       </label>
     {/each}
   </fieldset>
   {#if settings}
-    <form class="ci-options" onsubmit={save} aria-label="CI watcher">
+    <form class="ci-options" onsubmit={save} aria-label={t('CI watcher')}>
       <label class="switch">
         <input type="checkbox" bind:checked={on} />
-        CI watcher: write the verdict of the hosted CI into finished tasks
+        {t('CI watcher: write the verdict of the hosted CI into finished tasks')}
       </label>
       <label class="interval">
-        Minutes between two rounds
+        {t('Minutes between two rounds')}
         <input
           type="number"
           inputmode="numeric"
@@ -86,14 +112,19 @@
         />
       </label>
       <p id="ci-interval-help" class="help" class:bad={problem !== null}>
-        {problem ?? `${settings.min} to ${settings.max}, default ${settings.default}. It counts from the next round.`}
+        {problem ??
+          t('{min} to {max}, default {default}. It counts from the next round.', {
+            min: settings.min,
+            max: settings.max,
+            default: settings.default,
+          })}
       </p>
-      <button type="submit" class="save" disabled={!changed || problem !== null}>Save</button>
+      <button type="submit" class="save" disabled={!changed || problem !== null}>{t('Save')}</button>
     </form>
   {/if}
   <div class="group" data-about>
-    <h3>About</h3>
-    <p class="help">Hub{version ? ` ${version}` : ''}</p>
+    <h3>{t('About')}</h3>
+    <p class="help">{t('Hub')}{version ? ` ${version}` : ''}</p>
   </div>
 </section>
 

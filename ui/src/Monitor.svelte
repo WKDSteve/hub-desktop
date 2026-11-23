@@ -12,6 +12,7 @@
     where,
   } from './lib/monitor';
   import { type CiView, ciLines, ciStatus } from './lib/ci';
+  import { t } from './lib/i18n.svelte';
 
   let {
     monitor,
@@ -35,12 +36,12 @@
 
 {#if monitor.state !== 'not_configured' || hints.length > 0}
   <section aria-labelledby="testing-heading" data-monitor>
-    <h2 id="testing-heading">Testing</h2>
+    <h2 id="testing-heading">{t('Testing')}</h2>
     {#if status}
       <div class="ci" data-ci={ci.state}>
         <p class="stamp" role="status">{status}</p>
         {#if hints.length > 0}
-          <ul class="ci-hints" aria-label="Hints of the CI watcher">
+          <ul class="ci-hints" aria-label={t('Hints of the CI watcher')}>
             {#each hints as hint, i (i)}
               <li class="ci-hint"><span aria-hidden="true">!</span> {hint}</li>
             {/each}
@@ -51,7 +52,7 @@
     {#if monitor.state === 'not_configured'}
       <!-- Only the hints of the CI watcher: there is no export folder. -->
     {:else if monitor.state === 'problem'}
-      <p class="none" role="status">The testing export cannot be shown: {monitor.problem}.</p>
+      <p class="none" role="status">{t('The testing export cannot be shown: {why}.', { why: monitor.problem })}</p>
     {:else}
       <p class="stamp">{stamped(monitor.generated_at)}</p>
       {#if monitor.repos.length > 0}
@@ -60,7 +61,7 @@
             <li class="row" data-light={repo.light} data-repo={repo.name}>
               <span class="light" data-light={repo.light}>
                 <span aria-hidden="true">{LIGHTS[repo.light].mark}</span>
-                {LIGHTS[repo.light].word}
+                {t(LIGHTS[repo.light].word)}
               </span>
               <span class="name">{repo.name}</span>
               <span class="what">{parts(repo, monitor.local_read).join(' · ')}</span>
@@ -72,37 +73,37 @@
                   aria-controls={`cases-${repo.key}`}
                   onclick={() => ontoggle(repo.key)}
                 >
-                  Red cases
+                  {t('Red cases')}
                 </button>
               {/if}
               {#if open === repo.key}
-                <div class="cases" id={`cases-${repo.key}`} role="region" aria-label={`Red cases of ${repo.name}`}>
+                <div class="cases" id={`cases-${repo.key}`} role="region" aria-label={t('Red cases of {name}', { name: repo.name })}>
                   {#if cases.state === 'loading'}
-                    <p class="none" role="status">Reading the cases…</p>
+                    <p class="none" role="status">{t('Reading the cases…')}</p>
                   {:else if cases.state === 'failed'}
-                    <p class="none" role="status">The hub did not answer.</p>
+                    <p class="none" role="status">{t('The hub did not answer.')}</p>
                   {:else if cases.state === 'not_configured'}
-                    <p class="none">No export folder is named.</p>
+                    <p class="none">{t('No export folder is named.')}</p>
                   {:else if cases.state === 'problem'}
-                    <p class="none" role="status">The cases cannot be shown: {cases.problem}.</p>
+                    <p class="none" role="status">{t('The cases cannot be shown: {why}.', { why: cases.problem })}</p>
                   {:else if !cases.local_read}
-                    <p class="none">The export was made where nothing runs: no case is recorded.</p>
+                    <p class="none">{t('The export was made where nothing runs: no case is recorded.')}</p>
                   {:else if cases.cases.length === 0}
-                    <p class="none">No red case is recorded for the last run.</p>
+                    <p class="none">{t('No red case is recorded for the last run.')}</p>
                   {:else}
                     <ul class="case-list">
                       {#each cases.cases as c, i (i)}
                         <li class="case" data-case={where(c)}>
                           <div class="case-head">
                             <span class="where">{where(c)}</span>
-                            <span class="status">{STATUS_WORDS[c.status]}{c.flaky ? ', flaky' : ''}</span>
+                            <span class="status">{t(STATUS_WORDS[c.status])}{c.flaky ? t(', flaky') : ''}</span>
                           </div>
                           <div class="case-title">{title(c)}</div>
                           {#if c.message}<pre class="text">{c.message}</pre>{/if}
                           {#if c.expected !== null || c.actual !== null}
                             <dl class="diff">
-                              {#if c.expected !== null}<dt>Expected</dt><dd><pre class="text">{c.expected}</pre></dd>{/if}
-                              {#if c.actual !== null}<dt>Actual</dt><dd><pre class="text">{c.actual}</pre></dd>{/if}
+                              {#if c.expected !== null}<dt>{t('Expected')}</dt><dd><pre class="text">{c.expected}</pre></dd>{/if}
+                              {#if c.actual !== null}<dt>{t('Actual')}</dt><dd><pre class="text">{c.actual}</pre></dd>{/if}
                             </dl>
                           {/if}
                         </li>
@@ -116,7 +117,7 @@
           {/each}
         </ul>
       {:else}
-        <p class="none">The export holds no repository (none is released for it on this device).</p>
+        <p class="none">{t('The export holds no repository (none is released for it on this device).')}</p>
       {/if}
     {/if}
   </section>

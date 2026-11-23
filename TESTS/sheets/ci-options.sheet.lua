@@ -16,6 +16,8 @@ return {
     { scheme = "light" },
     { open = "${link}", note = "the pairing link the hub printed" },
     { wait = "document.getElementById('tab-options') !== null", timeout = 10000, note = "paired: the tabs are there" },
+    { expect = "(localStorage.setItem('hub-desktop.lang', 'en'), setTimeout(() => location.reload(), 0), true)", note = "the page in English, whatever the language of the browser" },
+    { wait = "document.documentElement.lang === 'en' && document.querySelector('[data-tile=\"tasks\"]') !== null", timeout = 10000, note = "reloaded in English" },
     { click = "#tab-options", note = "the tab Options" },
     {
       wait = "document.querySelector('[data-options] input[type=number]') !== null",

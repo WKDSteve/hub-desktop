@@ -1,4 +1,5 @@
 import { mount } from 'svelte';
+import { t } from './lib/i18n.svelte';
 import './app.css';
 import App from './App.svelte';
 import { Hub } from './lib/api';
@@ -26,7 +27,7 @@ const state = new AppState(
   null,
   new UpdateChecker((input, init) => window.fetch(input, init), storage()),
 );
-installTooltips(document, window, { regionLabel: () => 'Hints' });
+installTooltips(document, window, { regionLabel: () => t('Hints') });
 mount(App, { target: document.getElementById('app') as HTMLElement, props: { app: state, code } });
 
 // A link from `hub-desktop link` pasted into a tab that is already open changes only the fragment: no reload.

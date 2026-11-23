@@ -4,6 +4,7 @@
   // clones instead.
   import type { HubApp, UpdateInfo } from './lib/api';
   import { attestationText, jobLabel, partText, webUpdateLines } from './lib/updating';
+  import { t } from './lib/i18n.svelte';
 
   let {
     apps,
@@ -47,7 +48,7 @@
 
 {#if jobs.length > 0}
   <section class="updates" aria-labelledby="updates-heading">
-    <h2 id="updates-heading">Updates</h2>
+    <h2 id="updates-heading">{t('Updates')}</h2>
     <ul>
       {#each jobs as { app, job, label, attestation } (app.id)}
         <li data-update-item={app.id} tabindex="-1" class:focused={focus === app.id}>
@@ -63,7 +64,7 @@
           {/if}
           {#if job.lines.length > 0}
             <details>
-              <summary>Output of {app.name}</summary>
+              <summary>{t('Output of {name}', { name: app.name })}</summary>
               <pre>{job.lines.join('\n')}</pre>
             </details>
           {/if}
@@ -73,15 +74,15 @@
   </section>
 {:else if typed.length === 0}
   <section class="updates" aria-labelledby="updates-heading">
-    <h2 id="updates-heading">Updates</h2>
-    <p class="note">No update has run since the hub started. Update an app from its tile, or press "Update all".</p>
+    <h2 id="updates-heading">{t('Updates')}</h2>
+    <p class="note">{t('No update has run since the hub started. Update an app from its tile, or press "Update all".')}</p>
   </section>
 {/if}
 
 {#if typed.length > 0}
   <section class="updates" aria-labelledby="update-pages-heading">
-    <h2 id="update-pages-heading">Update the pages</h2>
-    <p class="note">This page runs nothing. In the folder of the clones, type:</p>
+    <h2 id="update-pages-heading">{t('Update the pages')}</h2>
+    <p class="note">{t('This page runs nothing. In the folder of the clones, type:')}</p>
     <ul>
       {#each typed as { app, lines } (app.id)}
         <li>
@@ -90,7 +91,7 @@
         </li>
       {/each}
     </ul>
-    <p class="note">Then reload the open pages.</p>
+    <p class="note">{t('Then reload the open pages.')}</p>
   </section>
 {/if}
 

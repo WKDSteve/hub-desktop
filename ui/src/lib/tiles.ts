@@ -1,6 +1,7 @@
 // What a tile says and how the keys move between tiles: plain functions, no DOM.
 
 import type { HubApp, Mode } from './api';
+import { t } from './i18n.svelte';
 
 /** The apps that match the filter, in two areas: those on this machine, and the rest. */
 export function areas(apps: readonly HubApp[], filter: string): { installed: HubApp[]; other: HubApp[] } {
@@ -19,24 +20,24 @@ export interface TileState {
 
 /** The state of an installed tile. `failed` is the code of a start that was refused (`start_failed`, ...). */
 export function stateOf(app: HubApp, starting: boolean, failed?: string): TileState {
-  if (starting) return { kind: 'starting', label: 'Starting…' };
-  if (failed === 'port_busy' || app.run === 'port_busy') return { kind: 'busy', label: 'Port busy' };
-  if (failed) return { kind: 'failed', label: 'Start failed' };
-  if (app.setup) return { kind: 'setup', label: 'Setup needed' };
-  if (app.run === 'running') return { kind: 'running', label: 'Running' };
-  if (app.run === 'stopped') return { kind: 'stopped', label: 'Stopped' };
+  if (starting) return { kind: 'starting', label: t('Starting…') };
+  if (failed === 'port_busy' || app.run === 'port_busy') return { kind: 'busy', label: t('Port busy') };
+  if (failed) return { kind: 'failed', label: t('Start failed') };
+  if (app.setup) return { kind: 'setup', label: t('Setup needed') };
+  if (app.run === 'running') return { kind: 'running', label: t('Running') };
+  if (app.run === 'stopped') return { kind: 'stopped', label: t('Stopped') };
   return { kind: 'none', label: '' };
 }
 
 /** The word for whether the app starts with the login; none when that is not known (never a guess). */
 export function autostartWord(app: HubApp): string | null {
   if (!app.installed || app.href) return null;
-  if (app.autostart === true) return 'Starts at login';
-  if (app.autostart === false) return 'No autostart';
+  if (app.autostart === true) return t('Starts at login');
+  if (app.autostart === false) return t('No autostart');
   return null;
 }
 
-export const modeName = (mode: Mode): string => (mode === 'web' ? 'web' : 'native');
+export const modeName = (mode: Mode): string => (mode === 'web' ? t('web') : t('native'));
 
 /** The mode a second action opens: the one a click does not. */
 export function otherMode(app: HubApp): Mode {
@@ -50,15 +51,15 @@ export function hasMode(app: HubApp, mode: Mode): boolean {
 
 /** Why a tile cannot be stopped, for the hint of the disabled entry. */
 export function stopReason(app: HubApp): string {
-  if (app.run === 'running') return `${app.name} cannot be stopped from here`;
-  return `${app.name} does not run`;
+  if (app.run === 'running') return t('{name} cannot be stopped from here', { name: app.name });
+  return t('{name} does not run', { name: app.name });
 }
 
 /** Why a mode is not there, for the hint of a disabled entry. */
 export function missingReason(app: HubApp, mode: Mode): string {
   return mode === 'web'
-    ? `${app.name} has no web variant on this machine`
-    : `${app.name} is not installed as a program on this machine`;
+    ? t('{name} has no web variant on this machine', { name: app.name })
+    : t('{name} is not installed as a program on this machine', { name: app.name });
 }
 
 /** What a tile of the second area says: the badge, and whether it is a link to the page to get the app. */
@@ -66,15 +67,15 @@ export function getting(app: HubApp): { badge: string; linked: boolean; note: st
   const plain = (badge: string, linked: boolean, note: string | null = null) => ({ badge, linked, note });
   switch (app.install.hint) {
     case 'native_only':
-      return plain('Native only', false, 'Not startable in the web hub');
+      return plain(t('Native only'), false, t('Not startable in the web hub'));
     case 'planned':
-      return plain('Planned', false);
+      return plain(t('Planned'), false);
     case 'build_yourself':
-      return plain('Build it yourself', false);
+      return plain(t('Build it yourself'), false);
     case 'clone':
-      return plain('Clone the web variant', app.install.page !== null, app.missing ? 'Marked as not present' : null);
+      return plain(t('Clone the web variant'), app.install.page !== null, app.missing ? t('Marked as not present') : null);
     default:
-      return plain('Download', app.install.page !== null);
+      return plain(t('Download'), app.install.page !== null);
   }
 }
 

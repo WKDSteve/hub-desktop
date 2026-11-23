@@ -2,38 +2,40 @@
 // page only words its codes.
 
 import type { HubApp, UpdateInfo, UpdateJob, UpdatePart } from './api';
+import { msg, t } from './i18n.svelte';
 
 /** The codes of the hub, in words. An unknown code is shown as it is (with spaces), never dropped. */
 const REASONS: Record<string, string> = {
-  workstation: 'not on the workstation, where nothing unsigned is installed',
-  role_unclear: 'the machine role is unclear (NVIM_MACHINE_ROLE)',
-  windows_only: 'programs are only updated on Windows',
-  no_release: 'the app has no release to install from',
-  no_release_file: 'its release names no file the hub installs',
-  no_gh: 'the GitHub CLI (gh) was not found',
-  no_installer: 'the hub does not know how to install its release',
-  no_git: 'git was not found',
-  not_installed: 'nothing of it is installed',
-  not_a_clone: 'its folder is not a git clone',
-  not_on_main: 'the clone is not on main',
-  dirty: 'the clone has local changes',
-  git_failed: 'git failed',
-  pull_failed: 'the pull failed (offline, or no fast-forward)',
-  sums_mismatch: 'the page does not match SHA256SUMS',
-  download_failed: 'the release could not be downloaded',
-  checksum_failed: 'a file of the release does not match SHA256SUMS',
-  install_failed: 'the install failed',
-  attestation_failed: 'its attestation does not verify (not built by the workflow of its repository)',
-  attestation_required: 'its attestation could not be checked, and one is required (update.require_attestation)',
-  close_first: 'it is running: close it first',
-  busy: 'a start or stop of it is on its way',
-  no_work_folder: 'there is no folder for the download',
-  not_ready: 'it is not ready',
-  not_found: 'it is not in the catalog',
+  workstation: msg('not on the workstation, where nothing unsigned is installed'),
+  role_unclear: msg('the machine role is unclear (NVIM_MACHINE_ROLE)'),
+  windows_only: msg('programs are only updated on Windows'),
+  no_release: msg('the app has no release to install from'),
+  no_release_file: msg('its release names no file the hub installs'),
+  no_gh: msg('the GitHub CLI (gh) was not found'),
+  no_installer: msg('the hub does not know how to install its release'),
+  no_git: msg('git was not found'),
+  not_installed: msg('nothing of it is installed'),
+  not_a_clone: msg('its folder is not a git clone'),
+  not_on_main: msg('the clone is not on main'),
+  dirty: msg('the clone has local changes'),
+  git_failed: msg('git failed'),
+  pull_failed: msg('the pull failed (offline, or no fast-forward)'),
+  sums_mismatch: msg('the page does not match SHA256SUMS'),
+  download_failed: msg('the release could not be downloaded'),
+  checksum_failed: msg('a file of the release does not match SHA256SUMS'),
+  install_failed: msg('the install failed'),
+  attestation_failed: msg('its attestation does not verify (not built by the workflow of its repository)'),
+  attestation_required: msg('its attestation could not be checked, and one is required (update.require_attestation)'),
+  close_first: msg('it is running: close it first'),
+  busy: msg('a start or stop of it is on its way'),
+  no_work_folder: msg('there is no folder for the download'),
+  not_ready: msg('it is not ready'),
+  not_found: msg('it is not in the catalog'),
 };
 
 export function reasonText(code: string): string {
-  return REASONS[code] ?? code.replaceAll('_', ' ');
+  const known = REASONS[code];
+  return known ? t(known) : code.replaceAll('_', ' ');
 }
 
 /** Whether a part of the app can be updated here. */
@@ -49,17 +51,17 @@ export function active(job: UpdateJob | null | undefined): boolean {
 /** Why nothing of the app can be updated here, for the hint of a disabled entry. */
 export function whyNot(info: UpdateInfo | undefined): string {
   const code = [info?.native, info?.web].find((c): c is string => typeof c === 'string' && c !== 'ready');
-  return `Cannot be updated here: ${reasonText(code ?? 'not_installed')}`;
+  return t('Cannot be updated here: {why}', { why: reasonText(code ?? 'not_installed') });
 }
 
 const STEPS: Record<string, string> = {
-  looking: 'Looking…',
-  checking: 'Checking the clone…',
-  pulling: 'Pulling…',
-  downloading: 'Downloading…',
-  verifying: 'Checking the sums…',
-  attesting: 'Checking the attestation…',
-  installing: 'Installing…',
+  looking: msg('Looking…'),
+  checking: msg('Checking the clone…'),
+  pulling: msg('Pulling…'),
+  downloading: msg('Downloading…'),
+  verifying: msg('Checking the sums…'),
+  attesting: msg('Checking the attestation…'),
+  installing: msg('Installing…'),
 };
 
 export type JobKind = 'active' | 'ok' | 'failed' | 'skipped';
@@ -68,34 +70,35 @@ export type JobKind = 'active' | 'ok' | 'failed' | 'skipped';
 export function jobLabel(job: UpdateJob): { kind: JobKind; text: string } {
   switch (job.state) {
     case 'queued':
-      return { kind: 'active', text: 'Update queued' };
+      return { kind: 'active', text: t('Update queued') };
     case 'running':
-      return { kind: 'active', text: (job.step && STEPS[job.step]) || 'Updating…' };
+      return { kind: 'active', text: (job.step && STEPS[job.step] && t(STEPS[job.step] as string)) || t('Updating…') };
     case 'failed': {
       const failed = job.parts.find((p) => p.outcome === 'failed');
-      return { kind: 'failed', text: `Update failed: ${reasonText(failed?.result ?? 'not_ready')}` };
+      return { kind: 'failed', text: t('Update failed: {why}', { why: reasonText(failed?.result ?? 'not_ready') }) };
     }
     case 'skipped': {
       const first = job.parts[0];
-      return { kind: 'skipped', text: `Not updated: ${reasonText(first?.result ?? 'not_installed')}` };
+      return { kind: 'skipped', text: t('Not updated: {why}', { why: reasonText(first?.result ?? 'not_installed') }) };
     }
     default: {
       const ok = job.parts.filter((p) => p.outcome === 'ok');
       const changed = ok.some((p) => p.result !== 'up_to_date');
-      if (job.reload) return { kind: 'ok', text: 'Updated: reload its open page' };
-      return { kind: 'ok', text: changed ? 'Updated' : 'Up to date' };
+      if (job.reload) return { kind: 'ok', text: t('Updated: reload its open page') };
+      return { kind: 'ok', text: changed ? t('Updated') : t('Up to date') };
     }
   }
 }
 
 /** What one part came to, in words. */
 export function partText(part: UpdatePart): string {
-  const what = part.part === 'native' ? 'Program' : 'Web page';
+  const what = part.part === 'native' ? t('Program') : t('Web page');
   if (part.outcome === 'ok') {
-    const word = part.result === 'up_to_date' ? 'up to date' : part.result === 'installed' ? 'installed' : 'updated';
+    const word =
+      part.result === 'up_to_date' ? t('up to date') : part.result === 'installed' ? t('installed') : t('updated');
     return `${what}: ${word}`;
   }
-  return `${what}: ${part.outcome === 'skipped' ? 'not updated' : 'failed'}, ${reasonText(part.result)}`;
+  return `${what}: ${part.outcome === 'skipped' ? t('not updated') : t('failed')}, ${reasonText(part.result)}`;
 }
 
 /**
@@ -107,13 +110,13 @@ export function attestationText(job: UpdateJob): string | null {
     case null:
       return null;
     case 'attested':
-      return 'Attestation: verified, built by the workflow of its repository';
+      return t('Attestation: verified, built by the workflow of its repository');
     case 'not_checked':
-      return 'Attestation: not checked (no attestation, or gh could not ask); see the output';
+      return t('Attestation: not checked (no attestation, or gh could not ask); see the output');
     case 'failed':
-      return 'Attestation: does not verify, nothing was installed';
+      return t('Attestation: does not verify, nothing was installed');
     default:
-      return `Attestation: ${String(job.attestation).replaceAll('_', ' ')}`;
+      return t('Attestation: {what}', { what: String(job.attestation).replaceAll('_', ' ') });
   }
 }
 
@@ -121,9 +124,9 @@ export function attestationText(job: UpdateJob): string | null {
 export function roundText(jobs: readonly { name: string; job: UpdateJob }[]): string {
   const failed = jobs.filter((j) => j.job.state === 'failed');
   if (jobs.length === 1 && jobs[0]) return `${jobs[0].name}: ${jobLabel(jobs[0].job).text}.`;
-  if (failed.length === 0) return `${jobs.length} apps updated.`;
+  if (failed.length === 0) return t('{n} apps updated.', { n: jobs.length });
   const names = failed.map((j) => j.name).join(', ');
-  return `${jobs.length - failed.length} of ${jobs.length} apps updated; failed: ${names}.`;
+  return t('{done} of {n} apps updated; failed: {names}.', { done: jobs.length - failed.length, n: jobs.length, names });
 }
 
 /**

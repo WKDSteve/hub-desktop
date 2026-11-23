@@ -357,7 +357,7 @@ export { expect };
 
 /** The requests of the page that start something: `POST /api/hub/apps/<id>/launch`. */
 /** Bring a tab of the page to the front (Apps, Testing, Updates, Options). */
-export async function openTab(page: Page, name: 'Apps' | 'Testing' | 'Updates' | 'Options'): Promise<void> {
+export async function openTab(page: Page, name: string): Promise<void> {
   await page.getByRole('tab', { name }).click();
   await expect(page.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
 }

@@ -368,6 +368,26 @@ test('the tabs switch with the arrow keys, and the options hold the version and 
   await expect(page.locator('html')).not.toHaveAttribute('data-theme');
 });
 
+test('the language is picked in the options, kept over a reload, and speaks German', async ({ page, hub }) => {
+  await hub.open(page);
+  await openTab(page, 'Options');
+  await page.getByRole('radio', { name: 'Deutsch' }).check();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+  // The tabs, the headings and a tile's words follow at once, without a reload.
+  await expect(page.getByRole('tab', { name: 'Optionen' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('radio', { name: 'Dunkel' })).toBeVisible();
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+  await expect(page.getByRole('region', { name: 'Installiert' })).toBeVisible();
+  await expect(tile(page, 'tasks')).toContainText('Beendet');
+  await expect(page.getByRole('button', { name: 'Alles aktualisieren' })).toBeVisible();
+  await openTab(page, 'Optionen');
+  await page.getByRole('radio', { name: 'Dem Browser folgen' }).check();
+  // The browser of the test speaks English: that is what the page follows now.
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await expect(page.getByRole('tab', { name: 'Options' })).toBeVisible();
+});
+
 test('without an export folder the page shows no monitor', async ({ page, hub }) => {
   await hub.open(page);
   await expect(page.getByRole('tab', { name: 'Testing' })).toHaveCount(0);

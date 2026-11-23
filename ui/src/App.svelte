@@ -13,6 +13,7 @@
   import { ciLines, settingsOf } from './lib/ci';
   import { effectiveTab, TAB_NAMES, type Tab, tabAfterKey, visibleTabs } from './lib/tabs';
   import { applyTheme, loadTheme, saveTheme, type Theme } from './lib/theme';
+  import { lang, loadChoice, type LangChoice, resolveLang, saveChoice, setLang, t } from './lib/i18n.svelte';
   import Tile from './Tile.svelte';
   import Updates from './Updates.svelte';
 
@@ -43,6 +44,17 @@
     document.getElementById(`tab-${to}`)?.focus();
   }
 
+  let langChoice = $state<LangChoice>('system');
+  function pickLang(next: LangChoice): void {
+    langChoice = next;
+    saveChoice(themeStorage(), next);
+    setLang(resolveLang(next, navigator.language));
+  }
+  // The root element says which language the page is in (screen readers, hyphenation, spell check).
+  $effect(() => {
+    document.documentElement.lang = lang();
+  });
+
   let theme = $state<Theme>('system');
   function themeStorage(): Storage | null {
     try {
@@ -67,7 +79,7 @@
       return [
         {
           kind: 'action',
-          label: tile.missing ? 'Mark as present' : 'Mark as not present',
+          label: tile.missing ? t('Mark as present') : t('Mark as not present'),
           onselect: () => void app.mark(tile, !tile.missing),
         },
       ];
@@ -75,32 +87,32 @@
     const other = otherMode(tile);
     const there = hasMode(tile, other);
     const hint = there ? undefined : missingReason(tile, other);
-    const as = other === 'web' ? 'web app' : 'native app';
+    const as = other === 'web' ? t('web app') : t('native app');
     return [
       {
         kind: 'action',
-        label: other === 'web' ? 'Open as web app' : 'Open natively',
+        label: other === 'web' ? t('Open as web app') : t('Open natively'),
         disabled: !there,
         hint,
         onselect: () => void app.launch(tile, other),
       },
       {
         kind: 'action',
-        label: `Make ${as} the default`,
+        label: t('Make {as} the default', { as }),
         disabled: !there,
         hint,
         onselect: () => void app.makeDefault(tile, other),
       },
       {
         kind: 'action',
-        label: 'Stop',
+        label: t('Stop'),
         disabled: !tile.stoppable,
         hint: tile.stoppable ? undefined : stopReason(tile),
         onselect: () => void app.stop(tile),
       },
       {
         kind: 'action',
-        label: 'Update',
+        label: t('Update'),
         disabled: !canUpdateTile(tile.id),
         hint: canUpdateTile(tile.id) ? undefined : updateHint(tile.id),
         onselect: () => void app.update(tile),
@@ -108,9 +120,9 @@
       // The output of the last update (the lines git and the steps printed), in the Updates tab.
       {
         kind: 'action',
-        label: 'Update output →',
+        label: t('Update output →'),
         disabled: !app.updates[tile.id]?.job,
-        hint: app.updates[tile.id]?.job ? undefined : 'No update of this app has run yet',
+        hint: app.updates[tile.id]?.job ? undefined : t('No update of this app has run yet'),
         onselect: () => app.showUpdate(tile.id),
       },
       // The start with the login: the same state the app shows and switches itself. Only where it can be told.
@@ -118,7 +130,7 @@
         ? [
             {
               kind: 'check' as const,
-              label: 'Start at login',
+              label: t('Start at login'),
               checked: tile.autostart,
               onselect: () => void app.setAutostart(tile, !tile.autostart),
             },
@@ -130,9 +142,11 @@
   /** The hub can update the app here, and no update of it is on its way. */
   const canUpdateTile = (id: string): boolean => updatable(app.updates[id]) && !active(app.updates[id]?.job);
   const updateHint = (id: string): string =>
-    active(app.updates[id]?.job) ? 'An update is on its way' : whyNot(app.updates[id]);
+    active(app.updates[id]?.job) ? t('An update is on its way') : whyNot(app.updates[id]);
 
   onMount(() => {
+    langChoice = loadChoice(themeStorage());
+    setLang(resolveLang(langChoice, navigator.language));
     theme = loadTheme(themeStorage());
     applyTheme(document.documentElement, theme);
     void app.start(code);
@@ -224,18 +238,18 @@
   <Brand label="Hub"><span class="brand-mark"><img src={mark} alt="" width="20" height="20" />Hub</span></Brand>
   <h1 class="sr-only">Hub</h1>
   <label class="filter">
-    <span class="sr-only">Filter the apps</span>
-    <input bind:this={filterBox} type="search" placeholder="Filter  (/)" aria-keyshortcuts="/" bind:value={app.filter} />
+    <span class="sr-only">{t('Filter the apps')}</span>
+    <input bind:this={filterBox} type="search" placeholder={t('Filter  (/)')} aria-keyshortcuts="/" bind:value={app.filter} />
   </label>
   {#if app.canRescan}
-    <button type="button" class="tool" aria-keyshortcuts="r" onclick={() => void app.rescan()}>Look again</button>
+    <button type="button" class="tool" aria-keyshortcuts="r" onclick={() => void app.rescan()}>{t('Look again')}</button>
   {/if}
   {#if app.canChooseFolder}
-    <button type="button" class="tool" onclick={() => void app.chooseFolder()}>Choose the folder of the clones</button>
+    <button type="button" class="tool" onclick={() => void app.chooseFolder()}>{t('Choose the folder of the clones')}</button>
   {/if}
   {#if app.canCheckUpdates}
     <button type="button" class="tool" disabled={app.checking} onclick={() => void app.checkUpdates()}>
-      Check for updates
+      {t('Check for updates')}
     </button>
   {/if}
   {#if app.canUpdate}
@@ -243,40 +257,40 @@
       type="button"
       class="tool"
       disabled={!app.anyUpdatable || app.updating}
-      title={app.anyUpdatable ? undefined : 'Nothing can be updated on this machine'}
+      title={app.anyUpdatable ? undefined : t('Nothing can be updated on this machine')}
       onclick={() => void app.updateAll()}
     >
-      {app.updating ? 'Updating…' : 'Update all'}
+      {app.updating ? t('Updating…') : t('Update all')}
     </button>
   {/if}
 </header>
 
 <main>
   {#if app.phase === 'starting'}
-    <p role="status">Connecting to the hub…</p>
+    <p role="status">{t('Connecting to the hub…')}</p>
   {:else if app.phase === 'unpaired'}
-    <h2>Open the hub with its link</h2>
+    <h2>{t('Open the hub with its link')}</h2>
     <p>
-      This page has no session. Run <code>hub-desktop open</code> in a terminal, or start the hub from its
-      link, and the browser opens it paired.
+      {t('This page has no session. Run')} <code>hub-desktop open</code>
+      {t('in a terminal, or start the hub from its link, and the browser opens it paired.')}
     </p>
   {:else if app.phase === 'error'}
-    <h2>The hub does not answer</h2>
+    <h2>{t('The hub does not answer')}</h2>
     <p role="alert">{app.problem}</p>
   {:else}
-    <div class="tabs" role="tablist" aria-label="Areas of the hub" tabindex="-1" onkeydown={onTabKey}>
-      {#each shown as t (t)}
+    <div class="tabs" role="tablist" aria-label={t('Areas of the hub')} tabindex="-1" onkeydown={onTabKey}>
+      {#each shown as name (name)}
         <button
           type="button"
           role="tab"
-          id={`tab-${t}`}
+          id={`tab-${name}`}
           class="tab"
-          aria-selected={tab === t}
-          aria-controls={`panel-${t}`}
-          tabindex={tab === t ? 0 : -1}
-          onclick={() => (app.tab = t)}
+          aria-selected={tab === name}
+          aria-controls={`panel-${name}`}
+          tabindex={tab === name ? 0 : -1}
+          onclick={() => (app.tab = name)}
         >
-          {TAB_NAMES[t]}{#if t === 'updates' && app.updating}<span class="dot" aria-hidden="true"></span>{/if}
+          {t(TAB_NAMES[name])}{#if name === 'updates' && app.updating}<span class="dot" aria-hidden="true"></span>{/if}
         </button>
       {/each}
     </div>
@@ -285,7 +299,7 @@
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div class="areas" onkeydown={onTileKey} role="presentation">
         <section aria-labelledby="installed-heading">
-          <h2 id="installed-heading">Installed</h2>
+          <h2 id="installed-heading">{t('Installed')}</h2>
           {#if groups.installed.length > 0}
             <ul class="grid">
               {#each groups.installed as tile (tile.id)}
@@ -305,11 +319,11 @@
               {/each}
             </ul>
           {:else}
-            <p class="none">{app.filter ? 'No installed app matches.' : 'No app is installed on this machine yet.'}</p>
+            <p class="none">{app.filter ? t('No installed app matches.') : t('No app is installed on this machine yet.')}</p>
           {/if}
         </section>
         <section aria-labelledby="other-heading">
-          <h2 id="other-heading">Install or download</h2>
+          <h2 id="other-heading">{t('Install or download')}</h2>
           {#if groups.other.length > 0}
             <ul class="grid">
               {#each groups.other as tile (tile.id)}
@@ -325,7 +339,7 @@
               {/each}
             </ul>
           {:else}
-            <p class="none">{app.filter ? 'No other app matches.' : 'Everything is installed.'}</p>
+            <p class="none">{app.filter ? t('No other app matches.') : t('Everything is installed.')}</p>
           {/if}
         </section>
       </div>
@@ -351,20 +365,22 @@
           onsave={(on, minutes) => void app.saveCi(on, minutes)}
           {theme}
           onTheme={setTheme}
+          {langChoice}
+          onLang={pickLang}
           version={app.version}
         />
       </div>
     {/if}
   {/if}
   <!-- Inside the landmark: the menu is drawn at the pointer, but its content belongs to the page (axe: region). -->
-  <ContextMenu {registry} label="Other ways to open the app" />
+  <ContextMenu {registry} label={t('Other ways to open the app')} />
 </main>
 
 <Toast
   toast={app.toast}
   onundo={() => undefined}
   ondismiss={() => app.dismissToast()}
-  labels={{ undo: 'Undo', dismiss: 'Dismiss the message' }}
+  labels={{ undo: t('Undo'), dismiss: t('Dismiss the message') }}
 />
 
 

@@ -2,6 +2,7 @@
 // answers the calls of the Rust hub in the page. Nothing is fetched (the policy forbids it).
 
 import { mount } from 'svelte';
+import { t } from './lib/i18n.svelte';
 import './app.css';
 import App from './App.svelte';
 import { App as AppState } from './lib/app.svelte';
@@ -22,5 +23,5 @@ const hub = new WebHub(catalog as CatalogEntry[], indexedDbMissing(window.indexe
 // The marks of a tab are the browser's, not the tab's: no session storage is needed (there is no session).
 const none = { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
 const state = new AppState(hub, none, undefined, hub);
-installTooltips(document, window, { regionLabel: () => 'Hints' });
+installTooltips(document, window, { regionLabel: () => t('Hints') });
 mount(App, { target: document.getElementById('app') as HTMLElement, props: { app: state, code: 'web' } });

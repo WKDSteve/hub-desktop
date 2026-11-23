@@ -7,6 +7,7 @@
   import { iconOf } from './lib/icons';
   import { autostartWord, getting, hasMenu, modeName, stateOf } from './lib/tiles';
   import { jobLabel } from './lib/updating';
+  import { t } from './lib/i18n.svelte';
 
   let {
     app,
@@ -72,11 +73,11 @@
       {@render icon()}
       <span class="name">{app.name}</span>
       <span class="line">
-        <span class="note">Not checked</span>
-        <span class="chip">web</span>
+        <span class="note">{t('Not checked')}</span>
+        <span class="chip">{t('web')}</span>
       </span>
     </a>
-    {@render more(`More about ${app.name}`)}
+    {@render more(t('More about {name}', { name: app.name }))}
   {:else if app.installed}
     <button
       type="button"
@@ -96,7 +97,7 @@
           >
         {/if}
         <span class="chip">{modeName(app.default_mode)}</span>
-        {#if update}<span class="update"><span aria-hidden="true">↑</span> Update available</span>{/if}
+        {#if update}<span class="update"><span aria-hidden="true">↑</span> {t('Update available')}</span>{/if}
         {#if login}<span class="note">{login}</span>{/if}
       </span>
       {#if updating}
@@ -104,8 +105,8 @@
       {/if}
     </button>
     {#if update && canUpdate}
-      <button type="button" class="do-update" tabindex="-1" aria-label={`Update ${app.name}`} onclick={onupdate}
-        >Update</button
+      <button type="button" class="do-update" tabindex="-1" aria-label={t('Update {name}', { name: app.name })} onclick={onupdate}
+        >{t('Update')}</button
       >
     {/if}
     <button
@@ -113,7 +114,7 @@
       class="more"
       tabindex="-1"
       aria-haspopup="menu"
-      aria-label={`Other ways to open ${app.name}`}
+      aria-label={t('Other ways to open {name}', { name: app.name })}
       onclick={onmore}>▾</button
     >
   {:else if get.linked}
@@ -133,7 +134,7 @@
       {#if app.install.file}<span class="file">{app.install.file}</span>{/if}
     </a>
     {#if hasMenu(app)}
-      {@render more(`More about ${app.name}`)}
+      {@render more(t('More about {name}', { name: app.name }))}
     {/if}
   {:else}
     <button type="button" class="main" data-tile={app.id} tabindex={tab ? 0 : -1} aria-disabled="true" onfocus={onfocus}>
@@ -143,7 +144,7 @@
       {#if get.note}<span class="file">{get.note}</span>{/if}
     </button>
     {#if hasMenu(app)}
-      {@render more(`More about ${app.name}`)}
+      {@render more(t('More about {name}', { name: app.name }))}
     {/if}
   {/if}
 </li>

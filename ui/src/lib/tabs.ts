@@ -1,12 +1,14 @@
 // The tabs of the page and the keys that move between them (the tab pattern of the WAI-ARIA practices).
 
+import { msg } from './i18n.svelte';
+
 export type Tab = 'apps' | 'testing' | 'updates' | 'options';
 
 export const TAB_NAMES: Record<Tab, string> = {
-  apps: 'Apps',
-  testing: 'Testing',
-  updates: 'Updates',
-  options: 'Options',
+  apps: msg('Apps'),
+  testing: msg('Testing'),
+  updates: msg('Updates'),
+  options: msg('Options'),
 };
 
 /** The tabs that are shown: Testing only where there is something to show (an export folder or hints of the watcher). */
