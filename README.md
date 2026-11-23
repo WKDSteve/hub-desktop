@@ -96,7 +96,11 @@ it gets its own entry. Switched off, it leaves both.
 
 `install` (every way: the install line, `scripts\build-install.ps1`, a double click) makes `hub-desktop` a command
 in every new terminal (PowerShell, cmd, Git Bash): a starter in `%LOCALAPPDATA%\appkit-family\bin`, which goes on the
-PATH of your user once; `uninstall` takes it away.
+PATH of your user once; `uninstall` takes it away. It makes the commands of the **other apps that are installed
+here** too (`tasks-desktop`, `rules-desktop`, `testing-desktop`, `docmap-desktop`, `ai-desktop`; the last never on the
+workstation), so whoever installs hub-desktop has them all, also an app that was installed before it had a command.
+The apps make their own command when they are installed; a starter that is there with the same text is left as it
+is.
 
 ```
 hub-desktop                 start the hub when it does not run, and open the page
@@ -111,9 +115,28 @@ hub-desktop paths           where the program, the settings and the log are
 hub-desktop help [<cmd>]    all commands, or one
 ```
 
-These commands are those of every hub app of the family (`tasks-desktop`, `rules-desktop`, `testing-desktop` once
-they take the same appkit); `serve`, `tray`, `autostart`, `install` and `uninstall` are hub-desktop's own. Exit codes:
-0 done, 1 failed, 2 wrong arguments. `open --launch` of earlier versions still works and does what `open` does.
+These commands are those of every hub app of the family (`tasks-desktop`, `rules-desktop`, `testing-desktop`);
+`serve`, `tray`, `autostart`, `install` and `uninstall` are hub-desktop's own, and so is what looks after the whole
+family:
+
+```
+hub-desktop apps [--json]        every app of the catalog: installed (native, web), running, port, start with the
+                                 login, its command in the terminal (ok, missing, stale, foreign), and the version
+                                 of a hub that runs
+hub-desktop start --all          also start the hubs of the kit that are installed, each in the background without
+                                 a page (one that is not set up waits for its first start in its page)
+hub-desktop stop --all           also ask the hubs of the kit that run to stop
+hub-desktop cli status [--json]  the commands of the family: one per app that is installed, whether its starter is
+                                 as `install` makes it, and whether the folder is on the PATH of this terminal;
+                                 exit code 1 when something is not
+hub-desktop cli repair           make the commands of all apps that are installed and take away those of apps that
+                                 are gone (`install` does the same step)
+```
+
+A file in the folder of the starters that is not a starter (it lacks the words `appkit starter`) is never overwritten
+or removed: `cli status` says `foreign`, `cli repair` leaves it and says so. The version of an app that does not run is
+not asked (nothing is started for a table). Exit codes: 0 done, 1 failed, 2 wrong arguments. `open --launch` of
+earlier versions still works and does what `open` does.
 
 Checks before a
 change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,

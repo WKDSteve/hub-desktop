@@ -10,6 +10,7 @@ pub mod catalog;
 pub mod ciwatch;
 pub mod config;
 pub mod detect;
+pub mod family_cli;
 pub mod launch;
 pub mod login;
 pub mod machine;

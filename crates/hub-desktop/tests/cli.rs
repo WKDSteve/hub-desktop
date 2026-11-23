@@ -563,6 +563,12 @@ fn install_makes_the_command_and_uninstall_takes_it_away() {
             .env("HUB_DESKTOP_INSTALL_DIR", &bin)
             .env("HUB_DESKTOP_NO_LOGIN_SYNC", "1")
             .env("APPKIT_FAMILY_DIR", &family)
+            // No app of the machine of the person is found: `install` makes the commands of the other apps too
+            // (tests/family_cli.rs), and here there are none.
+            .env("LOCALAPPDATA", scratch.path().join("no-local"))
+            .env("PROGRAMFILES", scratch.path().join("no-program-files"))
+            .env("APPDATA", scratch.path().join("no-roaming"))
+            .env("USERPROFILE", scratch.path().join("no-home"))
             .args(args)
             .output()
             .unwrap()

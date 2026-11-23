@@ -79,13 +79,18 @@ pub fn install_options(shortcut: bool) -> InstallOptions {
     }
 }
 
-/// Copy this program to a fixed place and start the hub from there again when one was running.
+/// Copy this program to a fixed place and start the hub from there again when one was running; make the command
+/// `hub-desktop` (the kit's step), and then the commands of the other apps of the family that are installed here
+/// (`family_cli`): whoever installs hub-desktop has them all. The commands of the others are an addition: when one
+/// cannot be made, the install is done and says so.
 ///
 /// # Errors
 ///
 /// A text for the person at the terminal.
 pub async fn install(opts: InstallOptions) -> Result<String, String> {
-    appkit_hub::background::install(&APP, opts).await
+    let mut out = appkit_hub::background::install(&APP, opts).await?;
+    out.push_str(&crate::family_cli::after_install(&Env::from_process()).await);
+    Ok(out)
 }
 
 /// Take the integration of the program with the system away.
