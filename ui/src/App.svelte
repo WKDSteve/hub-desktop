@@ -263,6 +263,9 @@
       {app.updating ? t('Updating…') : t('Update all')}
     </button>
   {/if}
+  {#if app.canSignOut}
+    <button type="button" class="tool" onclick={() => void app.signOut()}>{t('Sign out')}</button>
+  {/if}
 </header>
 
 <main>

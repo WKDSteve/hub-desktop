@@ -22,6 +22,7 @@ export const DE: Record<string, string> = {
   'Filter the apps': 'Apps filtern',
   'Filter  (/)': 'Filter  (/)',
   'Look again': 'Neu suchen',
+  'Sign out': 'Abmelden',
   'Choose the folder of the clones': 'Ordner der Klone wählen',
   'Check for updates': 'Nach Updates suchen',
   'Nothing can be updated on this machine': 'Auf diesem Rechner lässt sich nichts aktualisieren',

@@ -41,6 +41,18 @@ test('the hub shows what is on the machine as tiles and the rest, quieter, below
   expect(await look('testing')).not.toBe(await look('tasks'));
 });
 
+test('the sign-out button ends the session of the tab: the page asks for a link and the token is dead', async ({ page, request, hub }) => {
+  await hub.open(page);
+  const token = await page.evaluate(() => sessionStorage.getItem('hub-desktop.session'));
+  expect(token).toMatch(/^[0-9a-f]+$/);
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByRole('heading', { name: 'Open the hub with its link' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign out' })).toHaveCount(0);
+  expect(await page.evaluate(() => sessionStorage.getItem('hub-desktop.session'))).toBeNull();
+  const dead = await request.get(new URL('/api/hub/apps', page.url()).href, { headers: { Authorization: `Bearer ${token}` } });
+  expect(dead.status()).toBe(401);
+});
+
 test('every state is a word, and the mode a click opens is a chip', async ({ page, hub }) => {
   await hub.open(page);
   await expect(tile(page, 'tasks')).toContainText('Stopped');

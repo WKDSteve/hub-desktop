@@ -150,11 +150,31 @@ export class App {
     private readonly checker: UpdateChecker | null = null,
   ) {
     // The session that was refused is gone: the page asks for a new link instead of showing stale data.
-    hub.onUnauthorized = () => {
-      safely(() => this.session.removeItem(TOKEN_KEY), undefined);
-      this.hub.setToken(null);
-      this.phase = 'unpaired';
-    };
+    hub.onUnauthorized = () => this.forgetSession();
+  }
+
+  private forgetSession(): void {
+    safely(() => this.session.removeItem(TOKEN_KEY), undefined);
+    this.hub.setToken(null);
+    this.phase = 'unpaired';
+  }
+
+  /** The web hub has no session to end. */
+  get canSignOut(): boolean {
+    return this.presence === null && this.phase !== 'starting' && this.phase !== 'unpaired';
+  }
+
+  /**
+   * Sign this tab's session out: the hub is asked to end it, and the page goes to the pairing state whatever the hub
+   * answers, also when it does not answer at all.
+   */
+  async signOut(): Promise<void> {
+    try {
+      await this.hub.logout();
+    } catch {
+      // The hub is down or has forgotten the session already: the page forgets it either way.
+    }
+    this.forgetSession();
   }
 
   /** Trade the code of the link for a session (or take the one of this tab), then read what the hub shows. */

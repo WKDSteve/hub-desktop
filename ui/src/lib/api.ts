@@ -104,6 +104,8 @@ export interface HubApi {
   setAutostart(id: string, on: boolean): Promise<void>;
   stop(id: string): Promise<StopResult>;
   rescan(): Promise<void>;
+  /** End the session of this tab at the hub: its token and its streams are dead afterwards (the web hub has none). */
+  logout(): Promise<void>;
   /** The light of each repository of the testing export (the web hub has none). */
   monitor(): Promise<MonitorReading>;
   /** The red cases of the last run of one repository of the export. */
@@ -206,5 +208,10 @@ export class Hub extends HubClient implements HubApi {
   /** Forget what the hub found: the next `apps()` looks at the machine again. */
   rescan(): Promise<void> {
     return this.post(this.route('rescan'), {});
+  }
+
+  /** `POST /api/session/logout`: the hub ends the session, so the token is dead and its streams end. */
+  logout(): Promise<void> {
+    return this.post('/api/session/logout', {});
   }
 }

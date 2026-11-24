@@ -13,6 +13,8 @@ function fakeHub(
     cases?: (path: string) => Response | Promise<Response>;
     /** The start with the login of tasks, as the machine holds it; the switch writes it. */
     login?: { on: boolean; refuse?: boolean };
+    /** `POST /api/session/logout` answers with this status (200: the session is closed). */
+    logout?: number;
   } = {},
 ) {
   const asked: { path: string; auth: string | null }[] = [];
@@ -31,6 +33,9 @@ function fakeHub(
     }
     if (headers.get('Authorization') !== `Bearer ${token}`) {
       return json(401, { error: { code: 'unauthorized', message: 'no session' } });
+    }
+    if (path === '/api/session/logout') {
+      return json(options.logout ?? 200, options.logout && options.logout !== 200 ? { error: { code: 'down', message: 'no' } } : { ok: true });
     }
     if (path === '/api/hub/hello') {
       return json(200, { instance: 'i', version: '1.2.3', engine: { ready: false, problem: null } });
@@ -306,5 +311,28 @@ describe('the red cases of the monitor', () => {
     await first;
     expect(app.openCases).toBe('second');
     expect(app.cases).toEqual(ready('second'));
+  });
+
+  it('signs out: the hub is asked, then the token is forgotten and the page asks for a link', async () => {
+    const { hub, token, asked } = fakeHub();
+    const session = memory({ 'hub-desktop.session': token });
+    const app = new App(hub, session);
+    await app.start(null);
+    expect(app.canSignOut).toBe(true);
+    await app.signOut();
+    expect(asked.some((a) => a.path === '/api/session/logout' && a.auth === `Bearer ${token}`)).toBe(true);
+    expect(app.phase).toBe('unpaired');
+    expect(app.canSignOut).toBe(false);
+    expect(session.data['hub-desktop.session']).toBeUndefined();
+  });
+
+  it('signs out in the page even when the hub does not answer', async () => {
+    const { hub, token } = fakeHub({ logout: 500 });
+    const session = memory({ 'hub-desktop.session': token });
+    const app = new App(hub, session);
+    await app.start(null);
+    await app.signOut();
+    expect(app.phase).toBe('unpaired');
+    expect(session.data['hub-desktop.session']).toBeUndefined();
   });
 });

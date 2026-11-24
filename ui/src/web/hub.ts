@@ -208,6 +208,9 @@ export class WebHub implements HubApi, Presence {
 
   async rescan(): Promise<void> {}
 
+  /** A page of a file has no session. */
+  async logout(): Promise<void> {}
+
   /** A page of a file has no export folder to read. */
   async monitor(): Promise<MonitorReading> {
     return NOT_CONFIGURED;
