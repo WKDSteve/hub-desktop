@@ -277,6 +277,7 @@
     right: 0.4rem;
     bottom: 0.4rem;
     padding: 0 0.5rem;
+    min-height: 1.5rem;
     font: inherit;
     font-size: 0.85em;
     color: var(--accent-text);
@@ -306,6 +307,8 @@
     top: 0.4rem;
     right: 0.4rem;
     padding: 0 0.4rem;
+    min-width: 1.5rem;
+    min-height: 1.5rem;
     font: inherit;
     color: var(--muted);
     background: none;
@@ -316,5 +319,12 @@
   .more:hover {
     border-color: var(--line);
     color: var(--text);
+  }
+
+  @media (pointer: coarse) {
+    .do-update,
+    .more {
+      min-height: 2.75rem;
+    }
   }
 </style>

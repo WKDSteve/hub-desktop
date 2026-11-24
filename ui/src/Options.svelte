@@ -195,6 +195,7 @@
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 0.1rem 0.75rem;
+    min-height: 1.5rem;
     cursor: pointer;
   }
   .save:hover:not(:disabled) {
@@ -203,5 +204,10 @@
   .save:disabled {
     cursor: default;
     color: var(--muted);
+  }
+  @media (pointer: coarse) {
+    .save {
+      min-height: 2.75rem;
+    }
   }
 </style>

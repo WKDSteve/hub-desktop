@@ -276,7 +276,7 @@
     </p>
   {:else if app.phase === 'error'}
     <h2>{t('The hub does not answer')}</h2>
-    <p role="alert">{app.problem}</p>
+    <p role="alert" class="problem">{app.problem}</p>
   {:else}
     <div class="tabs" role="tablist" aria-label={t('Areas of the hub')} tabindex="-1" onkeydown={onTabKey}>
       {#each shown as name (name)}
@@ -390,8 +390,12 @@
     align-items: center;
     gap: 0.4rem;
   }
+  .problem {
+    overflow-wrap: anywhere;
+  }
   .bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem 1rem;
