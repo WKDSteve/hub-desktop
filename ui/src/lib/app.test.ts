@@ -312,7 +312,9 @@ describe('the red cases of the monitor', () => {
     expect(app.openCases).toBe('second');
     expect(app.cases).toEqual(ready('second'));
   });
+});
 
+describe('signing out', () => {
   it('signs out: the hub is asked, then the token is forgotten and the page asks for a link', async () => {
     const { hub, token, asked } = fakeHub();
     const session = memory({ 'hub-desktop.session': token });
