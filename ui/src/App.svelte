@@ -239,7 +239,7 @@
   <h1 class="sr-only">Hub</h1>
   <label class="filter">
     <span class="sr-only">{t('Filter the apps')}</span>
-    <input bind:this={filterBox} type="search" placeholder={t('Filter  (/)')} aria-keyshortcuts="/" bind:value={app.filter} />
+    <input bind:this={filterBox} type="search" spellcheck="false" autocomplete="off" placeholder={t('Filter  (/)')} aria-keyshortcuts="/" bind:value={app.filter} />
   </label>
   {#if app.canRescan}
     <button type="button" class="tool" aria-keyshortcuts="r" onclick={() => void app.rescan()}>{t('Look again')}</button>
@@ -271,7 +271,7 @@
   {:else if app.phase === 'unpaired'}
     <h2>{t('Open the hub with its link')}</h2>
     <p>
-      {t('This page has no session. Run')} <code>hub-desktop open</code>
+      {t('This page has no session. Run')} <code translate="no">hub-desktop open</code>
       {t('in a terminal, or start the hub from its link, and the browser opens it paired.')}
     </p>
   {:else if app.phase === 'error'}

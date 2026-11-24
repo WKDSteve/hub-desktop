@@ -71,7 +71,7 @@
       onfocus={onfocus}
     >
       {@render icon()}
-      <span class="name">{app.name}</span>
+      <span class="name" translate="no">{app.name}</span>
       <span class="line">
         <span class="note">{t('Not checked')}</span>
         <span class="chip">{t('web')}</span>
@@ -89,7 +89,7 @@
       onfocus={onfocus}
     >
       {@render icon()}
-      <span class="name">{app.name}</span>
+      <span class="name" translate="no">{app.name}</span>
       <span class="line">
         {#if state.kind !== 'none'}
           <span class="state {state.kind}"
@@ -128,7 +128,7 @@
       onfocus={onfocus}
     >
       {@render icon()}
-      <span class="name">{app.name}</span>
+      <span class="name" translate="no">{app.name}</span>
       <span class="line"><span class="badge">{get.badge}</span></span>
       {#if get.note}<span class="file">{get.note}</span>{/if}
       {#if app.install.file}<span class="file">{app.install.file}</span>{/if}
@@ -139,7 +139,7 @@
   {:else}
     <button type="button" class="main" data-tile={app.id} tabindex={tab ? 0 : -1} aria-disabled="true" onfocus={onfocus}>
       {@render icon()}
-      <span class="name">{app.name}</span>
+      <span class="name" translate="no">{app.name}</span>
       <span class="line"><span class="badge">{get.badge}</span></span>
       {#if get.note}<span class="file">{get.note}</span>{/if}
     </button>
