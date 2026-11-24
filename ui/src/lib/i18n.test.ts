@@ -5,6 +5,7 @@ import {
   LANG_KEY,
   loadChoice,
   msg,
+  numberText,
   parseChoice,
   resolveLang,
   saveChoice,
@@ -107,5 +108,20 @@ describe('t', () => {
     };
     expect(loadChoice(blocked)).toBe('system');
     expect(() => saveChoice(blocked, 'de')).not.toThrow();
+  });
+});
+
+describe('numbers in the writing of the language', () => {
+  afterEach(() => setLang('en'));
+
+  it('a number of a sentence is grouped as the language does', () => {
+    expect(t('{n} min ago', { n: 1200 })).toBe('1,200 min ago');
+    setLang('de');
+    expect(numberText(1200)).toBe('1.200');
+    expect(fill('{n} of {m}', { n: 3, m: 1200 })).toBe('3 of 1.200');
+  });
+
+  it('a word stays as it is', () => {
+    expect(fill('{a}', { a: '1200' })).toBe('1200');
   });
 });

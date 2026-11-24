@@ -52,7 +52,7 @@
     <ul>
       {#each jobs as { app, job, label, attestation } (app.id)}
         <li data-update-item={app.id} tabindex="-1" class:focused={focus === app.id}>
-          <span class="name">{app.name}</span>
+          <span class="name" translate="no">{app.name}</span>
           <span class="state {label.kind}" role={label.kind === 'active' ? 'status' : undefined}>{label.text}</span>
           {#if job.parts.length > 0}
             <ul class="parts">
@@ -65,7 +65,7 @@
           {#if job.lines.length > 0}
             <details>
               <summary>{t('Output of {name}', { name: app.name })}</summary>
-              <pre>{job.lines.join('\n')}</pre>
+              <pre translate="no">{job.lines.join('\n')}</pre>
             </details>
           {/if}
         </li>
@@ -86,8 +86,8 @@
     <ul>
       {#each typed as { app, lines } (app.id)}
         <li>
-          <span class="name">{app.name}</span>
-          <pre>{lines.join('\n')}</pre>
+          <span class="name" translate="no">{app.name}</span>
+          <pre translate="no">{lines.join('\n')}</pre>
         </li>
       {/each}
     </ul>

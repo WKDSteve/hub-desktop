@@ -30,10 +30,26 @@ export const msg = (text: string): string => text;
 
 export type Params = Record<string, string | number>;
 
-/** Fill the `{name}` places of a sentence; a place without a value stays as it is. */
+const numberFormats = new Map<Lang, Intl.NumberFormat>();
+
+/** `n` as a person of the current language writes it (1,200 or 1.200). */
+export function numberText(n: number): string {
+  let format = numberFormats.get(current);
+  if (format === undefined) {
+    format = new Intl.NumberFormat(current);
+    numberFormats.set(current, format);
+  }
+  return format.format(n);
+}
+
+/** Fill the `{name}` places of a sentence; a place without a value stays as it is, a number is written for the language. */
 export function fill(text: string, params?: Params): string {
   if (!params) return text;
-  return text.replace(/\{(\w+)\}/g, (place: string, key: string) => (key in params ? String(params[key]) : place));
+  return text.replace(/\{(\w+)\}/g, (place: string, key: string) => {
+    if (!(key in params)) return place;
+    const value = params[key];
+    return typeof value === 'number' ? numberText(value) : String(value);
+  });
 }
 
 /** The sentence in the current language. */

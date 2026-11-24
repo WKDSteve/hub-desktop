@@ -64,7 +64,7 @@
                 <span aria-hidden="true">{LIGHTS[repo.light].mark}</span>
                 {t(LIGHTS[repo.light].word)}
               </span>
-              <span class="name">{repo.name}</span>
+              <span class="name" translate="no">{repo.name}</span>
               <span class="what">{parts(repo, monitor.local_read).join(' · ')}</span>
               {#if hasCases(repo)}
                 <button
@@ -96,15 +96,15 @@
                       {#each cases.cases as c, i (i)}
                         <li class="case" data-case={where(c)}>
                           <div class="case-head">
-                            <span class="where">{where(c)}</span>
+                            <span class="where" translate="no">{where(c)}</span>
                             <span class="status">{t(STATUS_WORDS[c.status])}{c.flaky ? t(', flaky') : ''}</span>
                           </div>
                           <div class="case-title">{title(c)}</div>
-                          {#if c.message}<pre class="text">{c.message}</pre>{/if}
+                          {#if c.message}<pre class="text" translate="no">{c.message}</pre>{/if}
                           {#if c.expected !== null || c.actual !== null}
                             <dl class="diff">
-                              {#if c.expected !== null}<dt>{t('Expected')}</dt><dd><pre class="text">{c.expected}</pre></dd>{/if}
-                              {#if c.actual !== null}<dt>{t('Actual')}</dt><dd><pre class="text">{c.actual}</pre></dd>{/if}
+                              {#if c.expected !== null}<dt>{t('Expected')}</dt><dd><pre class="text" translate="no">{c.expected}</pre></dd>{/if}
+                              {#if c.actual !== null}<dt>{t('Actual')}</dt><dd><pre class="text" translate="no">{c.actual}</pre></dd>{/if}
                             </dl>
                           {/if}
                         </li>
