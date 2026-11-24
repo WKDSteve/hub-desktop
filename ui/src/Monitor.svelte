@@ -196,6 +196,7 @@
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 0.1rem 0.5rem;
+    min-height: 1.5rem;
     cursor: pointer;
     white-space: nowrap;
   }
@@ -252,6 +253,12 @@
     .row {
       grid-template-columns: 1fr;
       gap: 0.1rem;
+    }
+  }
+
+  @media (pointer: coarse) {
+    .toggle {
+      min-height: 2.75rem;
     }
   }
 </style>
