@@ -12,6 +12,7 @@
     where,
   } from './lib/monitor';
   import { type CiView, ciLines, ciStatus } from './lib/ci';
+  import { hubText } from './lib/hubtext';
   import { t } from './lib/i18n.svelte';
 
   let {
@@ -52,7 +53,7 @@
     {#if monitor.state === 'not_configured'}
       <!-- Only the hints of the CI watcher: there is no export folder. -->
     {:else if monitor.state === 'problem'}
-      <p class="none" role="status">{t('The testing export cannot be shown: {why}.', { why: monitor.problem })}</p>
+      <p class="none" role="status">{t('The testing export cannot be shown: {why}.', { why: hubText(monitor.problem) })}</p>
     {:else}
       <p class="stamp">{stamped(monitor.generated_at)}</p>
       {#if monitor.repos.length > 0}
@@ -85,7 +86,7 @@
                   {:else if cases.state === 'not_configured'}
                     <p class="none">{t('No export folder is named.')}</p>
                   {:else if cases.state === 'problem'}
-                    <p class="none" role="status">{t('The cases cannot be shown: {why}.', { why: cases.problem })}</p>
+                    <p class="none" role="status">{t('The cases cannot be shown: {why}.', { why: hubText(cases.problem) })}</p>
                   {:else if !cases.local_read}
                     <p class="none">{t('The export was made where nothing runs: no case is recorded.')}</p>
                   {:else if cases.cases.length === 0}

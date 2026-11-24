@@ -388,6 +388,19 @@ test('the language is picked in the options, kept over a reload, and speaks Germ
   await expect(page.getByRole('tab', { name: 'Options' })).toBeVisible();
 });
 
+test('a reason the hub sends is shown in the language of the page', async ({ page, hubOn }) => {
+  const hub = await hubOn({ ...FULL, testingExport: 'broken' });
+  await hub.open(page);
+  await openTab(page, 'Options');
+  await page.getByRole('radio', { name: 'Deutsch' }).check();
+  await openTab(page, 'Testing');
+  const monitor = page.getByRole('region', { name: 'Testing' });
+  await expect(monitor).toContainText(
+    'Der Testing-Export lässt sich nicht anzeigen: der Export-Ordner enthält keine testing-export.json',
+  );
+  expect(await monitor.innerText()).not.toContain('the export folder');
+});
+
 test('without an export folder the page shows no monitor', async ({ page, hub }) => {
   await hub.open(page);
   await expect(page.getByRole('tab', { name: 'Testing' })).toHaveCount(0);

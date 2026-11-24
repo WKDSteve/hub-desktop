@@ -2,6 +2,7 @@
 // keeps what a person may want to look at as hints. `GET /api/hub/ci` tells what it is at; this file turns that
 // into the lines of the section "Testing". Only repository names, task ids and fixed words reach it.
 
+import { hubText } from './hubtext';
 import { t } from './i18n.svelte';
 
 export type CiHint =
@@ -56,7 +57,7 @@ export function hintText(hint: CiHint): string {
     case 'no_github':
       return t('{repo}: no hosted CI (its origin is not on GitHub)', { repo: hint.repo });
     case 'no_answer':
-      return t('{repo}: no usable answer ({why})', { repo: hint.repo, why: hint.why });
+      return t('{repo}: no usable answer ({why})', { repo: hint.repo, why: hubText(hint.why) });
     case 'awaits_trust':
       return t('{repo}: the runner guard turned the run away, it waits for your release (testing ci trust)', {
         repo: hint.repo,
@@ -68,7 +69,7 @@ export function hintText(hint: CiHint): string {
 export function ciLines(view: CiView): string[] {
   if (view.state !== 'ran') return [];
   return [
-    ...(view.problem ? [t('The round did not get to the tasks: {why}', { why: view.problem })] : []),
+    ...(view.problem ? [t('The round did not get to the tasks: {why}', { why: hubText(view.problem) })] : []),
     ...view.not_written.map((v) => t('{id}: the tasks command did not take ci={ci}', { id: v.id, ci: v.ci })),
     ...view.hints.map(hintText),
   ];
@@ -80,7 +81,7 @@ export function ciStatus(view: CiView, now: Date = new Date()): string | null {
     case 'none':
       return null;
     case 'off':
-      return t('The CI watcher does not run: {why}.', { why: view.why });
+      return t('The CI watcher does not run: {why}.', { why: hubText(view.why) });
     case 'waiting':
       return t('The CI watcher has not finished a round yet.');
     case 'ran': {
