@@ -179,9 +179,9 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
-      # What the build ships has a number (measured 169 kB on 2026-11-23, with the German catalog, about a tenth of room): a page that only grows
+      # What the build ships has a number (measured 180 kB on 2026-11-24, with the German catalog including the reasons of the hub and the messages of the kit, about a tenth of room): a page that only grows
       # is parsed at every start. Over it: find what grew before raising it.
-      - run: python ../tools/check-dist-size.py dist --budget 185
+      - run: python ../tools/check-dist-size.py dist --budget 200
       - run: pnpm audit --audit-level high
       # Informative only (never red): legacy web-platform patterns against the target in .mwgrc. The scanner is an
       # exact devDependency, so the policy of ui/pnpm-workspace.yaml applies to it; no telemetry.

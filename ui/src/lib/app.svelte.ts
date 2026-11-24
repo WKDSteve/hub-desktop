@@ -14,6 +14,7 @@ import {
   type UpdateJob,
 } from './api';
 import { CI_NONE, type CiView } from './ci';
+import { kitText } from './kittext';
 import { type CasesView, type MonitorReading, NOT_CONFIGURED } from './monitor';
 import { askable, differs, type UpdateChecker } from './updates';
 import { active, roundText, updatable, whyNot } from './updating';
@@ -188,7 +189,7 @@ export class App {
         this.phase = 'unpaired';
         return;
       }
-      this.problem = e instanceof Error ? e.message : String(e);
+      this.problem = e instanceof ApiError ? kitText(e.message) : e instanceof Error ? e.message : String(e);
       this.phase = 'error';
     }
   }

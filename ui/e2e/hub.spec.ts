@@ -401,6 +401,22 @@ test('a reason the hub sends is shown in the language of the page', async ({ pag
   expect(await monitor.innerText()).not.toContain('the export folder');
 });
 
+test('a refusal of the hub at the start is said in the language of the page', async ({ page, hub }) => {
+  await hub.open(page);
+  await openTab(page, 'Options');
+  await page.getByRole('radio', { name: 'Deutsch' }).check();
+  await page.route('**/api/hub/apps', (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'internal', message: 'no session could be made' } }),
+    }),
+  );
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Der Hub antwortet nicht' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'es ließ sich keine Sitzung erzeugen' })).toHaveCount(1);
+});
+
 test('without an export folder the page shows no monitor', async ({ page, hub }) => {
   await hub.open(page);
   await expect(page.getByRole('tab', { name: 'Testing' })).toHaveCount(0);
