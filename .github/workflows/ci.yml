@@ -111,6 +111,8 @@ jobs:
         run: |
           pnpm web:test
           pnpm web:build
+          # hub.html is parsed at every start from disk: measured 177 kB (23.11.2026), budget with a tenth on top.
+          python ../tools/check-dist-size.py dist-web/hub.html --budget 195
           pnpm web:e2e
       # The test sheets (TESTS/sheets, .testing.lua) at a fixed version of testing.nvim; --strict: a sheet that could
       # not run is red here. The sheet's own build finds the interface and the binary built above. Only on the
