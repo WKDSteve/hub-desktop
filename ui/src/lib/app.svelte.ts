@@ -1,6 +1,7 @@
 // What the page knows: whether it has a session, what the hub lists, which starts are on their way, and the
 // one-line message of the last click.
 
+import { signOut } from 'appkit-ui/signout';
 import type { ToastMessage } from 'appkit-ui/toast';
 import {
   ApiError,
@@ -205,12 +206,10 @@ export class App {
    * answers, also when it does not answer at all.
    */
   async signOut(): Promise<void> {
-    try {
-      await this.hub.logout();
-    } catch {
-      // The hub is down or has forgotten the session already: the page forgets it either way.
-    }
-    this.forgetSession();
+    await signOut(
+      () => this.hub.logout(),
+      () => this.forgetSession(),
+    );
   }
 
   /** Trade the code of the link for a session (or take the one of this tab), then read what the hub shows. */

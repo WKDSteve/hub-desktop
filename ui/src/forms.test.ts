@@ -30,4 +30,10 @@ describe('forms', () => {
   it('the options ask before the tab is left while a change is not saved', () => {
     expect(COMPONENTS['./Options.svelte']).toMatch(/warnBeforeUnload\(\)/);
   });
+
+  it('the form helpers are the ones of the ui kit, not a copy of the app', () => {
+    const options = COMPONENTS['./Options.svelte'];
+    expect(options).toMatch(/import \{ focusFirstInvalid \} from 'appkit-ui\/formErrors'/);
+    expect(options).toMatch(/import \{ warnBeforeUnload \} from 'appkit-ui\/unsaved'/);
+  });
 });

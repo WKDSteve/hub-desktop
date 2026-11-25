@@ -4,8 +4,8 @@
   // new start. A page of a file (the web hub) has no watcher and shows nothing.
   import { tick, untrack } from 'svelte';
   import { type CiSettings, intervalProblem } from './lib/ci';
-  import { focusFirstInvalid } from './lib/formErrors';
-  import { warnBeforeUnload } from './lib/unsaved';
+  import { focusFirstInvalid } from 'appkit-ui/formErrors';
+  import { warnBeforeUnload } from 'appkit-ui/unsaved';
   import { type Theme, THEMES } from './lib/theme';
   import { LANG_NAMES, LANGS, type LangChoice, msg, t } from './lib/i18n.svelte';
 
