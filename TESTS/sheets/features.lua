@@ -64,4 +64,9 @@ return {
     title = "The CI watcher writes the verdict of the hosted CI into finished tasks; the tray starts a waiting runner",
     docs = "README.md",
   },
+  {
+    id = "hub-desktop.sign-out",
+    title = "The bar has a Sign out button: it ends the session of the tab at the hub and the page asks for a new link",
+    docs = "README.md",
+  },
 }
