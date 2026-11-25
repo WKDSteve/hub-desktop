@@ -2,8 +2,10 @@
   // The options of the hub that a person may change on the page: the CI watcher (on or off, the minutes between two
   // of its rounds). The hub writes them into `config.json`; the watcher reads them before its next round, without a
   // new start. A page of a file (the web hub) has no watcher and shows nothing.
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { type CiSettings, intervalProblem } from './lib/ci';
+  import { focusFirstInvalid } from './lib/formErrors';
+  import { warnBeforeUnload } from './lib/unsaved';
   import { type Theme, THEMES } from './lib/theme';
   import { LANG_NAMES, LANGS, type LangChoice, msg, t } from './lib/i18n.svelte';
 
@@ -22,7 +24,10 @@
     version = '',
     langChoice = 'system',
     onLang = () => {},
+    saving = false,
   }: {
+    /** The save is on its way: the button says so and the form is busy. */
+    saving?: boolean;
     /** The look of the page, and what happens when the person picks another. */
     theme?: Theme;
     onTheme?: (theme: Theme) => void;
@@ -58,9 +63,21 @@
     settings !== null && (on !== settings.on || minutes !== settings.interval_min),
   );
 
+  let form: HTMLFormElement | undefined = $state();
+  // A change that is typed and not saved is lost with the tab: the browser asks first.
+  $effect(() => {
+    if (changed) return warnBeforeUnload();
+  });
+
+  // A wrong interval can be sent: the field says what is wrong (`aria-invalid`, the help text it points to) and the
+  // focus goes there, instead of a button that is locked for no visible reason.
   function save(event: SubmitEvent): void {
     event.preventDefault();
-    if (problem || !settings || minutes === null) return;
+    if (!settings) return;
+    if (problem || minutes === null) {
+      void tick().then(() => focusFirstInvalid(form));
+      return;
+    }
     onsave(on, minutes);
   }
 </script>
@@ -92,7 +109,7 @@
     {/each}
   </fieldset>
   {#if settings}
-    <form class="ci-options" onsubmit={save} aria-label={t('CI watcher')}>
+    <form class="ci-options" bind:this={form} novalidate onsubmit={save} aria-label={t('CI watcher')} aria-busy={saving}>
       <label class="switch">
         <input type="checkbox" bind:checked={on} />
         {t('CI watcher: write the verdict of the hosted CI into finished tasks')}
@@ -106,7 +123,7 @@
           max={settings.max}
           step="1"
           bind:value={minutes}
-          aria-invalid={problem !== null}
+          aria-invalid={problem !== null ? 'true' : undefined}
           aria-describedby="ci-interval-help"
           disabled={!on}
         />
@@ -119,7 +136,7 @@
             default: settings.default,
           })}
       </p>
-      <button type="submit" class="save" disabled={!changed || problem !== null}>{t('Save')}</button>
+      <button type="submit" class="save" disabled={!changed}>{saving ? t('Saving …') : t('Save')}</button>
     </form>
   {/if}
   <div class="group" data-about>

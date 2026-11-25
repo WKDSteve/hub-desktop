@@ -474,13 +474,22 @@ test('the options save the interval and the switch of the CI watcher into config
   await expect(minutes).toHaveValue('5');
   await expect(save).toBeDisabled();
 
-  // Outside the bounds: said at the field, nothing is sent.
+  // Outside the bounds: said at the field, nothing is sent. The button is not locked: sending says what is wrong and
+  // puts the focus on the field.
   for (const out of ['0', '61']) {
     await minutes.fill(out);
     await expect(options.locator('#ci-interval-help')).toHaveText('The interval is 1 to 60 minutes.');
     await expect(minutes).toHaveAttribute('aria-invalid', 'true');
-    await expect(save).toBeDisabled();
+    await expect(save).toBeEnabled();
+    await save.focus();
+    await save.click();
+    await expect(minutes).toBeFocused();
+    expect(hub.settings()['ci_watch_interval_min']).toBeUndefined();
   }
+  // An emptied field is wrong as well, and does not leave the page asking nothing.
+  await minutes.fill('');
+  await save.click();
+  await expect(minutes).toBeFocused();
 
   await minutes.fill('12');
   await save.click();
@@ -498,6 +507,23 @@ test('the options save the interval and the switch of the CI watcher into config
   await expect(page.getByText('The CI watcher is switched off.')).toBeVisible();
   expect(hub.settings()['ci_watch']).toBe(false);
   expect(hub.settings()['ci_watch_interval_min']).toBe(12);
+});
+
+test('the page asks before the tab is left while an option is changed and not saved', async ({ page, hub }) => {
+  await hub.open(page);
+  await openTab(page, 'Options');
+  const asks = () =>
+    page.evaluate(() => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+  const minutes = page.getByRole('form', { name: 'CI watcher' }).getByRole('spinbutton', { name: 'Minutes between two rounds' });
+  expect(await asks()).toBe(false);
+  await minutes.fill('7');
+  expect(await asks()).toBe(true);
+  await minutes.fill('5');
+  expect(await asks()).toBe(false);
 });
 
 test('a red row opens its red cases by file and line, as text, and closes them again', async ({ page, hubOn }) => {

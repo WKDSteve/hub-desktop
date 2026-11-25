@@ -37,6 +37,8 @@ export interface Clock {
   sleep(ms: number): Promise<void>;
   /** Run `fn` after `ms`; the returned function cancels it. */
   later(ms: number, fn: () => void): () => void;
+  /** Whether the tab is shown; a clock that does not know says nothing, and the page counts as shown. */
+  visible?(): boolean;
 }
 
 export const realClock: Clock = {
@@ -46,7 +48,12 @@ export const realClock: Clock = {
     const timer = setTimeout(fn, ms);
     return () => clearTimeout(timer);
   },
+  visible: () => typeof document === 'undefined' || document.visibilityState === 'visible',
 };
+
+/** The look at the list while the tab is shown, and the wait of a hidden tab between two checks of `visible`. */
+const WATCH_BEAT_MS = 1000;
+const HIDDEN_BEAT_MS = 30_000;
 
 /** The viewer's word about an app of the web hub (the page cannot look at the machine). */
 export interface Presence {
@@ -139,6 +146,35 @@ export class App {
   /** The apps whose updates the running watch reports on when it ends. */
   #round = new Set<string>();
   #cancelToast: (() => void) | null = null;
+  /** The waits of watch loops that stand in a hidden tab (`tabShown` wakes them). */
+  #hiddenWaits = new Set<() => void>();
+  /** The options of the CI watcher are being saved. */
+  savingCi = $state(false);
+
+  /**
+   * The pause before the next look of a watch loop (an update, a stop, a start): a look each second while the tab is
+   * shown, because the person watches the tile and the hub names no end of these by an event. A hidden tab asks
+   * nothing: it waits (a long sleep, cut short by `tabShown`) and then looks once, so the tile is right the moment
+   * the person is back. A loop ends by its own limit (`START_LIMIT_MS`) or the end of its job, hidden or not.
+   */
+  async #beat(): Promise<void> {
+    await this.clock.sleep(WATCH_BEAT_MS);
+    while (this.clock.visible && !this.clock.visible() && this.phase === 'ready') {
+      await new Promise<void>((resolve) => {
+        const wake = (): void => {
+          this.#hiddenWaits.delete(wake);
+          resolve();
+        };
+        this.#hiddenWaits.add(wake);
+        void this.clock.sleep(HIDDEN_BEAT_MS).then(wake);
+      });
+    }
+  }
+
+  /** The tab is shown again (`visibilitychange`): every watch loop that waited looks at once. */
+  tabShown(): void {
+    for (const wake of [...this.#hiddenWaits]) wake();
+  }
 
   constructor(
     private readonly hub: HubApi,
@@ -309,7 +345,7 @@ export class App {
     for (const u of Object.values(this.updates)) if (active(u.job)) round.add(u.id);
     try {
       while (this.phase === 'ready') {
-        await this.clock.sleep(1000);
+        await this.#beat();
         await this.#readUpdates();
         const now = Object.values(this.updates).filter((u) => active(u.job));
         for (const u of now) round.add(u.id);
@@ -525,7 +561,7 @@ export class App {
   async watchStop(id: string): Promise<void> {
     const began = this.clock.now();
     while (this.clock.now() - began < START_LIMIT_MS) {
-      await this.clock.sleep(1000);
+      await this.#beat();
       await this.reload(false);
       if (this.apps.find((a) => a.id === id)?.run !== 'running') break;
     }
@@ -550,6 +586,7 @@ export class App {
 
   /** Switch the CI watcher and set its interval; it counts from its next round, without a new start of the hub. */
   async saveCi(on: boolean, intervalMin: number): Promise<void> {
+    this.savingCi = true;
     try {
       await this.hub.saveCi(on, intervalMin);
       await this.reload();
@@ -559,6 +596,8 @@ export class App {
       );
     } catch {
       this.say('error', t('The options of the CI watcher could not be saved.'));
+    } finally {
+      this.savingCi = false;
     }
   }
 
@@ -583,7 +622,7 @@ export class App {
     const began = this.clock.now();
     this.starting = { ...this.starting, [id]: began };
     while (this.starting[id] === began) {
-      await this.clock.sleep(1000);
+      await this.#beat();
       await this.reload(false);
       const app = this.apps.find((a) => a.id === id);
       const waited = this.clock.now() - began;

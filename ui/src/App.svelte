@@ -153,10 +153,16 @@
     // Fresh when the page is looked at again (concept 5.1), and now and then while it stays in front.
     const refresh = () => void app.reload();
     const onVisible = () => {
-      if (document.visibilityState === 'visible') refresh();
+      if (document.visibilityState === 'visible') {
+        refresh();
+        // A watch loop that waited in the hidden tab looks now.
+        app.tabShown();
+      }
     };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', onVisible);
+    // Every 10 s, and only while the tab is shown: an app that was started or stopped outside of the hub appears without
+    // a click, and the hub sends no event for it. A hidden tab asks nothing; `onVisible` looks once when it is back.
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') refresh();
     }, 10_000);
@@ -366,6 +372,7 @@
         <Options
           settings={settingsOf(app.ci)}
           onsave={(on, minutes) => void app.saveCi(on, minutes)}
+          saving={app.savingCi}
           {theme}
           onTheme={setTheme}
           {langChoice}

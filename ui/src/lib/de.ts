@@ -134,6 +134,7 @@ export const DE: Record<string, string> = {
   '{min} to {max}, default {default}. It counts from the next round.':
     '{min} bis {max}, Standard {default}. Es gilt ab der nächsten Runde.',
   Save: 'Speichern',
+  'Saving …': 'Speichert …',
   About: 'Über',
   Hub: 'Hub',
 
