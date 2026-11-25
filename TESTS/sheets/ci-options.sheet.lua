@@ -36,9 +36,10 @@ return {
       note = "0 is out of bounds",
     },
     { expect = "document.querySelector('#ci-interval-help').textContent.includes('1 to 60 minutes')" },
+    { click = "[data-options] button.save" },
     {
-      expect = "document.querySelector('[data-options] button.save').disabled",
-      note = "a bad value is never sent",
+      expect = "document.activeElement === document.querySelector('[data-options] input[type=number]')",
+      note = "a bad value is never sent: sending puts the focus on the field",
     },
     { shot = "bad-value-light" },
 
