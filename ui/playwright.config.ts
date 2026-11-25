@@ -1,3 +1,6 @@
+// Playwright's settings for the end-to-end tests of the hub's page (`e2e/`): one worker, system Chrome, a hub of its own
+// per test.
+
 import { defineConfig } from '@playwright/test';
 
 // The system's Chrome is used (`channel`), so nothing is downloaded. Every test starts a hub of its own against a

@@ -1,3 +1,5 @@
+// The entry of the hub's page: reads the pairing code, builds the app state and mounts the Svelte app.
+
 import { mount } from 'svelte';
 import { t } from './lib/i18n.svelte';
 import './app.css';

@@ -1,3 +1,5 @@
+// The Vite and Vitest settings: two builds (the hub's page, and the single-file web variant) and the unit-test setup.
+
 import { readFileSync } from 'node:fs';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vitest/config';

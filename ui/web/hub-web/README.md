@@ -30,4 +30,4 @@ git clone https://github.com/WKDSteve/tasks-web.git
 
 ## License
 
-[MIT](LICENSE). The page bundles the Svelte runtime; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+[MIT](https://github.com/WKDSteve/hub-web/blob/main/LICENSE). The page bundles the Svelte runtime; see [THIRD-PARTY-NOTICES.md](https://github.com/WKDSteve/hub-web/blob/main/THIRD-PARTY-NOTICES.md).
