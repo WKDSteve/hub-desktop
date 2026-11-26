@@ -6,6 +6,7 @@ __pycache__/
 *.local.*
 # Local Claude files stay local; the shared .claude/settings.json is committed.
 .claude/*
+!/.claude/hooks/
 !.claude/settings.json
 
 # What a test sheet leaves to look at
