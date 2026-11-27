@@ -166,7 +166,8 @@ jobs:
         run: sh scripts/test-install.sh "target/release/$PROGRAM"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: rolling-${{ matrix.name }}
+          # Named by the commit: a re-run whose prepare picks a newer commit never takes up a file of the older one.
+          name: rolling-${{ matrix.name }}-${{ needs.prepare.outputs.short }}
           path: dist/${{ matrix.asset }}
           if-no-files-found: error
           retention-days: 1
@@ -175,6 +176,10 @@ jobs:
   # move last, so only then does it name this commit.
   publish:
     needs: [prepare, build]
+    # Also when the experimental leg was cancelled (a timeout, a lost hosted runner), which can make the
+    # result of build `cancelled`; a failed required leg makes it `failure` and stops here. The step
+    # "Which files are there" requires the Windows and the Linux file either way.
+    if: ${{ !cancelled() && needs.prepare.outputs.current == 'true' && needs.build.result != 'failure' }}
     runs-on: [self-hosted, windows]
     timeout-minutes: 15
     permissions:
@@ -190,7 +195,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: rolling-*
+          pattern: rolling-*-${{ needs.prepare.outputs.short }}
           path: dist
           merge-multiple: true
       # Windows and Linux are required; the archive of the experimental macOS leg goes up when it is there.

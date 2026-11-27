@@ -235,6 +235,8 @@ jobs:
           persist-credentials: false
       - run: python -m unittest discover -s tools -p "test_*.py"
       - run: python tools/check-control-chars.py
+      # The guards of the Linux and macOS legs of the rolling build (tools/check-rolling-workflow.py).
+      - run: python tools/check-rolling-workflow.py
       # No process is started by hand: only through appkit_core::child and appkit_hub::launch (rule RS-08, the same
       # check runs in appkit). tools/process-starts.allow names the one exception, the test program fake-app.
       - run: python tools/check-process-starts.py
