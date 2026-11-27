@@ -44,7 +44,8 @@ again to update, `uninstall.sh` of the same page removes it. Linux is built on x
 build (Apple silicon) is experimental: the CI builds, installs and uninstalls it, but it has not been started on a
 real Mac. There is no icon in the notification area there: `start` runs the hub in the background.
 
-Linux and macOS builds are on the rolling build only so far; a versioned release has the Windows file.
+A versioned release carries the Linux and macOS archives too, from the next tag on (`v0.1.0` has the Windows file
+only); its `install.sh` installs exactly that release.
 
 ## What it does
 

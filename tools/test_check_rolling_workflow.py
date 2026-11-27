@@ -64,5 +64,42 @@ class CheckRollingWorkflow(unittest.TestCase):
         self.assertEqual(check.problems("jobs:\n  build:\n    x: 1\n"), ["no publish job"])
 
 
+RELEASE = """jobs:
+  build:
+    runs-on: [self-hosted, windows]
+  build-unix:
+    steps:
+      - run: |
+          tar -tzf "dist/$name" > stage.list
+          grep -qx "./hub-desktop" stage.list
+  publish:
+    needs: [check, build, build-unix]
+    if: ${{ !cancelled() && needs.check.result == 'success' && needs.build.result == 'success' && needs.build-unix.result != 'failure' }}
+"""
+
+
+class CheckReleaseWorkflow(unittest.TestCase):
+    def test_the_good_release_passes(self):
+        self.assertEqual(check.release_problems(RELEASE), [])
+
+    def test_the_real_release_passes(self):
+        text = (HERE.parent / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        self.assertEqual(check.release_problems(text), [])
+
+    def test_release_publish_without_a_guard(self):
+        found = check.release_problems(RELEASE.replace("!cancelled() && ", ""))
+        self.assertIn("publish: its if lacks !cancelled()", found)
+        found = check.release_problems(RELEASE.replace(" && needs.build-unix.result != 'failure'", ""))
+        self.assertIn("publish: its if lacks needs.build-unix.result != 'failure'", found)
+
+    def test_release_without_unix_legs(self):
+        text = RELEASE.replace("  build-unix:\n", "  other:\n")
+        self.assertIn("no build-unix job", check.release_problems(text))
+
+    def test_release_with_a_piped_listing(self):
+        piped = RELEASE.replace('tar -tzf "dist/$name" > stage.list', 'tar -tzf "dist/$name" | grep -q x')
+        self.assertTrue(any("piped into grep -q" in p for p in check.release_problems(piped)))
+
+
 if __name__ == "__main__":
     unittest.main()

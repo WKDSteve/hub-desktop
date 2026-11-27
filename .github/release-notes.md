@@ -1,4 +1,4 @@
-hub-desktop as a program for Windows: the hub that starts the other apps, with its interface inside it.
+hub-desktop as a program for Windows, Linux and macOS: the hub that starts the other apps, with its interface inside it.
 
 ## Install
 
@@ -30,13 +30,25 @@ with `uninstall.ps1` (your settings stay unless you add `-PurgeSettings`; your v
 script comes from the release-kit of appkit, the uninstall script from `scripts/` at this tag; both are listed in
 `SHA256SUMS`.
 
+## Install on Linux and macOS
+
+For the current user, without root; the script takes the archive of your system, checks it against
+`SHA256SUMS` and hands over to `hub-desktop install`:
+
+```
+curl -fsSL https://github.com/WKDSteve/hub-desktop/releases/download/{tag}/install.sh | sh
+```
+
+`uninstall.sh` of this release removes it again. The macOS build (Apple silicon) is experimental: built,
+installed and uninstalled by the CI, not started on a real Mac; when its build failed, this release has no macOS file.
+
 ## Files
 
 | System | Archive |
 | ------ | ------- |
 | Windows (x86-64) | `hub-desktop-<version>-x86_64-pc-windows-msvc.zip` |
-
-There is no Linux or macOS build any more: the release is made on the author's Windows machine.
+| Linux (x86-64) | `hub-desktop-<version>-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS (Apple silicon, experimental) | `hub-desktop-<version>-aarch64-apple-darwin.tar.gz` |
 
 `SHA256SUMS` lists the checksum of every file (archive and scripts):
 
