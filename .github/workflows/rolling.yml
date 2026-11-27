@@ -142,7 +142,7 @@ jobs:
             *"(build ${SHORT})") ;;
             *) echo "::error::the program says '$got', it should name the build ${SHORT}"; exit 1 ;;
           esac
-          rm -rf dist stage
+          rm -rf dist stage stage.list
           mkdir -p dist
           case "$ASSET" in
             *.tar.gz)
@@ -151,7 +151,10 @@ jobs:
               cp "target/release/$PROGRAM" LICENSE stage/
               chmod 755 "stage/$PROGRAM"
               COPYFILE_DISABLE=1 tar -czf "dist/$ASSET" -C stage .
-              tar -tzf "dist/$ASSET" | grep -qx "./$PROGRAM"
+              # Listed into a file, not piped: `grep -q` stops at the first match, GNU tar then dies writing the
+              # next entry (SIGPIPE) and pipefail turns that into a failure.
+              tar -tzf "dist/$ASSET" > stage.list
+              grep -qx "./$PROGRAM" stage.list
               ;;
             *) cp "target/release/$PROGRAM" "dist/$ASSET" ;;
           esac
