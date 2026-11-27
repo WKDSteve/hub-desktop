@@ -1,6 +1,16 @@
 **This is not a release.** It is the newest state of `main`, rebuilt after every green CI run and replaced each time. Nothing here is signed or tested by hand; use a release for anything that matters.
 
-**Windows only** (x86-64). The files of this page are public: no GitHub login is needed.
+**Windows** (x86-64), **Linux** (x86-64) and **macOS** (Apple silicon, experimental: built and installed by the CI, never started on a real Mac). The files of this page are public: no GitHub login is needed.
+
+**Linux and macOS:** install for the current user (no root; the script picks the archive of your system, checks it against `SHA256SUMS` and runs `hub-desktop install`):
+
+```
+curl -fsSL https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.sh | sh
+```
+
+Run it again to update. `uninstall.sh` removes it again. The archives are `hub-desktop-x86_64-unknown-linux-gnu.tar.gz` and `hub-desktop-aarch64-apple-darwin.tar.gz` (the program and its LICENSE); on macOS an archive downloaded by a browser is quarantined, the script's own download is not.
+
+**Windows:**
 
 **Install it with the script** (for the current user, no administrator rights, and no SmartScreen stop: the script downloads the program itself and checks it against `SHA256SUMS`). In your own PowerShell (not elevated):
 

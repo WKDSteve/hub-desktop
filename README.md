@@ -30,6 +30,20 @@ This puts a link **hub-desktop** in the Start menu (one click starts the hub and
 `-InstallArgs '--shortcut'`, on the desktop too; the desktop link can be added later with `hub-desktop install --shortcut`. `hub-desktop install` ends with the whole call that starts the hub (`start it: "...\bin\hub-desktop.exe" start --open`) and says whether that folder is on `PATH` (install does not add it there). `hub-desktop uninstall` and `uninstall.ps1` take the links away again. The hub
 needs none of the other apps to run.
 
+## Install (Linux, macOS)
+
+For the current user, without root:
+
+```
+curl -fsSL https://github.com/WKDSteve/hub-desktop/releases/download/latest/install.sh | sh
+```
+
+The script takes the archive of your system from the `latest` pre-release (`hub-desktop-x86_64-unknown-linux-gnu.tar.gz`
+or `hub-desktop-aarch64-apple-darwin.tar.gz`), checks it against `SHA256SUMS` and runs `hub-desktop install`; run it
+again to update, `uninstall.sh` of the same page removes it. Linux is built on x86-64 (ubuntu 22.04); the macOS
+build (Apple silicon) is experimental: the CI builds, installs and uninstalls it, but it has not been started on a
+real Mac. There is no icon in the notification area there: `start` runs the hub in the background.
+
 ## What it does
 
 - **Installed apps** appear as tiles: `tasks-desktop`, `rules-desktop`, `testing-desktop`, `docmap-desktop`,
