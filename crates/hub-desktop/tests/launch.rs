@@ -765,3 +765,19 @@ async fn an_app_the_overlay_hides_cannot_be_started_or_stopped() {
     tokio::time::sleep(Duration::from_millis(300)).await;
     assert!(starts_of(&program).is_empty());
 }
+
+/// The fake program is a GUI-subsystem program on Windows: a start with a console of its own (ai-desktop, a server
+/// in a console) opens no console window during the tests. On a self-hosted runner such a window took the focus.
+#[cfg(windows)]
+#[test]
+fn the_fake_program_opens_no_console_window() {
+    let bytes = std::fs::read(fake_app_exe()).unwrap();
+    // DOS header: the PE header's offset at 0x3c; then "PE\0\0" (4), the COFF header (20), and the subsystem at
+    // offset 68 of the optional header (the same for PE32 and PE32+).
+    let pe = u32::from_le_bytes(bytes[0x3c..0x40].try_into().unwrap()) as usize;
+    assert_eq!(&bytes[pe..pe + 4], b"PE\0\0");
+    let at = pe + 4 + 20 + 68;
+    let subsystem = u16::from_le_bytes(bytes[at..at + 2].try_into().unwrap());
+    // 2 = IMAGE_SUBSYSTEM_WINDOWS_GUI, 3 = IMAGE_SUBSYSTEM_WINDOWS_CUI (a console of its own)
+    assert_eq!(subsystem, 2, "fake-app must be a GUI-subsystem program");
+}

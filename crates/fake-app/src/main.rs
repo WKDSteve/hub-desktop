@@ -9,6 +9,11 @@
 //! `--env <name>` prints `<name>=<value>` (or `<unset>`), `--mark <file>` writes that file, `--spawn <file>` starts
 //! itself in the background (without waiting) to write `<file>` after 1.5 s: a process the step left behind.
 //! Every other argument is only logged.
+//!
+//! On Windows it is a GUI-subsystem program: started with a console of its own (`Window::NewConsole`, what the hub
+//! does for a server like ai-desktop) it still gets none, so the tests open no console window. On a self-hosted
+//! runner such a window took the focus on every run. Its stdout and stderr still reach a pipe the caller hands it.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::io::Write;
 
