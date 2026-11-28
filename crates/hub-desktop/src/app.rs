@@ -718,5 +718,30 @@ mod tests {
                 assert!(got.is_err(), "{bad:?}");
             }
         }
+        // 0: a free port (the sheets, runs side by side).
+        let env = Env::from_pairs([("HUB_DESKTOP_PORT", "0")]);
+        let got = wanted_port(
+            &ServeOptions::default(),
+            &config::FileConfig::default(),
+            &env,
+        );
+        assert_eq!(got, Ok(0));
+    }
+
+    #[test]
+    fn the_web_port_is_the_default_a_usable_one_or_zero() {
+        assert_eq!(
+            wanted_web_port(&Env::from_pairs([("X", "1")])),
+            Ok(WEB_PORT)
+        );
+        for (text, want) in [
+            ("0", Some(0)),
+            ("47392", Some(47392)),
+            ("80", None),
+            ("x", None),
+        ] {
+            let got = wanted_web_port(&Env::from_pairs([("HUB_DESKTOP_WEB_PORT", text)]));
+            assert_eq!(got.ok(), want, "{text:?}");
+        }
     }
 }
