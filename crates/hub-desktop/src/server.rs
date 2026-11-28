@@ -169,7 +169,8 @@ async fn ci(State(core): State<Arc<Core<HubRuntime>>>) -> Json<Value> {
     let schedule = tokio::task::spawn_blocking(move || prefs.ci_schedule().0)
         .await
         .unwrap_or_default();
-    let mut view = core.rt().ci().view();
+    // The switch counts at once, not only when the loop reads it on its next tick.
+    let mut view = core.rt().ci().view_for(schedule);
     if let Some(doc) = view.as_object_mut() {
         doc.insert(
             "settings".to_owned(),

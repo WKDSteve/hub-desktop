@@ -759,24 +759,42 @@ impl Watcher {
     /// words.
     #[must_use]
     pub fn view(&self) -> Value {
-        match self.seen() {
-            Seen::Off(why) => serde_json::json!({ "state": "off", "why": why }),
-            Seen::Waiting => serde_json::json!({ "state": "waiting" }),
-            Seen::Ran { at, round } => {
-                let verdicts = |m: &BTreeMap<String, Verdict>| -> Vec<Value> {
-                    m.iter()
-                        .map(|(id, v)| serde_json::json!({ "id": id, "ci": v.word() }))
-                        .collect()
-                };
-                serde_json::json!({
-                    "state": "ran",
-                    "at": at,
-                    "written": verdicts(&round.written),
-                    "not_written": verdicts(&round.not_written),
-                    "hints": round.hints.iter().map(hint_view).collect::<Vec<_>>(),
-                    "problem": round.problem,
-                })
-            }
+        view_of(self.seen())
+    }
+
+    /// [`Self::view`] with the settings just read from `config.json`: a switch the loop has not looked at yet
+    /// (it does every [`TICK`]) is shown at once. Off: it does not run, by the settings; on again after being off by
+    /// the settings: it waits for its next round. A watcher that does not run for another reason stays so.
+    #[must_use]
+    pub fn view_for(&self, schedule: Schedule) -> Value {
+        let seen = match self.seen() {
+            Seen::Off(why) if why == OFF_BY_SETTINGS && schedule.on => Seen::Waiting,
+            Seen::Off(why) => Seen::Off(why),
+            Seen::Waiting | Seen::Ran { .. } if !schedule.on => Seen::Off(OFF_BY_SETTINGS),
+            seen => seen,
+        };
+        view_of(seen)
+    }
+}
+
+fn view_of(seen: Seen) -> Value {
+    match seen {
+        Seen::Off(why) => serde_json::json!({ "state": "off", "why": why }),
+        Seen::Waiting => serde_json::json!({ "state": "waiting" }),
+        Seen::Ran { at, round } => {
+            let verdicts = |m: &BTreeMap<String, Verdict>| -> Vec<Value> {
+                m.iter()
+                    .map(|(id, v)| serde_json::json!({ "id": id, "ci": v.word() }))
+                    .collect()
+            };
+            serde_json::json!({
+                "state": "ran",
+                "at": at,
+                "written": verdicts(&round.written),
+                "not_written": verdicts(&round.not_written),
+                "hints": round.hints.iter().map(hint_view).collect::<Vec<_>>(),
+                "problem": round.problem,
+            })
         }
     }
 }
@@ -1107,6 +1125,35 @@ mod tests {
             }),
             serde_json::json!({"on": false, "interval_min": 7, "min": 1, "max": 60, "default": 5})
         );
+    }
+
+    #[test]
+    fn the_view_for_the_settings_shows_a_switch_before_the_loop_reads_it() {
+        let (on, off) = (
+            Schedule {
+                on: true,
+                interval_min: 5,
+            },
+            Schedule {
+                on: false,
+                interval_min: 5,
+            },
+        );
+        let by_settings = Watcher::off(OFF_BY_SETTINGS);
+        assert_eq!(
+            by_settings.view_for(on),
+            serde_json::json!({"state": "waiting"})
+        );
+        assert_eq!(by_settings.view_for(off), by_settings.view());
+        let waiting = Watcher::default();
+        assert_eq!(
+            waiting.view_for(off),
+            serde_json::json!({"state": "off", "why": OFF_BY_SETTINGS})
+        );
+        assert_eq!(waiting.view_for(on), waiting.view());
+        let other = Watcher::off(OFF_IN_TESTS);
+        assert_eq!(other.view_for(on), other.view());
+        assert_eq!(other.view_for(off), other.view());
     }
 
     #[test]

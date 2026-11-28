@@ -322,6 +322,100 @@ async fn the_options_of_the_ci_watcher_are_saved_into_the_settings_file() {
     server.shutdown().await;
 }
 
+/// After a save the state of `ci` follows the switch at once: the loop of the watcher reads the settings only on its
+/// next tick (30 s), and the page reads `ci` right after the save. Off: "off" by the settings, not the last round;
+/// on again: waiting for the next round. A watcher that does not run for another reason keeps its reason.
+#[tokio::test]
+async fn the_state_of_the_ci_watcher_follows_a_saved_switch_at_once() {
+    use hub_desktop::ciwatch::{Round, Seen, Watcher, OFF_BY_SETTINGS};
+    let machine = appkit_scratch::Scratch::new("hub-ci-switch");
+    let dir = machine.path().to_path_buf();
+    let (server, control) = start_with(
+        Monitor::new(None),
+        Watcher::new(Seen::Ran {
+            at: 7,
+            round: Round::default(),
+        }),
+        Some(dir.clone()),
+    )
+    .await;
+    let session = session_for(&server, &control).await;
+    let host = format!("127.0.0.1:{}", server.addr().port());
+    let origin = format!("http://{host}");
+    let save = |body: &'static str| {
+        let (host, origin, session) = (host.clone(), origin.clone(), session.clone());
+        let addr = server.addr();
+        async move {
+            let length = body.len().to_string();
+            send(
+                addr,
+                request(
+                    "POST",
+                    &hub_desktop::IDENTITY.route("ci/settings"),
+                    &[
+                        ("Host", host.as_str()),
+                        ("Origin", origin.as_str()),
+                        ("Authorization", session.as_str()),
+                        ("Content-Type", "application/json"),
+                        ("Content-Length", length.as_str()),
+                    ],
+                    body.as_bytes(),
+                ),
+            )
+            .await
+            .status
+        }
+    };
+    let state = || {
+        let (host, session) = (host.clone(), session.clone());
+        let addr = server.addr();
+        async move {
+            let doc = send(
+                addr,
+                request(
+                    "GET",
+                    &hub_desktop::IDENTITY.route("ci"),
+                    &[("Host", host.as_str()), ("Authorization", session.as_str())],
+                    b"",
+                ),
+            )
+            .await
+            .json();
+            (doc["state"].clone(), doc["why"].clone())
+        }
+    };
+
+    assert_eq!(state().await.0, "ran");
+    assert_eq!(save(r#"{"on":false,"interval_min":5}"#).await, 200);
+    assert_eq!(state().await, ("off".into(), OFF_BY_SETTINGS.into()));
+    assert_eq!(save(r#"{"on":true,"interval_min":5}"#).await, 200);
+    assert_eq!(state().await.0, "ran", "the last round until the next");
+    server.shutdown().await;
+
+    // A watcher that does not run (here: a test) keeps its reason, whatever the switch says.
+    let (server, control) = start_with(
+        Monitor::new(None),
+        Watcher::off("a test"),
+        Some(dir.clone()),
+    )
+    .await;
+    let session = session_for(&server, &control).await;
+    let host = format!("127.0.0.1:{}", server.addr().port());
+    let doc = send(
+        server.addr(),
+        request(
+            "GET",
+            &hub_desktop::IDENTITY.route("ci"),
+            &[("Host", host.as_str()), ("Authorization", session.as_str())],
+            b"",
+        ),
+    )
+    .await
+    .json();
+    assert_eq!(doc["why"], "a test");
+    server.shutdown().await;
+}
+
 /// The route reads the folder the hub was given, and a folder that cannot be read answers with a sentence,
 /// not with a path.
 #[tokio::test]
