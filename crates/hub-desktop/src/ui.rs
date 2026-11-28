@@ -10,6 +10,12 @@ use axum::body::Bytes;
 
 include!(concat!(env!("OUT_DIR"), "/ui_embedded.rs"));
 
+/// What a test of the page says when the binary was built without `ui/dist` (it then carries the placeholder page of
+/// the kit), and the step that builds it.
+pub const NOT_BUILT: &str =
+    "the interface is not built (no ui/dist when the crate was built): run \
+     `cd ui && pnpm install --frozen-lockfile && pnpm build`, then build and test again";
+
 #[derive(Clone)]
 pub struct UiFile {
     pub bytes: Bytes,

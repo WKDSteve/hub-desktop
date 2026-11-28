@@ -198,6 +198,13 @@ fn the_page_and_hello_come_from_the_program_and_link_prints_a_link_that_pairs() 
             .await
             .unwrap();
         assert_eq!(page.status, 200);
+        // Without `ui/dist` at build time the binary carries the placeholder page of the kit: say so, not only that
+        // a string is missing (a fresh checkout; the CI builds the page first).
+        assert!(
+            hub_desktop::ui::UiFiles::embedded().has_index(),
+            "{}",
+            hub_desktop::ui::NOT_BUILT
+        );
         assert!(page.body.contains("<title>Hub</title>"), "{}", page.body);
     });
 }

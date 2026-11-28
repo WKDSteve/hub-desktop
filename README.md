@@ -161,7 +161,9 @@ earlier versions still works and does what `open` does.
 
 Checks before a
 change: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`,
-`cargo test --workspace --locked` and, in `ui/`, `pnpm check && pnpm test`.
+`cargo test --workspace --locked` and, in `ui/`, `pnpm check && pnpm test`. The binary embeds the built page
+(`ui/dist`): in a fresh checkout run `cd ui && pnpm install --frozen-lockfile && pnpm build` before `cargo test`,
+otherwise the build warns and a test of the page says the interface is not built.
 
 From a checkout, `.\scripts\build-install.ps1` builds and installs for the current user (`-BuildOnly` only builds);
 `.\scripts\uninstall.ps1` takes the installation away again (`-PurgeSettings` also removes the settings). Both refuse to

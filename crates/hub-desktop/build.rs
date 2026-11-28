@@ -85,6 +85,12 @@ fn main() {
         }
     }
     entries.sort();
+    if entries.is_empty() {
+        println!(
+            "cargo:warning=ui/dist is missing: the hub shows a placeholder page \
+             (cd ui && pnpm install --frozen-lockfile && pnpm build)"
+        );
+    }
 
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     let mut body = String::new();
