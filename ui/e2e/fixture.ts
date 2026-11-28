@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test as base, expect, type Page } from '@playwright/test';
+import { ending, stopProgram, type Ending } from './ending';
 import { completeLines } from './lines';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -182,17 +183,13 @@ export async function startHub(
   }
   const root = mkdtempSync(join(tmpdir(), 'hub-desktop-e2e-'));
   const at = (below: string) => join(root, ...below.split('/'));
-  let child: ChildProcess | undefined;
+  let child: { process: ChildProcess; end: Ending } | undefined;
   const ai: Server[] = [];
   const tasksHub: Server[] = [];
   let stopping: Promise<void> | undefined;
   const stop = (): Promise<void> =>
     (stopping ??= (async () => {
-      const running = child;
-      if (running && running.exitCode === null) {
-        running.kill();
-        await new Promise<void>((r) => (running.exitCode !== null ? r() : running.once('exit', () => r())));
-      }
+      if (child) await stopProgram(child.process, child.end);
       await Promise.all([...ai, ...tasksHub].map((s) => new Promise<void>((r) => s.close(() => r()))));
       if (await removeDir(root, 20)) unfinished.delete(root);
     })());
@@ -325,13 +322,14 @@ export async function startHub(
     writeFileSync(at('cfg-hub/config.json'), JSON.stringify({ testing_export: dir }));
   }
   const running: ChildProcess = spawn(HUB, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
-  child = running;
+  const end = ending(running);
+  child = { process: running, end };
   let out = '';
   running.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()));
   running.stderr?.on('data', (chunk: Buffer) => (out += chunk.toString()));
   const started = Date.now();
   while (!/#pair=[0-9a-f]+/.test(out)) {
-    if (Date.now() - started > 20_000 || running.exitCode !== null) {
+    if (Date.now() - started > 20_000 || end.done()) {
       running.kill();
       throw new Error(`the hub did not start:\n${out}`);
     }
