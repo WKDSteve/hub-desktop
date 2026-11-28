@@ -6,7 +6,8 @@ import { defineConfig } from 'vitest/config';
 
 const test = {
   environment: 'node' as const,
-  include: ['src/**/*.test.ts'],
+  // e2e/*.test.ts: the helpers of the browser tests (Playwright runs only e2e/*.spec.ts).
+  include: ['src/**/*.test.ts', 'e2e/**/*.test.ts'],
 };
 
 // `vite build --mode web` builds the page of the web variant: one module with everything in it, out of `dist-web/`.

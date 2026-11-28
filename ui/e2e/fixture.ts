@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test as base, expect, type Page } from '@playwright/test';
+import { completeLines } from './lines';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '..', '..');
@@ -294,14 +295,12 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
     starts: (app) => {
       const log = at(PROGRAMS[app] + exe).replace(/[^\\/]+$/, 'fake-app.log');
       if (!existsSync(log)) return [];
-      return readFileSync(log, 'utf8')
-        .split('\n')
-        .filter((l) => l !== '')
-        .map((l) => (JSON.parse(l) as { argv: string[] }).argv);
+      // The fake program may be writing its line right now: only finished lines count.
+      return completeLines(readFileSync(log, 'utf8')).map((l) => (JSON.parse(l) as { argv: string[] }).argv);
     },
     opened: () => {
       const log = at('browser.log');
-      return existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter((l) => l !== '') : [];
+      return existsSync(log) ? completeLines(readFileSync(log, 'utf8')) : [];
     },
     settings: () => {
       const file = at('cfg-hub/config.json');
