@@ -5,7 +5,7 @@
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer as createHttp, type Server } from 'node:http';
 import { createServer as createNet } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -56,12 +56,19 @@ function git(cwd: string, ...args: string[]): void {
   if (run.status !== 0) throw new Error(`git ${args.join(' ')}: ${run.stderr}`);
 }
 
-/** An origin with two commits of tasks-web, and a clone at `dir` that has only the first. */
-function cloneBehind(root: string, dir: string, dirty: boolean): void {
-  const origin = join(root, 'origin', 'tasks-web.git');
-  const work = join(root, 'origin', 'work');
+/**
+ * The git part of a machine with a clone of tasks-web, made once per worker in `template`: an origin with two commits
+ * (`origin/tasks-web.git`) and a clone that has only the first (`Repos/tasks-web`). The clone names its origin by a
+ * relative path, so a copy of both into the folder of a test is a clone of that test's origin. Twelve git processes,
+ * which on Windows at low priority next to other load took most of the 30 s of a test; a copy starts none.
+ */
+function makeGitTemplate(template: string): void {
+  const origin = join(template, 'origin', 'tasks-web.git');
+  const work = join(template, 'origin', 'work');
+  const dir = join(template, 'Repos', 'tasks-web');
   mkdirSync(origin, { recursive: true });
   mkdirSync(work, { recursive: true });
+  mkdirSync(dirname(dir), { recursive: true });
   git(origin, 'init', '--bare', '-b', 'main');
   git(work, 'init', '-b', 'main');
   // As in tasks-web: the page and its sums are bytes, never turned into CRLF by a checkout (`core.autocrlf` of
@@ -77,9 +84,37 @@ function cloneBehind(root: string, dir: string, dirty: boolean): void {
   };
   commit(PAGE_BEFORE, 'before');
   git(dirname(dir), 'clone', '-q', origin, dir);
+  // The hub runs git in the clone: from there the origin of a copy is two folders up.
+  git(dir, 'remote', 'set-url', 'origin', '../../origin/tasks-web.git');
   commit(PAGE_AFTER, 'after');
+}
+
+/** The origin and the clone of the template in `root` (files only, no process); `dirty`: the person changed the page. */
+function cloneBehind(template: string, root: string, dirty: boolean): void {
+  cpSync(join(template, 'origin', 'tasks-web.git'), join(root, 'origin', 'tasks-web.git'), { recursive: true });
+  const dir = join(root, 'Repos', 'tasks-web');
+  cpSync(join(template, 'Repos', 'tasks-web'), dir, { recursive: true });
   if (dirty) writeFileSync(join(dir, 'tasks.html'), PAGE_BEFORE + '<!-- a change of the person -->\n');
 }
+
+/** Remove a folder of a test; the files of a program that just ended may be held for a moment. True: it is gone. */
+async function removeDir(dir: string, tries: number): Promise<boolean> {
+  for (let i = 0; i < tries; i++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return true;
+    } catch {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+  return false;
+}
+
+/**
+ * The machines of this worker that are not cleaned up yet, by folder, with their teardown. A test that runs out of
+ * time may end before its teardown is done (or before `startHub` returned it): the worker cleans up what is left.
+ */
+const unfinished = new Map<string, () => Promise<void>>();
 
 export const FULL: Machine = {
   tasks: { native: true, web: false, vault: true },
@@ -132,13 +167,37 @@ function listen(server: Server, port: number): Promise<void> {
   });
 }
 
-/** Starts a hub on a machine and returns it with its teardown. */
-export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () => Promise<void> }> {
+/**
+ * Starts a hub on a machine and returns it with its teardown. `gitTemplate`: the folder of `makeGitTemplate`, for a
+ * machine with a clone of tasks-web. `register` gets the teardown at once, before anything that may take long, so a
+ * test that runs out of time while the hub starts still cleans up.
+ */
+export async function startHub(
+  machine: Machine,
+  gitTemplate?: string,
+  register?: (stop: () => Promise<void>) => void,
+): Promise<{ hub: Hub; stop: () => Promise<void> }> {
   for (const file of [HUB, FAKE]) {
     if (!existsSync(file)) throw new Error(`${file} is missing: run \`cargo build --workspace\` first`);
   }
   const root = mkdtempSync(join(tmpdir(), 'hub-desktop-e2e-'));
   const at = (below: string) => join(root, ...below.split('/'));
+  let child: ChildProcess | undefined;
+  const ai: Server[] = [];
+  const tasksHub: Server[] = [];
+  let stopping: Promise<void> | undefined;
+  const stop = (): Promise<void> =>
+    (stopping ??= (async () => {
+      const running = child;
+      if (running && running.exitCode === null) {
+        running.kill();
+        await new Promise<void>((r) => (running.exitCode !== null ? r() : running.once('exit', () => r())));
+      }
+      await Promise.all([...ai, ...tasksHub].map((s) => new Promise<void>((r) => s.close(() => r()))));
+      if (await removeDir(root, 20)) unfinished.delete(root);
+    })());
+  unfinished.set(root, stop);
+  register?.(stop);
   const install = (below: string) => {
     const file = at(below + exe);
     mkdirSync(dirname(file), { recursive: true });
@@ -151,8 +210,8 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
 
   if (machine.tasks.native) install(PROGRAMS.tasks);
   if (machine.tasksWebClone) {
-    mkdirSync(at('Repos'), { recursive: true });
-    cloneBehind(root, at('Repos/tasks-web'), machine.tasksWebClone === 'dirty');
+    if (gitTemplate === undefined) throw new Error('a machine with a clone needs the git template of the worker');
+    cloneBehind(gitTemplate, root, machine.tasksWebClone === 'dirty');
   } else if (machine.tasks.web) page('Repos/tasks-web/tasks.html');
   if (machine.rules) install(PROGRAMS.rules);
   if (machine.docmap) install(PROGRAMS.docmap);
@@ -160,7 +219,6 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
   mkdirSync(at('Repos'), { recursive: true });
   mkdirSync(at('vault'), { recursive: true });
 
-  const ai: Server[] = [];
   const aiPort = await freePort();
   if (machine.ai === 'running' || machine.ai === 'busy') {
     const body =
@@ -175,7 +233,6 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
     ai.push(server);
   }
 
-  const tasksHub: Server[] = [];
   if (machine.tasksRunning) {
     const tasksPort = await freePort();
     const server = createHttp((_req, res) => {
@@ -267,14 +324,15 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
     }
     writeFileSync(at('cfg-hub/config.json'), JSON.stringify({ testing_export: dir }));
   }
-  const child: ChildProcess = spawn(HUB, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const running: ChildProcess = spawn(HUB, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  child = running;
   let out = '';
-  child.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()));
-  child.stderr?.on('data', (chunk: Buffer) => (out += chunk.toString()));
+  running.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()));
+  running.stderr?.on('data', (chunk: Buffer) => (out += chunk.toString()));
   const started = Date.now();
   while (!/#pair=[0-9a-f]+/.test(out)) {
-    if (Date.now() - started > 20_000 || child.exitCode !== null) {
-      child.kill();
+    if (Date.now() - started > 20_000 || running.exitCode !== null) {
+      running.kill();
       throw new Error(`the hub did not start:\n${out}`);
     }
     await new Promise((r) => setTimeout(r, 50));
@@ -313,20 +371,6 @@ export async function startHub(machine: Machine): Promise<{ hub: Hub; stop: () =
     },
   };
 
-  const stop = async () => {
-    child.kill();
-    await new Promise<void>((r) => (child.exitCode !== null ? r() : child.once('exit', () => r())));
-    await Promise.all([...ai, ...tasksHub].map((s) => new Promise<void>((r) => s.close(() => r()))));
-    // The files of the fake programs may be held for a moment after the process ended.
-    for (let i = 0; i < 20; i++) {
-      try {
-        rmSync(root, { recursive: true, force: true });
-        break;
-      } catch {
-        await new Promise((r) => setTimeout(r, 200));
-      }
-    }
-  };
   return { hub, stop };
 }
 
@@ -337,12 +381,31 @@ interface Fixtures {
   hubOn: (machine: Machine) => Promise<Hub>;
 }
 
-export const test = base.extend<Fixtures>({
-  hubOn: async ({}, use) => {
+interface WorkerFixtures {
+  /** The git template of this worker (`makeGitTemplate`); at its end it also cleans up what a test left. */
+  gitTemplate: string;
+}
+
+export const test = base.extend<Fixtures, WorkerFixtures>({
+  gitTemplate: [
+    async ({}, use) => {
+      const dir = mkdtempSync(join(tmpdir(), 'hub-desktop-e2e-git-'));
+      makeGitTemplate(dir);
+      await use(dir);
+      // What a test that ran out of time left: its hub, its servers, its folder.
+      for (const [root, stop] of [...unfinished]) {
+        await stop();
+        if (unfinished.has(root) && (await removeDir(root, 50))) unfinished.delete(root);
+      }
+      await removeDir(dir, 50);
+    },
+    // Its own time, once per worker: not taken from the first test.
+    { scope: 'worker', timeout: 120_000 },
+  ],
+  hubOn: async ({ gitTemplate }, use) => {
     const stops: (() => Promise<void>)[] = [];
     await use(async (machine) => {
-      const made = await startHub(machine);
-      stops.push(made.stop);
+      const made = await startHub(machine, gitTemplate, (stop) => stops.push(stop));
       return made.hub;
     });
     for (const stop of stops) await stop();
