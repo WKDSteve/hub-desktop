@@ -59,6 +59,12 @@ pub const ASK_TIMEOUT: Duration = Duration::from_secs(90);
 pub const MAX_ANSWER: usize = 8 * 1024 * 1024;
 /// Who writes the verdict, as the task's history names it.
 pub const BY: &str = "hub-desktop";
+/// At most this many runs of single commits (`ci remote --sha=`, asked when the head is red) in one round; the commits
+/// over it stay pending and are asked for in a later round.
+pub const OWN_ASKS_PER_ROUND: usize = 8;
+/// An answer about the run of a single commit that is no verdict yet (no run of its own, still running, turned away by
+/// the runner guard) is asked again only after this many rounds. Green and red are kept while the commit is watched.
+pub const OWN_KEEP_ROUNDS: u32 = 3;
 
 /// One program call: an argv in a folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -523,8 +529,140 @@ enum Head {
     Unknown,
 }
 
-/// One round: read, judge, write (see the module).
+/// What the watcher knows from earlier rounds about the runs of single commits (asked when the head of their
+/// repository is red), by repository and commit. The loop keeps it from round to round; a commit no task waits for any
+/// more is forgotten.
+#[derive(Debug, Default)]
+pub struct OwnRuns {
+    known: BTreeMap<(String, String), OwnAnswer>,
+}
+
+#[derive(Debug, Clone)]
+struct OwnAnswer {
+    state: CommitState,
+    hint: Option<Hint>,
+    /// Rounds left before an answer that is no verdict is asked again; a verdict (green, red) is never asked again.
+    rounds_left: Option<u32>,
+}
+
+/// The runs of single commits within one round: each `(repository, commit)` asked once, and at most
+/// [`OWN_ASKS_PER_ROUND`] asked.
+struct OwnAsks<'a> {
+    memory: &'a mut OwnRuns,
+    this_round: BTreeMap<(String, String), OwnAnswer>,
+    asked: usize,
+}
+
+impl OwnAsks<'_> {
+    fn state(
+        &mut self,
+        ask: &dyn Ask,
+        programs: &Programs,
+        repo: &str,
+        sha: &str,
+        hints: &mut BTreeSet<Hint>,
+    ) -> CommitState {
+        let key = (repo.to_owned(), sha.to_owned());
+        let answer = if let Some(seen) = self.this_round.get(&key) {
+            seen.clone()
+        } else {
+            let kept = match self.memory.known.get_mut(&key) {
+                Some(kept) if kept.rounds_left.is_none() => Some(kept.clone()),
+                Some(kept) if kept.rounds_left.is_some_and(|n| n > 0) => {
+                    kept.rounds_left = kept.rounds_left.map(|n| n - 1);
+                    Some(kept.clone())
+                }
+                _ => None,
+            };
+            let answer = match kept {
+                Some(kept) => kept,
+                None if self.asked < OWN_ASKS_PER_ROUND => {
+                    self.asked += 1;
+                    let answer = ask_own(ask, programs, repo, sha);
+                    self.memory.known.insert(key.clone(), answer.clone());
+                    answer
+                }
+                // Over the bound: pending, asked for in a later round.
+                None => OwnAnswer {
+                    state: CommitState::Pending,
+                    hint: None,
+                    rounds_left: Some(0),
+                },
+            };
+            self.this_round.insert(key, answer.clone());
+            answer
+        };
+        if let Some(hint) = answer.hint {
+            hints.insert(hint);
+        }
+        answer.state
+    }
+
+    /// The end of the round: what no task waits for any more is forgotten.
+    fn end(self) {
+        let this_round = self.this_round;
+        self.memory
+            .known
+            .retain(|key, _| this_round.contains_key(key));
+    }
+}
+
+/// The run of the commit itself (`ci remote --sha=`), asked now.
+fn ask_own(ask: &dyn Ask, programs: &Programs, repo: &str, sha: &str) -> OwnAnswer {
+    let dir = programs.repos.join(repo);
+    let own = ask
+        .ask(&programs.remote_of(&dir, sha), ASK_TIMEOUT)
+        .map_err(|_| "testing did not start")
+        .and_then(|a| parse_remote(&a.stdout));
+    let mut hints = BTreeSet::new();
+    let state = match own {
+        // Only a document of the very commit counts, never the head of origin/main by mistake.
+        Ok(own) if sha.len() >= 7 && own.sha.starts_with(sha) => match own.overall {
+            State::Success => CommitState::Green,
+            State::Red => own_verdict(&own, repo, &mut hints),
+            State::Waiting | State::Open | State::NoGithub => CommitState::Pending,
+        },
+        _ => {
+            hints.insert(Hint::NoAnswer {
+                repo: repo.to_owned(),
+                why: "testing gave no run of the commit itself",
+            });
+            CommitState::Pending
+        }
+    };
+    OwnAnswer {
+        state,
+        hint: hints.into_iter().next(),
+        rounds_left: (state == CommitState::Pending).then_some(OWN_KEEP_ROUNDS),
+    }
+}
+
+/// One round: read, judge, write (see the module), with nothing known from earlier rounds.
 pub fn round(ask: &dyn Ask, programs: &Programs, now: SystemTime) -> Round {
+    round_with(ask, programs, now, &mut OwnRuns::default())
+}
+
+/// One round, with what earlier rounds learned about the runs of single commits (`memory`, updated).
+pub fn round_with(
+    ask: &dyn Ask,
+    programs: &Programs,
+    now: SystemTime,
+    memory: &mut OwnRuns,
+) -> Round {
+    let mut own = OwnAsks {
+        memory,
+        this_round: BTreeMap::new(),
+        asked: 0,
+    };
+    let out = round_inner(ask, programs, now, &mut own);
+    // A round that could not look at the tasks keeps what was known.
+    if out.problem.is_none() {
+        own.end();
+    }
+    out
+}
+
+fn round_inner(ask: &dyn Ask, programs: &Programs, now: SystemTime, own: &mut OwnAsks) -> Round {
     let mut out = Round::default();
     // Which finished tasks wait for a verdict (or are red): one quick call, mostly with an empty answer.
     let listed = match ask.ask(
@@ -583,7 +721,7 @@ pub fn round(ask: &dyn Ask, programs: &Programs, now: SystemTime) -> Round {
                 .entry(repo.clone())
                 .or_insert_with(|| ask_head(ask, programs, repo, now, &mut out.hints));
             states.push(match head {
-                Head::Known(remote) => judge(ask, programs, repo, sha, remote, &mut out.hints),
+                Head::Known(remote) => judge(ask, programs, repo, sha, remote, own, &mut out.hints),
                 Head::Unknown => CommitState::Pending,
             });
         }
@@ -861,6 +999,8 @@ pub async fn watch(
     }
     tokio::time::sleep(first).await;
     let mut last: Option<tokio::time::Instant> = None;
+    // What the rounds learned about the runs of single commits, from one round to the next.
+    let mut memory = OwnRuns::default();
     loop {
         let schedule = settings();
         if !schedule.on {
@@ -882,13 +1022,23 @@ pub async fn watch(
                 *seen = Seen::Waiting;
             }
             let (a, p) = (std::sync::Arc::clone(&ask), programs.clone());
-            let done =
-                tokio::task::spawn_blocking(move || round(a.as_ref(), &p, SystemTime::now()))
-                    .await
-                    .unwrap_or_else(|_| Round {
-                        problem: Some("the round broke off"),
-                        ..Round::default()
-                    });
+            let mut kept = std::mem::take(&mut memory);
+            let done = tokio::task::spawn_blocking(move || {
+                let done = round_with(a.as_ref(), &p, SystemTime::now(), &mut kept);
+                (done, kept)
+            })
+            .await
+            .map_or_else(
+                // A round that broke off took what was known with it: the next one asks again.
+                |_| Round {
+                    problem: Some("the round broke off"),
+                    ..Round::default()
+                },
+                |(done, kept)| {
+                    memory = kept;
+                    done
+                },
+            );
             last = Some(tokio::time::Instant::now());
             let at = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -967,6 +1117,7 @@ fn judge(
     repo: &str,
     sha: &str,
     remote: &Remote,
+    own: &mut OwnAsks,
     hints: &mut BTreeSet<Hint>,
 ) -> CommitState {
     let dir = programs.repos.join(repo);
@@ -999,27 +1150,8 @@ fn judge(
         // Red is the commit's own run only. A head that is red and is not the commit says nothing against it: the
         // commit's own run is asked for. A run the runner guard turned away is no verdict (a hint, pending).
         State::Red if head_is_commit => own_verdict(remote, repo, hints),
-        State::Red => {
-            let own = ask
-                .ask(&programs.remote_of(&dir, sha), ASK_TIMEOUT)
-                .map_err(|_| "testing did not start")
-                .and_then(|a| parse_remote(&a.stdout));
-            match own {
-                // Only a document of the very commit counts, never the head of origin/main by mistake.
-                Ok(own) if sha.len() >= 7 && own.sha.starts_with(sha) => match own.overall {
-                    State::Success => CommitState::Green,
-                    State::Red => own_verdict(&own, repo, hints),
-                    State::Waiting | State::Open | State::NoGithub => CommitState::Pending,
-                },
-                _ => {
-                    hints.insert(Hint::NoAnswer {
-                        repo: repo.to_owned(),
-                        why: "testing gave no run of the commit itself",
-                    });
-                    CommitState::Pending
-                }
-            }
-        }
+        // Asked once per round and commit, at most `OWN_ASKS_PER_ROUND` in a round; no verdict yet: kept for a few.
+        State::Red => own.state(ask, programs, repo, sha, hints),
         State::Waiting | State::Open | State::NoGithub => CommitState::Pending,
     }
 }

@@ -767,3 +767,90 @@ async fn a_watcher_switched_off_says_so_before_its_first_wait_ends() {
     task.abort();
     assert!(fake.calls().is_empty());
 }
+
+/// Ten finished tasks wait, each for a commit of its own that the red head contains; two more tasks share one of
+/// those commits. The commits have no run of their own yet.
+fn many_waiting() -> (World, Vec<&'static str>) {
+    let shas: Vec<&'static str> = (1..=10u32)
+        .map(|n| &*Box::leak(format!("{n:02x}{}", "d".repeat(38)).into_boxed_str()))
+        .collect();
+    let commits: Vec<String> = shas.iter().map(|s| format!("demo@{}", &s[..12])).collect();
+    let ids: Vec<String> = (1..=10).map(|n| format!("demo/task-{n}")).collect();
+    let mut items: Vec<(&str, &str, &[&str])> = Vec::new();
+    let lists: Vec<[&str; 1]> = commits.iter().map(|c| [c.as_str()]).collect();
+    for (id, list) in ids.iter().zip(&lists) {
+        items.push((id.as_str(), "pending", list.as_slice()));
+    }
+    items.push(("demo/shares-1", "pending", lists[0].as_slice()));
+    items.push(("demo/shares-2", "pending", lists[1].as_slice()));
+    let mut w = world(&items, "failure");
+    w.contained = shas.clone();
+    (w, shas)
+}
+
+/// The `--sha=` of each call for the run of a single commit.
+fn own_asks(fake: &Fake) -> Vec<String> {
+    fake.calls()
+        .into_iter()
+        .filter_map(|c| {
+            c.iter()
+                .find_map(|a| a.strip_prefix("--sha=").map(str::to_owned))
+        })
+        .collect()
+}
+
+#[test]
+fn a_red_head_asks_for_each_commit_once_and_at_most_the_bound_in_a_round() {
+    let place = place();
+    let (w, _) = many_waiting();
+    let fake = Fake::new(w);
+    let round = ciwatch::round(&fake, &place.programs, now());
+    assert!(round.written.is_empty());
+    let asked = own_asks(&fake);
+    assert_eq!(asked.len(), ciwatch::OWN_ASKS_PER_ROUND, "{asked:?}");
+    let mut once = asked.clone();
+    once.sort();
+    once.dedup();
+    assert_eq!(once.len(), asked.len(), "a commit asked twice: {asked:?}");
+}
+
+#[test]
+fn an_answer_that_is_no_verdict_is_kept_for_some_rounds_and_a_verdict_while_it_is_watched() {
+    let place = place();
+    let (mut w, shas) = many_waiting();
+    // The first commit's own run was red: that task is red, and the commit is not asked about again.
+    w.own = vec![(shas[0], remote_run(shas[0], "failure", None))];
+    let mut memory = ciwatch::OwnRuns::default();
+
+    let fake = Fake::new(w.clone());
+    let first = ciwatch::round_with(&fake, &place.programs, now(), &mut memory);
+    assert_eq!(first.written.get("demo/task-1"), Some(&Verdict::Red));
+    let first_asked = own_asks(&fake);
+    assert_eq!(first_asked.len(), ciwatch::OWN_ASKS_PER_ROUND);
+
+    // The next round asks only for the commits the first did not get to.
+    let mut w2 = w.clone();
+    w2.finished = w2.finished.replace(
+        r#""ci":"pending","commits":["demo@01dddddddddd"#,
+        r#""ci":"red","commits":["demo@01dddddddddd"#,
+    );
+    let fake = Fake::new(w2.clone());
+    ciwatch::round_with(&fake, &place.programs, now(), &mut memory);
+    let second_asked = own_asks(&fake);
+    assert_eq!(
+        second_asked.len(),
+        10 - ciwatch::OWN_ASKS_PER_ROUND,
+        "{second_asked:?}"
+    );
+    assert!(second_asked.iter().all(|s| !first_asked.contains(s)));
+
+    // After the rounds an answer without a verdict is kept, it is asked again; the red one never.
+    let mut later = Vec::new();
+    for _ in 0..ciwatch::OWN_KEEP_ROUNDS {
+        let fake = Fake::new(w2.clone());
+        ciwatch::round_with(&fake, &place.programs, now(), &mut memory);
+        later.extend(own_asks(&fake));
+    }
+    assert!(!later.is_empty(), "asked again after the rounds");
+    assert!(!later.contains(&shas[0][..12].to_owned()), "{later:?}");
+}

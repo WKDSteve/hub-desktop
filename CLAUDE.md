@@ -233,7 +233,9 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   bis alle IDs gefunden sind (`commits`), je Repo `testing ci remote --json <$REPOS_DIR/repo>`, je Commit
   `git cat-file -e <kopf>^{commit}` und `git merge-base --is-ancestor`. Grün: im Kopf enthalten und `success` (auch
   ein späterer Lauf); rot: nur der eigene Lauf des Commits (Kopf = Commit) `failure`/`rejected`, ein späterer roter
-  Push sagt nichts gegen einen älteren Commit; alles andere pending. `queued`/`waiting_runner` über 30 min ist ein Hinweis, nie rot.
+  Push sagt nichts gegen einen älteren Commit; alles andere pending. Bei rotem Kopf fragt eine Runde den eigenen Lauf
+  (`--sha=`) je `(repo, sha)` höchstens einmal und höchstens `OWN_ASKS_PER_ROUND` (8) Mal; „kein eigener Lauf“, „läuft“,
+  „Freigabe fehlt“ merkt sie `OWN_KEEP_ROUNDS` (3) Runden, grün/rot solange der Commit beobachtet wird (`OwnRuns`). `queued`/`waiting_runner` über 30 min ist ein Hinweis, nie rot.
   Repos mit `land`: der Push-Lauf auf `main` hat keine Legs (`already-verified`), die Systeme stehen im Lauf des
   Prüf-Branchs `ci/**`; deshalb zählt allein `overall` von `testing ci remote --json` (das rechnet es), nie der rohe
   Lauf des Kopfs.
