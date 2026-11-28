@@ -172,13 +172,54 @@ pub fn load_file(dir: &Path) -> Result<FileConfig, ConfigError> {
     appkit_hub::config::load_file(dir)
 }
 
-/// Write `config.json` into `dir` in one step.
+/// Load `config.json` from `dir`, let `change` change it and write it, all under the lock of the kit
+/// (`config.json.lock`). An app that edits `start_with_hub` (`appkit_hub::loginstate`) takes the same lock, so
+/// neither write loses the other's change. A `change` that fails writes nothing.
 ///
 /// # Errors
 ///
-/// The reason, as text.
-pub fn save_file(dir: &Path, cfg: &FileConfig) -> Result<(), String> {
-    appkit_hub::config::save_file(dir, cfg)
+/// The reason, as text: the lock, the file, or what `change` said.
+pub fn update_file(
+    dir: &Path,
+    change: impl FnOnce(&mut FileConfig) -> Result<(), String>,
+) -> Result<(), String> {
+    appkit_hub::config::update_file(dir, change)
+}
+
+/// What an app does when it edits `start_with_hub` (`appkit_hub::loginstate`): under the lock of the kit it reads
+/// `config.json`, and writes it back with `id` on the list. While it holds the lock, `hub` runs in another thread
+/// and is given time to write; it is joined after the app has written. A write of `hub` that does not take the
+/// lock is then overwritten by the app's, a write that does comes after it.
+#[cfg(test)]
+pub(crate) fn an_app_adds_to_the_list_while(
+    dir: &Path,
+    id: &str,
+    hub: impl FnOnce() + Send + 'static,
+) {
+    use serde_json::{Map, Value};
+    let mut running = None;
+    appkit_hub::config::locked(dir, || {
+        let path = dir.join("config.json");
+        let mut doc: Map<String, Value> = match std::fs::read_to_string(&path) {
+            Ok(text) => serde_json::from_str(&text).map_err(|e| e.to_string())?,
+            Err(_) => Map::new(),
+        };
+        running = Some(std::thread::spawn(hub));
+        // Ample for a load and a save that do not wait for the lock.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        doc.entry("start_with_hub")
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .ok_or("start_with_hub is not a list")?
+            .push(Value::String(id.to_owned()));
+        let text = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
+        std::fs::write(&path, text).map_err(|e| e.to_string())
+    })
+    .expect("the app's edit");
+    running
+        .expect("the hub ran")
+        .join()
+        .expect("the hub's write");
 }
 
 #[cfg(test)]

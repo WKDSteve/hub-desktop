@@ -143,12 +143,14 @@ impl Prefs {
             .lock()
             .map_err(|_| PrefsError::Failed("the settings are locked".to_owned()))?;
         if let Some(dir) = &self.dir {
-            let mut file = config::load_file(dir).map_err(|e| PrefsError::Failed(e.to_string()))?;
-            file.app.ci_watch = (!schedule.on).then_some(false);
-            file.app.ci_watch_interval_min = (schedule.interval_min
-                != ciwatch::INTERVAL_DEFAULT_MIN)
-                .then_some(schedule.interval_min);
-            config::save_file(dir, &file).map_err(PrefsError::Failed)?;
+            config::update_file(dir, |file| {
+                file.app.ci_watch = (!schedule.on).then_some(false);
+                file.app.ci_watch_interval_min = (schedule.interval_min
+                    != ciwatch::INTERVAL_DEFAULT_MIN)
+                    .then_some(schedule.interval_min);
+                Ok(())
+            })
+            .map_err(PrefsError::Failed)?;
         } else if let Ok(mut held) = self.ci.lock() {
             *held = schedule;
         }
@@ -174,23 +176,78 @@ impl Prefs {
             .lock()
             .map_err(|_| PrefsError::Failed("the settings are locked".to_owned()))?;
         if let Some(dir) = &self.dir {
-            let mut file = config::load_file(dir).map_err(|e| PrefsError::Failed(e.to_string()))?;
-            match mode {
-                Some(mode) => {
-                    file.app.tiles.insert(
-                        entry.id.to_owned(),
-                        TileSettings {
-                            mode: Some(config::mode_word(mode).to_owned()),
-                        },
-                    );
+            config::update_file(dir, |file| {
+                match mode {
+                    Some(mode) => {
+                        file.app.tiles.insert(
+                            entry.id.to_owned(),
+                            TileSettings {
+                                mode: Some(config::mode_word(mode).to_owned()),
+                            },
+                        );
+                    }
+                    None => {
+                        file.app.tiles.remove(entry.id);
+                    }
                 }
-                None => {
-                    file.app.tiles.remove(entry.id);
-                }
-            }
-            config::save_file(dir, &file).map_err(PrefsError::Failed)?;
+                Ok(())
+            })
+            .map_err(PrefsError::Failed)?;
         }
         self.detector.set_mode(entry.id, mode);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use appkit_scratch::Scratch;
+
+    use super::*;
+    use crate::config::Env;
+
+    fn prefs_in(dir: &std::path::Path) -> Prefs {
+        let detector = Arc::new(Detector::new(
+            Env::from_pairs([("APPDATA", "C:/none")]),
+            None,
+        ));
+        Prefs::new(Some(dir.to_owned()), detector)
+    }
+
+    #[test]
+    fn the_ci_settings_and_an_app_editing_the_list_lose_nothing_of_each_other() {
+        let dir = Scratch::new("hub-prefs-ci-race");
+        let path = dir.path().to_owned();
+        let hub = path.clone();
+        config::an_app_adds_to_the_list_while(&path, "tasks", move || {
+            prefs_in(&hub)
+                .set_ci(Schedule {
+                    on: false,
+                    interval_min: 7,
+                })
+                .expect("set_ci");
+        });
+        let file = config::load_file(&path).unwrap();
+        assert_eq!(file.app.start_with_hub, ["tasks"]);
+        assert_eq!(file.app.ci_watch, Some(false));
+        assert_eq!(file.app.ci_watch_interval_min, Some(7));
+    }
+
+    #[test]
+    fn the_mode_of_a_tile_and_an_app_editing_the_list_lose_nothing_of_each_other() {
+        let dir = Scratch::new("hub-prefs-mode-race");
+        let path = dir.path().to_owned();
+        let hub = path.clone();
+        config::an_app_adds_to_the_list_while(&path, "rules", move || {
+            prefs_in(&hub)
+                .set_mode("tasks", Some(Mode::Web))
+                .expect("set_mode");
+        });
+        let file = config::load_file(&path).unwrap();
+        assert_eq!(file.app.start_with_hub, ["rules"]);
+        assert_eq!(
+            file.app.tiles.get("tasks").and_then(|t| t.mode.as_deref()),
+            Some("web")
+        );
     }
 }

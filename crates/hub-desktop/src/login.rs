@@ -98,6 +98,7 @@ impl LoginEntries for SystemLogin {
 /// A text for the person at the terminal: the value of hub-desktop could not be written or removed, or
 /// the settings could not be read or written.
 pub fn autostart(dir: &Path, what: Autostart, login: &dyn LoginEntries) -> Result<String, String> {
+    // Read first: a file that cannot be read changes nothing at the login.
     let mut file = config::load_file(dir).map_err(|e| e.to_string())?;
     let mut out = login.own(what)?;
     match what {
@@ -111,16 +112,20 @@ pub fn autostart(dir: &Path, what: Autostart, login: &dyn LoginEntries) -> Resul
                 if login.of(identity) != Some(true) {
                     continue;
                 }
-                if !file.app.start_with_hub.iter().any(|known| known == id) {
-                    file.app.start_with_hub.push(id.to_owned());
-                }
                 taken.push((id, identity));
             }
             if !taken.is_empty() {
                 // The list first: a value that cannot be removed then starts a hub twice, never none.
-                std::fs::create_dir_all(dir)
-                    .map_err(|e| format!("cannot create the config folder: {e}"))?;
-                config::save_file(dir, &file)?;
+                // Read again under the lock: an app may have changed the list since.
+                config::update_file(dir, |now| {
+                    for (id, _) in &taken {
+                        if !now.app.start_with_hub.iter().any(|known| known == *id) {
+                            now.app.start_with_hub.push((*id).to_owned());
+                        }
+                    }
+                    file = now.clone();
+                    Ok(())
+                })?;
             }
             for (id, identity) in taken {
                 match login.remove(identity) {
@@ -264,6 +269,20 @@ mod tests {
             *login.calls.borrow(),
             ["own On", "remove tasks-desktop", "remove rules-desktop"]
         );
+    }
+
+    #[test]
+    fn on_while_an_app_edits_the_list_loses_neither_change() {
+        let dir = Scratch::new("hub-login-race");
+        let path = dir.path().to_owned();
+        let hub = path.clone();
+        config::an_app_adds_to_the_list_while(&path, "testing", move || {
+            let login = FakeLogin::with(&["tasks-desktop"]);
+            autostart(&hub, Autostart::On, &login).expect("autostart on");
+        });
+        let mut ids = list(&path);
+        ids.sort();
+        assert_eq!(ids, ["tasks", "testing"]);
     }
 
     #[test]

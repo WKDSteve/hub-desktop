@@ -73,6 +73,9 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   aussagekräftig, so in der CI). Ohne Argument (Link, Doppelklick) startet er den Hub im Hintergrund (`hub.log`) und
   öffnet den Browser gepairt, wie `start --open`; ein Debug-Build (eigene Konsole) läuft im Vordergrund. Ein laufender
   Hub wird nicht ein zweites Mal gestartet. PowerShell wartet in Skripten auf das Fenster-Programm, am Prompt nicht.
+- `config.json` schreibt der Hub nur über `config::update_file` (Laden, Ändern, Schreiben unter der Sperre
+  `config.json.lock` des Kits), nie `load_file` und danach `save_file`: Apps ändern `start_with_hub` in derselben
+  Datei (`appkit_hub::loginstate`). Test: `config::an_app_adds_to_the_list_while`.
 - Neue Route: in `server::routes` **und** in `DATA_ROUTES`, sonst probiert die Matrix sie nie. Jede Route unter `/api/`
   braucht eine Sitzung, bis sie bewusst geöffnet wird (nur `hello` ist offen).
 - Der Start anderer Apps nur per argv über `appkit_hub::launch::spawn`, Programmpfade nur aus der Erkennung, nie aus
