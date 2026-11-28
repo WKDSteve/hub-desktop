@@ -53,11 +53,12 @@ fn wanted_port(opts: &ServeOptions, file: &config::FileConfig, env: &Env) -> Res
     let port_var = crate::IDENTITY.var("PORT");
     if let Some(v) = env.get(&port_var) {
         let text = v.to_string_lossy();
+        // 0: a free port (the link the hub prints names it), for runs side by side or one after the other.
         return text
             .parse::<u16>()
             .ok()
-            .filter(|p| *p >= 1024)
-            .ok_or_else(|| format!("{port_var} is not a port from 1024 to 65535: {text:?}"));
+            .filter(|p| *p == 0 || *p >= 1024)
+            .ok_or_else(|| format!("{port_var} is 0 or a port from 1024 to 65535: {text:?}"));
     }
     Ok(file.port.unwrap_or(crate::IDENTITY.default_port))
 }
@@ -424,7 +425,7 @@ async fn until_over(
     }
 }
 
-/// The port of the listener of the web variants: `HUB_DESKTOP_WEB_PORT`, else the default.
+/// The port of the listener of the web variants: `HUB_DESKTOP_WEB_PORT` (0: a free one), else the default.
 fn wanted_web_port(env: &Env) -> Result<u16, String> {
     let var = crate::IDENTITY.var("WEB_PORT");
     match env.get(&var) {
@@ -433,8 +434,8 @@ fn wanted_web_port(env: &Env) -> Result<u16, String> {
             .to_string_lossy()
             .parse::<u16>()
             .ok()
-            .filter(|p| *p >= 1024)
-            .ok_or_else(|| format!("{var} is not a port from 1024 to 65535")),
+            .filter(|p| *p == 0 || *p >= 1024)
+            .ok_or_else(|| format!("{var} is 0 or a port from 1024 to 65535")),
     }
 }
 

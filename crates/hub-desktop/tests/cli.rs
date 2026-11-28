@@ -209,6 +209,48 @@ fn the_page_and_hello_come_from_the_program_and_link_prints_a_link_that_pairs() 
     });
 }
 
+/// Two runs with fixed ports one after the other (the sheets of `.testing.lua`): while the hub of the first still
+/// answers on its port, the second cannot take the web port (a note) and finds a hub on its own port, so it ends
+/// ("already running"), whatever folder it has. Port 0 is a free port for each of them: both run, and the link names
+/// the port.
+#[test]
+fn a_hub_still_on_the_fixed_ports_ends_a_second_but_port_zero_lets_it_run() {
+    let first_dir = Scratch::new("hub-cli-ports-first");
+    let second_dir = Scratch::new("hub-cli-ports-second");
+    let (port, web) = (free_port(), free_port());
+    let web_text = web.to_string();
+    let _first = start_by_click_with(
+        first_dir.path(),
+        port,
+        &[("HUB_DESKTOP_WEB_PORT", Path::new(&web_text))],
+    );
+
+    let second = command(second_dir.path(), port)
+        .env("HUB_DESKTOP_WEB_PORT", &web_text)
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&second.stderr);
+    assert!(!second.status.success(), "{second:?}");
+    assert!(said.contains("the web variants are not served"), "{said}");
+    assert!(
+        said.contains(&format!("already running on port {port}")),
+        "{said}"
+    );
+
+    let zero = Path::new("0");
+    let _second = start_by_click_with(second_dir.path(), 0, &[("HUB_DESKTOP_WEB_PORT", zero)]);
+    let printed = std::fs::read_to_string(second_dir.path().join("click-out.txt")).unwrap();
+    let link = printed
+        .lines()
+        .find(|l| l.starts_with("http://127.0.0.1:"))
+        .expect("a link");
+    assert!(
+        !link.starts_with(&format!("http://127.0.0.1:{port}/")),
+        "a port of its own: {link}"
+    );
+    assert!(!link.starts_with("http://127.0.0.1:0/"), "{link}");
+}
+
 #[test]
 fn the_version_line_is_the_one_a_release_is_compared_with() {
     let scratch = Scratch::new("hub-cli-version");

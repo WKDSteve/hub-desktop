@@ -88,7 +88,8 @@ python -m unittest discover -s tools -p "test_*.py"   # die Python-Werkzeuge sel
   `catalog::Native` plus ein Zweig in `launch.rs` mit Test, dass nur die dort geschriebenen argv-Listen vorkommen.
 - Tests starten Programme nur über `crates/fake-app` (schreibt argv und cwd in `fake-app.log` neben sich); der Browser ist
   im Test eine Datei (`Browser::Log`, im Binary `HUB_DESKTOP_BROWSER_LOG`). `HUB_DESKTOP_WEB_PORT` setzt den Port des
-  Web-Listeners (Tests nie auf 17611).
+  Web-Listeners (Tests nie auf 17611). `0` heißt bei beiden Port-Variablen „ein freier Port“ (der Link nennt ihn);
+  die Sheets nutzen das, weil der Hub des vorigen Sheets feste Ports noch halten kann.
 
 ## Icons (Regel APP-11)
 

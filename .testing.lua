@@ -1,5 +1,6 @@
 -- .testing.lua -- what the test sheets of this repository run against (testing.nvim, docs/SHEETS.md there). The sheets
--- in TESTS/sheets only name an app; how it starts is here, under testing.nvim's trust gate. hub-desktop has no Lua spec.
+-- in TESTS/sheets only name an app; how it starts is here, under testing.nvim's trust gate. hub-desktop has no Lua
+-- spec.
 
 return {
   sheets = {
@@ -8,8 +9,10 @@ return {
     apps = {
       -- The real binary against a machine of the run, as ui/e2e/fixture.ts makes it: every folder it looks at is in
       -- the run's folder, so it finds no app, no vault and no settings of the person, and NVIM_MACHINE_ROLE=workstation
-      -- keeps it from installing releases. The ports are fixed (0 is refused); a port in use makes the hub take a free
-      -- one, and the link it prints says which. HUB_DESKTOP_NO_LAUNCH prints the pairing link instead of opening a browser.
+      -- keeps it from installing releases. Both ports are 0, a free one for each run: with fixed ports the hub of the
+      -- sheet before may still answer on them while the next one starts, which then ends ("already running"). The
+      -- sheets open the link the hub prints, which names its port. HUB_DESKTOP_NO_LAUNCH prints the pairing link
+      -- instead of opening a browser.
       -- The binary embeds ui/dist, so the build makes the interface first (a build without it embeds a placeholder).
       ["hub"] = {
         build = {
@@ -19,8 +22,8 @@ return {
         run = { "target/debug/hub-desktop.exe" },
         env = {
           HUB_DESKTOP_CONFIG_DIR = "${temp}/cfg-hub",
-          HUB_DESKTOP_PORT = "47391",
-          HUB_DESKTOP_WEB_PORT = "47392",
+          HUB_DESKTOP_PORT = "0",
+          HUB_DESKTOP_WEB_PORT = "0",
           HUB_DESKTOP_NO_LAUNCH = "1",
           HUB_DESKTOP_BROWSER_LOG = "${temp}/browser.log",
           TASKS_DESKTOP_CONFIG_DIR = "${temp}/cfg-tasks",
