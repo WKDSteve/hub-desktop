@@ -844,7 +844,7 @@ fn an_answer_that_is_no_verdict_is_kept_for_some_rounds_and_a_verdict_while_it_i
     );
     assert!(second_asked.iter().all(|s| !first_asked.contains(s)));
 
-    // After the rounds an answer without a verdict is kept, it is asked again; the red one never.
+    // After the rounds an answer is kept, it is asked again: without a verdict and red alike.
     let mut later = Vec::new();
     for _ in 0..ciwatch::OWN_KEEP_ROUNDS {
         let fake = Fake::new(w2.clone());
@@ -852,5 +852,34 @@ fn an_answer_that_is_no_verdict_is_kept_for_some_rounds_and_a_verdict_while_it_i
         later.extend(own_asks(&fake));
     }
     assert!(!later.is_empty(), "asked again after the rounds");
-    assert!(!later.contains(&shas[0][..12].to_owned()), "{later:?}");
+    assert!(later.contains(&shas[0][..12].to_owned()), "{later:?}");
+}
+
+#[test]
+fn a_red_own_run_that_is_rerun_green_turns_the_task_green_while_the_head_stays_red() {
+    let place = place();
+    let (mut w, shas) = many_waiting();
+    w.own = vec![(shas[0], remote_run(shas[0], "failure", None))];
+    let mut memory = ciwatch::OwnRuns::default();
+    let fake = Fake::new(w.clone());
+    let first = ciwatch::round_with(&fake, &place.programs, now(), &mut memory);
+    assert_eq!(first.written.get("demo/task-1"), Some(&Verdict::Red));
+
+    // The task is red now; its own run is rerun and green, the head of the repository stays red.
+    let mut w2 = w.clone();
+    w2.finished = w2.finished.replace(
+        r#""ci":"pending","commits":["demo@01dddddddddd"#,
+        r#""ci":"red","commits":["demo@01dddddddddd"#,
+    );
+    w2.own = vec![(shas[0], remote_run(shas[0], "success", None))];
+    let mut green = false;
+    for _ in 0..=ciwatch::OWN_KEEP_ROUNDS + 1 {
+        let fake = Fake::new(w2.clone());
+        let round = ciwatch::round_with(&fake, &place.programs, now(), &mut memory);
+        if round.written.get("demo/task-1") == Some(&Verdict::Green) {
+            green = true;
+            break;
+        }
+    }
+    assert!(green, "the rerun never reached the task");
 }

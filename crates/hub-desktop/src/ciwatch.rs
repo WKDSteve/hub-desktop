@@ -541,7 +541,8 @@ pub struct OwnRuns {
 struct OwnAnswer {
     state: CommitState,
     hint: Option<Hint>,
-    /// Rounds left before an answer that is no verdict is asked again; a verdict (green, red) is never asked again.
+    /// Rounds left before the answer is asked again: an answer that is no verdict and a red one (a rerun of the
+    /// commit's own run can still turn it green while the head stays red); a green one is never asked again.
     rounds_left: Option<u32>,
 }
 
@@ -633,7 +634,7 @@ fn ask_own(ask: &dyn Ask, programs: &Programs, repo: &str, sha: &str) -> OwnAnsw
     OwnAnswer {
         state,
         hint: hints.into_iter().next(),
-        rounds_left: (state == CommitState::Pending).then_some(OWN_KEEP_ROUNDS),
+        rounds_left: (state != CommitState::Green).then_some(OWN_KEEP_ROUNDS),
     }
 }
 
