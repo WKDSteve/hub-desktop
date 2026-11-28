@@ -331,6 +331,52 @@ async fn the_mode_of_a_tile_is_kept_in_the_settings_and_the_rest_of_the_file_sta
     hub.server.shutdown().await;
 }
 
+/// Saving a mode waits for the lock of `config.json`, which an app may hold for a while: the wait runs off the
+/// threads that answer requests, so the hub answers others meanwhile. One thread, so a wait on it would hold all.
+#[tokio::test(flavor = "current_thread")]
+async fn saving_a_mode_while_an_app_holds_the_settings_lock_does_not_hold_up_other_requests() {
+    let hub = Arc::new(Hub::new("hub-route-mode-lock", &[]).await);
+    let dir = hub.machine.path("cfg-hub");
+    let (held_tx, held_rx) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        appkit_hub::config::locked(&dir, || {
+            held_tx.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(1500));
+            Ok(())
+        })
+        .unwrap();
+    });
+    held_rx.recv().unwrap();
+    // From here the lock is held for 1.5 s; a save that waited for it on the one thread would hold up the
+    // whole runtime, the sleep below included, so the time counts from now.
+    let t0 = std::time::Instant::now();
+
+    let saving = {
+        let hub = Arc::clone(&hub);
+        tokio::spawn(async move {
+            hub.post("/api/hub/apps/tasks/mode", r#"{"mode":"web"}"#)
+                .await
+        })
+    };
+    // Let the save reach the lock first.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let host = format!("127.0.0.1:{}", hub.server.addr().port());
+    let hello = send(
+        hub.server.addr(),
+        request("GET", "/api/hub/hello", &[("Host", host.as_str())], b""),
+    )
+    .await;
+    let took = t0.elapsed();
+    assert_eq!(hello.status, 200, "{hello:?}");
+    assert!(
+        took < Duration::from_millis(1000),
+        "hello waited for the lock: {took:?}"
+    );
+    let saved = saving.await.unwrap();
+    assert_eq!(saved.status, 200, "{saved:?}");
+    holder.join().unwrap();
+}
+
 #[tokio::test]
 async fn a_mode_the_app_has_not_or_a_word_that_is_none_is_refused_and_nothing_is_written() {
     let hub = Hub::new("hub-route-mode-bad", &[]).await;

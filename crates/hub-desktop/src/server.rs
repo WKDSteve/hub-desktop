@@ -413,7 +413,13 @@ async fn choose_mode(
             );
         }
     };
-    match core.rt().prefs().set_mode(&id, mode) {
+    let prefs = Arc::clone(core.rt().prefs());
+    // The writer waits for the lock of `config.json` (up to seconds while an app holds it): off the threads that
+    // answer requests.
+    let done = tokio::task::spawn_blocking(move || prefs.set_mode(&id, mode))
+        .await
+        .unwrap_or_else(|_| Err(PrefsError::Failed("the write broke off".to_owned())));
+    match done {
         Ok(()) => Json(json!({ "result": "saved" })).into_response(),
         Err(PrefsError::UnknownApp) => {
             appkit_hub::error_body(StatusCode::NOT_FOUND, "not_found", "no such app")
